@@ -12,6 +12,7 @@ jobs:
   backend:
     name: Backend CI (Node.js)
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: ./backend
