@@ -106,6 +106,7 @@ jobs:
           host: ${{ secrets.STAGING_HOST }}
           username: ${{ secrets.STAGING_SSH_USER }}
           key: ${{ secrets.STAGING_SSH_KEY }}
+          port: ${{ secrets.STAGING_SSH_PORT }}
           script: |
             cd ~/construction-management-platform || exit 1
             bash deploy/deploy.sh ghcr.io/${{ env.REPO }}-backend:${{ github.sha }}
