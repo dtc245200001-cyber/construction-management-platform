@@ -1,39 +1,69 @@
 const express = require("express");
-const { Pool } = require("pg");
+const session = require("express-session");
+const cors = require("cors");
 require("dotenv").config();
+
+const pool = require("./config/db");
+const authRoutes = require("./routes/authRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Cho phép frontend localhost:5173 gọi backend localhost:3000
+app.use(
+  cors({
+    origin: "http://localhost:5173",
+    credentials: true,
+  })
+);
+
+// Đọc dữ liệu từ request
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD
-});
+// Session
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "dev-secret-key",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      maxAge: 60 * 60 * 1000,
+    },
+  })
+);
 
+// Route đăng nhập
+app.use("/api/auth", authRoutes);
+
+// Kiểm tra backend
 app.get("/", (req, res) => {
-  res.json({ message: "Backend is running!" });
+  res.json({
+    message: "Backend is running!",
+  });
 });
 
+// Kiểm tra PostgreSQL
 app.get("/db-test", async (req, res) => {
   try {
     const result = await pool.query("SELECT NOW()");
+
     res.json({
       message: "PostgreSQL connected!",
-      time: result.rows[0].now
+      time: result.rows[0].now,
     });
   } catch (error) {
+    console.error(error);
+
     res.status(500).json({
       message: "Database connection failed",
-      error: error.message
+      error: error.message,
     });
   }
 });
 
+// Khởi động server
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
 });
