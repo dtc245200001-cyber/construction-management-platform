@@ -22,7 +22,8 @@
     "@eslint/js": "^10.0.1",
     "eslint": "^10.11.0",
     "node-pg-migrate": "^6.2.2",
-    "nodemon": "^3.1.9"
+    "nodemon": "^3.1.9",
+    "supertest": "^6.3.4"
   },
   "type": "commonjs"
 }
