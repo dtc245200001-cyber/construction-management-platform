@@ -10,8 +10,9 @@ on:
 
 jobs:
   backend:
-    name: Backend CI (.NET)
+    name: Backend CI (Node.js)
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: ./backend
@@ -20,29 +21,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
         with:
-          dotnet-version: '8.x'
-          # Caching NuGet packages (requires a lock file or relies on default global packages caching)
-          cache: true
-          cache-dependency-path: backend/**/packages.lock.json
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
 
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Check code formatting (Lint)
-        run: dotnet format --verify-no-changes
-
-      - name: Build
-        run: dotnet build --configuration Release --no-restore
+      - name: Install dependencies
+        run: npm ci
 
       - name: Test
-        run: dotnet test --configuration Release --no-build --verbosity normal
+        run: npm test --if-present
 
   frontend:
     name: Frontend CI (Node.js)
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: ./frontend
