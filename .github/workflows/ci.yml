@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - test-ci-t02
   pull_request:
     branches:
       - main
@@ -12,7 +13,6 @@ jobs:
   backend:
     name: Backend CI (Node.js)
     runs-on: ubuntu-latest
-
     defaults:
       run:
         working-directory: ./backend
@@ -25,7 +25,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
 
       - name: Install dependencies
         run: npm ci
@@ -64,4 +63,3 @@ jobs:
   #       run: npm run build
   #     - name: Test
   #       run: npm run test
-
