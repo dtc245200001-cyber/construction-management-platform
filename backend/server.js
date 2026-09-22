@@ -1,6 +1,46 @@
-const app = require("./app");
+const express = require("express");
+const session = require("express-session");
+const cors = require("cors");
+require("dotenv").config();
 
+const pool = require("./config/db");
+const authRoutes = require("./routes/authRoutes");
+const categoryRoutes = require("./routes/categoryRoutes");
+
+
+const app = express();
 const PORT = process.env.PORT || 3000;
+
+
+app.use(
+  cors({
+    origin: "http://localhost:5173",
+    credentials: true,
+  })
+);
+
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "dev-secret-key",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: false,
+      httpOnly: true,
+    },
+  })
+);
+
+
+app.use("/api/auth", authRoutes);
+app.use("/api/categories", categoryRoutes);
+
+
 app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
