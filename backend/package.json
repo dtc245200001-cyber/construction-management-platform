@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "lint": "eslint . --ext .js --ignore-pattern node_modules",
+    "lint": "eslint .",
     "build": "node -e \"require('./app.js'); console.log('Build check passed')\"",
     "test": "jest"
   },
