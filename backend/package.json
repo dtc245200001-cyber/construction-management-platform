@@ -6,9 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "lint": "eslint .",
-    "build": "echo 'No build step required for plain Node.js'",
-    "test": "echo 'No tests configured yet'"
+    "lint": "eslint . --ext .js --ignore-pattern node_modules",
+    "build": "node -e \"require('./app.js'); console.log('Build check passed')\"",
+    "test": "jest"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
@@ -19,8 +19,8 @@
     "pg": "^8.13.1"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "eslint": "^10.11.0",
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
     "node-pg-migrate": "^6.2.2",
     "nodemon": "^3.1.9",
     "supertest": "^6.3.4"
