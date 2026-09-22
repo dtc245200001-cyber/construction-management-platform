@@ -1,3 +1,9 @@
+<<<<<<< HEAD
+const app = require("./app");
+
+const PORT = process.env.PORT || 3000;
+
+=======
 const express = require("express");
 const session = require("express-session");
 const cors = require("cors");
@@ -64,6 +70,7 @@ app.get("/db-test", async (req, res) => {
 });
 
 // Khởi động server
+>>>>>>> 48d338f59f92edae858e38e979794500b9046990
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
 });
