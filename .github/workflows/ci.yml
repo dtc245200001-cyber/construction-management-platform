@@ -69,3 +69,10 @@ jobs:
 
       - name: Test
         run: npm run test
+
+# huong dan : 
+# 1. Mở terminal và di chuyển đến thư mục gốc của dự án (nơi có file .github).
+# 2. Tạo branch mới: git checkout -b test-ci-t04
+# 3. Thêm file này vào git: git add .
+# 4. Commit: git commit -m "Fix: Add CI workflow"
+# 5. Push lên GitHub: git push origin test-ci-t04
