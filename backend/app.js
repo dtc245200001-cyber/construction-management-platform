@@ -14,6 +14,10 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD
 });
 
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "ok" });
+});
+
 app.get("/", (req, res) => {
   res.json({ message: "Backend is running!" });
 });
