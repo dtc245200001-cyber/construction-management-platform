@@ -4,14 +4,14 @@ const pool = require("../config/db");
 
 const router = express.Router();
 
-// =========================
+// ======================================================
 // ĐĂNG KÝ
-// =========================
+// ======================================================
 router.post("/register", async (req, res) => {
   try {
     const { email, password, confirmPassword } = req.body;
 
-    // Kiểm tra nhập đầy đủ thông tin
+    // Kiểm tra nhập đầy đủ
     if (!email || !password || !confirmPassword) {
       return res.status(400).json({
         message: "Vui lòng nhập đầy đủ thông tin",
@@ -30,7 +30,7 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    // Kiểm tra độ dài mật khẩu
+    // Kiểm tra mật khẩu
     if (password.length < 6) {
       return res.status(400).json({
         message: "Mật khẩu phải có ít nhất 6 ký tự",
@@ -44,7 +44,7 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    // Kiểm tra email đã tồn tại chưa
+    // Kiểm tra email đã tồn tại
     const existingUser = await pool.query(
       `SELECT id
        FROM users
@@ -58,17 +58,24 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    // Mã hóa mật khẩu bằng bcrypt
+    // Mã hóa mật khẩu
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Thêm tài khoản vào database
-    // Tạo tên mặc định từ email và gán role_id = 2 (ban_quan_ly)
-    const defaultName = normalizedEmail.split('@')[0];
+    // ======================================================
+    // THÊM USER
+    // Bảng users hiện tại:
+    // - không có name
+    // - không có password
+    // - không có role_id
+    // ======================================================
     const result = await pool.query(
-      `INSERT INTO users (name, email, password, password_hash, role_id)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, email, created_at`,
-      [defaultName, normalizedEmail, passwordHash, passwordHash, 2]
+      `INSERT INTO users (
+        email,
+        password_hash
+      )
+      VALUES ($1, $2)
+      RETURNING id, email, created_at`,
+      [normalizedEmail, passwordHash]
     );
 
     return res.status(201).json({
@@ -78,7 +85,7 @@ router.post("/register", async (req, res) => {
   } catch (error) {
     console.error("REGISTER ERROR:", error);
 
-    // Trường hợp email bị trùng do 2 request chạy cùng lúc
+    // Email trùng
     if (error.code === "23505") {
       return res.status(409).json({
         message: "Email đã được sử dụng",
@@ -91,13 +98,14 @@ router.post("/register", async (req, res) => {
   }
 });
 
-// =========================
+// ======================================================
 // ĐĂNG NHẬP
-// =========================
+// ======================================================
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // Kiểm tra nhập đầy đủ
     if (!email || !password) {
       return res.status(400).json({
         message: "Vui lòng nhập email và mật khẩu",
@@ -107,21 +115,14 @@ router.post("/login", async (req, res) => {
     // Chuẩn hóa email
     const normalizedEmail = email.trim().toLowerCase();
 
-    // Tìm user + để PostgreSQL xác định tài khoản còn bị khóa hay không
+    // Tìm user
     const result = await pool.query(
-      `SELECT *,
-              CASE
-                WHEN locked_until IS NOT NULL
-                     AND locked_until > NOW()
-                THEN TRUE
-                ELSE FALSE
-              END AS is_locked
+      `SELECT *
        FROM users
        WHERE LOWER(email) = $1`,
       [normalizedEmail]
     );
 
-    // Không tiết lộ email có tồn tại hay không
     if (result.rows.length === 0) {
       return res.status(401).json({
         message: "Email hoặc mật khẩu không đúng",
@@ -130,75 +131,125 @@ router.post("/login", async (req, res) => {
 
     const user = result.rows[0];
 
-    // Đang trong 15 phút khóa -> không kiểm tra mật khẩu
-    if (user.is_locked) {
+    // ======================================================
+    // KIỂM TRA KHÓA TÀI KHOẢN
+    // ======================================================
+    if (
+      user.locked_until &&
+      new Date(user.locked_until).getTime() > Date.now()
+    ) {
       return res.status(423).json({
-        message: "Tài khoản đang bị khóa tạm thời. Vui lòng thử lại sau.",
+        message:
+          "Tài khoản đang bị khóa tạm thời. Vui lòng thử lại sau.",
       });
     }
 
+    // ======================================================
+    // KIỂM TRA PASSWORD HASH
+    // ======================================================
+    if (!user.password_hash) {
+      console.error(
+        "LOGIN ERROR: User không có password_hash:",
+        user.id
+      );
+
+      return res.status(500).json({
+        message: "Tài khoản chưa có mật khẩu hợp lệ",
+      });
+    }
+
+    // So sánh mật khẩu
     const passwordCorrect = await bcrypt.compare(
       password,
       user.password_hash
     );
 
-    // =========================
+    // ======================================================
     // MẬT KHẨU SAI
-    // =========================
+    // ======================================================
     if (!passwordCorrect) {
-      const newAttempts = user.failed_login_attempts + 1;
+      const currentAttempts =
+        Number(user.failed_login_attempts) || 0;
 
-      // Sai lần thứ 5 -> khóa 15 phút
+      const newAttempts = currentAttempts + 1;
+
+      // Sai từ lần thứ 5
       if (newAttempts >= 5) {
-        await pool.query(
-          `UPDATE users
-           SET failed_login_attempts = 5,
-               locked_until = NOW() + INTERVAL '15 minutes',
-               updated_at = NOW()
-           WHERE id = $1`,
-          [user.id]
-        );
+        try {
+          await pool.query(
+            `UPDATE users
+             SET failed_login_attempts = 5,
+                 locked_until = NOW() + INTERVAL '15 minutes',
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [user.id]
+          );
 
-        return res.status(423).json({
-          message: "Đăng nhập sai quá 5 lần. Tài khoản bị khóa 15 phút.",
-        });
+          return res.status(423).json({
+            message:
+              "Đăng nhập sai quá 5 lần. Tài khoản bị khóa 15 phút.",
+          });
+        } catch (lockError) {
+          console.error(
+            "LOGIN LOCK UPDATE ERROR:",
+            lockError.message
+          );
+
+          return res.status(401).json({
+            message: "Email hoặc mật khẩu không đúng",
+          });
+        }
       }
 
       // Sai lần 1 -> 4
-      await pool.query(
-        `UPDATE users
-         SET failed_login_attempts = $1,
-             updated_at = NOW()
-         WHERE id = $2`,
-        [newAttempts, user.id]
-      );
+      try {
+        await pool.query(
+          `UPDATE users
+           SET failed_login_attempts = $1,
+               updated_at = NOW()
+           WHERE id = $2`,
+          [newAttempts, user.id]
+        );
+      } catch (attemptError) {
+        console.error(
+          "LOGIN ATTEMPT UPDATE ERROR:",
+          attemptError.message
+        );
+      }
 
       return res.status(401).json({
         message: "Email hoặc mật khẩu không đúng",
       });
     }
 
-    // =========================
-    // MẬT KHẨU ĐÚNG
-    // =========================
+    // ======================================================
+    // ĐĂNG NHẬP THÀNH CÔNG
+    // ======================================================
 
-    // Reset số lần đăng nhập sai và trạng thái khóa
-    await pool.query(
-      `UPDATE users
-       SET failed_login_attempts = 0,
-           locked_until = NULL,
-           updated_at = NOW()
-       WHERE id = $1`,
-      [user.id]
-    );
+    // Reset số lần đăng nhập sai
+    try {
+      await pool.query(
+        `UPDATE users
+         SET failed_login_attempts = 0,
+             locked_until = NULL,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [user.id]
+      );
+    } catch (resetError) {
+      console.error(
+        "LOGIN RESET ERROR:",
+        resetError.message
+      );
+    }
 
-    // Lưu thông tin user vào session
+    // Tạo session
     req.session.user = {
       id: user.id,
       email: user.email,
     };
 
-    return res.json({
+    return res.status(200).json({
       message: "Đăng nhập thành công",
       user: {
         id: user.id,
@@ -214,25 +265,31 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// =========================
+// ======================================================
 // KIỂM TRA SESSION
-// =========================
+// ======================================================
 router.get("/me", (req, res) => {
-  if (!req.session.user) {
+  if (!req.session || !req.session.user) {
     return res.status(401).json({
       message: "Chưa đăng nhập",
     });
   }
 
-  return res.json({
+  return res.status(200).json({
     user: req.session.user,
   });
 });
 
-// =========================
+// ======================================================
 // ĐĂNG XUẤT
-// =========================
+// ======================================================
 router.post("/logout", (req, res) => {
+  if (!req.session) {
+    return res.status(200).json({
+      message: "Đăng xuất thành công",
+    });
+  }
+
   req.session.destroy((error) => {
     if (error) {
       console.error("LOGOUT ERROR:", error);
@@ -244,7 +301,7 @@ router.post("/logout", (req, res) => {
 
     res.clearCookie("connect.sid");
 
-    return res.json({
+    return res.status(200).json({
       message: "Đăng xuất thành công",
     });
   });
