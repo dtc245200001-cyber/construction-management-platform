@@ -19,7 +19,7 @@
 set -e
 
 if [ -z "$1" ]; then
-  echo "Lỗi: Thiếu tham số IMAGE. Cách dùng: ./deploy.sh ghcr.io/<org>/<repo>-backend:latest"
+  echo "Lỗi: Thiếu tham số IMAGE. Cách dùng: ./deploy.sh ghcr.io/dtc245200001-cyber/construction-management-platform-backend:sha"
   exit 1
 fi
 
@@ -28,6 +28,10 @@ CONTAINER_OLD="construction_backend_staging"
 CONTAINER_NEW="construction_backend_staging_new"
 
 echo "[1/4] Pull image mới: $IMAGE"
+# Login vào ghcr.io nếu có token (hỗ trợ repo private)
+if [ -n "$GHCR_TOKEN" ]; then
+  echo "$GHCR_TOKEN" | docker login ghcr.io -u "${GHCR_USER:-github}" --password-stdin
+fi
 docker pull "$IMAGE"
 
 echo "[2/4] Lấy thông tin network của container cũ (để nối vào cùng DB)..."
