@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - test-ci-t02
   pull_request:
     branches:
       - main
@@ -12,7 +13,6 @@ jobs:
   backend:
     name: Backend CI (Node.js)
     runs-on: ubuntu-latest
-
     defaults:
       run:
         working-directory: ./backend
@@ -25,33 +25,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Test
-        run: npm test --if-present
-
-  frontend:
-    name: Frontend CI (Node.js)
-    runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: ./frontend
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -64,3 +37,29 @@ jobs:
 
       - name: Test
         run: npm run test
+
+  # Job frontend đang TẮT vì thư mục frontend/ chưa có mã nguồn (mới có .gitkeep).
+  # Bật lại job này ngay khi task scaffold frontend (ví dụ T-06) hoàn thành,
+  # để không chặn nhầm các PR chỉ sửa backend.
+  #
+  # frontend:
+  #   name: Frontend CI (Node.js)
+  #   runs-on: ubuntu-latest
+  #   defaults:
+  #     run:
+  #       working-directory: ./frontend
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #     - name: Setup Node.js 20
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: '20'
+  #     - name: Install dependencies
+  #       run: npm ci
+  #     - name: Lint
+  #       run: npm run lint
+  #     - name: Build
+  #       run: npm run build
+  #     - name: Test
+  #       run: npm run test
