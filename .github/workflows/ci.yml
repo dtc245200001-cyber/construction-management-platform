@@ -17,6 +17,31 @@ jobs:
       run:
         working-directory: ./backend
 
+    # T-08: __tests__/workItemTree.test.js chạy truy vấn đệ quy trên Postgres thật,
+    # nên CI cần một service Postgres thật thay vì mock.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: construction_db_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres123
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres123@localhost:5432/construction_db_test
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: construction_db_test
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -34,6 +59,9 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Run migrations
+        run: npm run migrate up
 
       - name: Test
         run: npm run test

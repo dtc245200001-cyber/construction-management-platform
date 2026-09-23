@@ -8,6 +8,7 @@
     "dev": "nodemon server.js",
     "lint": "eslint .",
     "build": "node -e \"require('./app.js'); console.log('Build check passed')\"",
+    "migrate": "node-pg-migrate",
     "test": "jest"
   },
   "dependencies": {
