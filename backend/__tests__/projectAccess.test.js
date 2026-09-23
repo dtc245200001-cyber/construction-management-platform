@@ -3,14 +3,12 @@ jest.mock("../config/db", () => ({
 }));
 
 const db = require("../config/db");
-const requireProjectRoles = require("../middleware/projectAccess");
+const { checkProjectAccess, requireProjectRoles } = require('../middleware/projectAccess');
 
 function createResponse() {
   const res = {};
-
   res.status = jest.fn(() => res);
   res.json = jest.fn(() => res);
-
   return res;
 }
 
@@ -23,6 +21,7 @@ describe("T-07 project access middleware", () => {
     const req = {
       user: { id: 1 },
       params: { projectId: "1" },
+      projectRole: "MEMBER"
     };
 
     const res = createResponse();
@@ -32,17 +31,13 @@ describe("T-07 project access middleware", () => {
 
     expect(res.status).toHaveBeenCalledWith(403);
     expect(next).not.toHaveBeenCalled();
-    expect(db.query).not.toHaveBeenCalled();
   });
 
   test("user khong tham gia project phai tra 403", async () => {
-    db.query.mockResolvedValue({
-      rows: [],
-    });
-
     const req = {
       user: { id: 10 },
       params: { projectId: "1" },
+      projectRole: undefined
     };
 
     const res = createResponse();
@@ -55,20 +50,10 @@ describe("T-07 project access middleware", () => {
   });
 
   test("user co role hop le duoc phep truy cap", async () => {
-    db.query.mockResolvedValue({
-      rows: [
-        {
-          id: 1,
-          user_id: 10,
-          project_id: 1,
-          role: "member",
-        },
-      ],
-    });
-
     const req = {
       user: { id: 10 },
       params: { projectId: "1" },
+      projectRole: "MEMBER"
     };
 
     const res = createResponse();
@@ -81,20 +66,10 @@ describe("T-07 project access middleware", () => {
   });
 
   test("user thuoc project nhung sai role phai tra 403", async () => {
-    db.query.mockResolvedValue({
-      rows: [
-        {
-          id: 1,
-          user_id: 10,
-          project_id: 1,
-          role: "member",
-        },
-      ],
-    });
-
     const req = {
       user: { id: 10 },
       params: { projectId: "1" },
+      projectRole: "MEMBER"
     };
 
     const res = createResponse();
