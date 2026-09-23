@@ -7,7 +7,7 @@ const pool = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
 const categoryRoutes = require("./routes/categoryRoutes");
 
-const app = express();
+
 const PORT = process.env.PORT || 3000;
 
 app.use(cors({
