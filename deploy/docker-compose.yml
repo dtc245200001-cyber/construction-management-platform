@@ -1,0 +1,40 @@
+# File này chỉ chạy trên server staging, không dùng cho máy cá nhân — dùng docker-compose.yml ở thư mục gốc cho máy cá nhân.
+services:
+  postgres:
+    image: postgres:16
+    container_name: construction_postgres_staging
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_staging_data:/var/lib/postgresql/data
+
+  backend:
+    image: ghcr.io/<org>/<repo>-backend:latest
+    container_name: construction_backend_staging
+    restart: unless-stopped
+    environment:
+      PORT: ${PORT}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DATABASE_URL: ${DATABASE_URL}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  postgres_staging_data:

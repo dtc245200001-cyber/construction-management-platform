@@ -1,39 +1,49 @@
 const express = require("express");
-const { Pool } = require("pg");
+const session = require("express-session");
+const cors = require("cors");
 require("dotenv").config();
+
+const authRoutes = require("./routes/authRoutes");
+const categoryRoutes = require("./routes/categoryRoutes");
+const projectRoutes = require("./routes/projectRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.use(
+  cors({
+    origin: "http://localhost:5173",
+    credentials: true,
+  })
+);
+
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD
-});
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "dev-secret-key",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: false,
+      httpOnly: true,
+    },
+  })
+);
 
-app.get("/", (req, res) => {
-  res.json({ message: "Backend is running!" });
-});
+// Routes
+app.use("/api/auth", authRoutes);
+app.use("/api/categories", categoryRoutes);
+app.use("/api/projects", projectRoutes);
 
-app.get("/db-test", async (req, res) => {
-  try {
-    const result = await pool.query("SELECT NOW()");
-    res.json({
-      message: "PostgreSQL connected!",
-      time: result.rows[0].now
-    });
-  } catch (error) {
-    res.status(500).json({
-      message: "Database connection failed",
-      error: error.message
-    });
-  }
+// Health check cho Render / Docker
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+  });
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
