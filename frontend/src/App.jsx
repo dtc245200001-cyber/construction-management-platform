@@ -13,10 +13,9 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
-
-  // false = đăng nhập
-  // true = đăng ký
   const [isRegister, setIsRegister] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
 
   // =========================
   // KIỂM TRA SESSION
@@ -130,10 +129,8 @@ function App() {
 
       if (response.ok) {
         setIsRegister(false);
-
         setPassword("");
         setConfirmPassword("");
-
         setMessage("");
         setSuccessMessage(
           "Đăng ký thành công. Bạn có thể đăng nhập bằng tài khoản vừa tạo."
@@ -163,7 +160,6 @@ function App() {
       setEmail("");
       setPassword("");
       setConfirmPassword("");
-
       setMessage("");
       setSuccessMessage("Đăng xuất thành công");
     } catch (error) {
@@ -172,9 +168,6 @@ function App() {
     }
   };
 
-  // =========================
-  // CHUYỂN FORM
-  // =========================
   const switchToRegister = () => {
     setIsRegister(true);
     setPassword("");
@@ -191,19 +184,17 @@ function App() {
     setSuccessMessage("");
   };
 
-  // =========================
-  // LOADING
-  // =========================
   if (checkingSession) {
     return (
       <div className="loading-page">
-        Đang tải hệ thống...
+        <div className="loading-logo">CM</div>
+        <p>Đang tải hệ thống...</p>
       </div>
     );
   }
 
   // =========================
-  // ĐÃ ĐĂNG NHẬP
+  // SAU KHI ĐĂNG NHẬP
   // =========================
   if (user) {
     return (
@@ -213,7 +204,9 @@ function App() {
 
           <h1>Hệ thống quản lý thi công</h1>
 
-          <p>Đăng nhập thành công</p>
+          <p className="dashboard-success">
+            Đăng nhập thành công
+          </p>
 
           <div className="user-info">
             Xin chào <strong>{user.email}</strong>
@@ -230,151 +223,301 @@ function App() {
     );
   }
 
-  // =========================
-  // LOGIN / REGISTER PAGE
-  // =========================
   return (
-    <div className="login-page">
+    <main className="auth-page">
 
       {/* =========================
-          BÊN TRÁI
+          BACKGROUND
       ========================= */}
-      <section
-        className="login-hero"
+      <div
+        className="background-photo"
         style={{
           backgroundImage: `url(${heroImage})`,
         }}
-      >
-        <div className="hero-overlay"></div>
+      />
 
-        <div className="brand">
-          <div className="brand-icon">
-            CM
+      <div className="background-overlay" />
+
+      {/* =========================
+          HEADER
+      ========================= */}
+      <header className="top-header">
+        <div className="main-brand">
+          <div className="main-logo">
+            <span>C</span>
           </div>
 
           <div>
-            <h2>
-              Construction Management
-            </h2>
-
-            <span>
-              Quản lý thi công công trình
-            </span>
+            <strong>Construction</strong>
+            <span>Management</span>
           </div>
         </div>
 
-        <div className="hero-content">
-          <span className="hero-label">
-            NỀN TẢNG QUẢN LÝ XÂY DỰNG
-          </span>
+        <div className="header-right">
+          <span>Better Construction</span>
+          <i>•</i>
+          <span>Smarter Management</span>
 
+          <button
+            className="theme-button"
+            type="button"
+            aria-label="Giao diện"
+          >
+            ☼
+          </button>
+
+          <button
+            className="language-button"
+            type="button"
+            aria-label="Ngôn ngữ"
+          >
+            VN
+          </button>
+        </div>
+      </header>
+
+      {/* =========================
+          LEFT CONTENT
+      ========================= */}
+      <section className="landing-content">
+
+        <div className="hero-copy">
           <h1>
-            Quản lý công trình
+            Kiến tạo công trình,
             <br />
-
-            <span>
-              hiệu quả hơn.
-            </span>
+            <span>quản lý hiệu quả</span>
           </h1>
 
           <p>
-            Theo dõi tiến độ, nhân sự, vật tư
-            và toàn bộ hoạt động thi công trên
-            một nền tảng duy nhất.
+            Nền tảng quản lý dự án xây dựng hiện đại,
+            giúp bạn kiểm soát tiến độ, nhân sự, chi phí
+            và tài nguyên một cách toàn diện.
           </p>
 
-          <div className="hero-stats">
+          <div className="feature-grid">
 
-            <div>
-              <strong>50+</strong>
-              <span>Dự án</span>
+            <div className="feature-item">
+              <div className="feature-icon blue">
+                ▣
+              </div>
+              <span>
+                Quản lý
+                <br />
+                dự án
+              </span>
             </div>
 
-            <div>
-              <strong>1.200+</strong>
-              <span>Nhân sự</span>
+            <div className="feature-item">
+              <div className="feature-icon purple">
+                ▦
+              </div>
+              <span>
+                Theo dõi
+                <br />
+                tiến độ
+              </span>
             </div>
 
-            <div>
-              <strong>98%</strong>
-              <span>Đúng tiến độ</span>
+            <div className="feature-item">
+              <div className="feature-icon green">
+                ♟
+              </div>
+              <span>
+                Phân công
+                <br />
+                nhân sự
+              </span>
+            </div>
+
+            <div className="feature-item">
+              <div className="feature-icon violet">
+                ▥
+              </div>
+              <span>
+                Báo cáo
+                <br />
+                chi tiết
+              </span>
             </div>
 
           </div>
         </div>
 
-        <div className="hero-footer">
-          Hệ thống quản lý thi công công trình
+        <div className="video-box">
+          <div className="video-text">
+            Dự án thành công bắt đầu từ
+            <br />
+            một nền tảng quản lý tốt.
+          </div>
+
+          <button type="button" className="play-button">
+            ▶
+          </button>
+
+          <span>Xem giới thiệu</span>
         </div>
+
       </section>
 
       {/* =========================
-          BÊN PHẢI
+          MAIN AUTH CARD
       ========================= */}
-      <section className="login-section">
+      <section className="auth-card">
 
-        <div className="login-wrapper">
+        {/* PANEL GIỚI THIỆU */}
+        <aside className="intro-panel">
 
-          <div className="mobile-brand">
-            <div className="brand-icon">
-              CM
+          <div className="welcome-badge">
+            <span></span>
+            Welcome to
+          </div>
+
+          <h2>
+            Construction
+            <br />
+            Management
+          </h2>
+
+          <p>
+            Cùng nhau xây dựng những
+            <br />
+            công trình bền vững
+          </p>
+
+          <div className="short-line"></div>
+
+          <div className="building-art">
+            <div className="building-crane">
+              ─────╱
             </div>
 
-            <strong>
-              Construction Management
-            </strong>
+            <div className="building">
+              <div className="building-top"></div>
+
+              <div className="building-body">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+
+            <div className="chart-box">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
           </div>
 
-          {/* =========================
-              TIÊU ĐỀ
-          ========================= */}
-          <div className="welcome">
+          <div className="benefits">
 
-            <span>
-              {isRegister
-                ? "TẠO TÀI KHOẢN"
-                : "CHÀO MỪNG TRỞ LẠI"}
-            </span>
+            <div className="benefit">
+              <div className="benefit-icon">
+                ✓
+              </div>
 
-            <h1>
-              {isRegister
-                ? "Đăng ký"
-                : "Đăng nhập"}
-            </h1>
+              <div>
+                <strong>An toàn</strong>
+                <span>
+                  Quản lý rủi ro, đảm bảo an toàn lao động
+                </span>
+              </div>
+            </div>
 
-            <p>
-              {isRegister
-                ? "Tạo tài khoản để truy cập hệ thống quản lý."
-                : "Nhập thông tin tài khoản để truy cập hệ thống quản lý."}
-            </p>
+            <div className="benefit">
+              <div className="benefit-icon purple-bg">
+                ◷
+              </div>
+
+              <div>
+                <strong>Minh bạch</strong>
+                <span>
+                  Dữ liệu rõ ràng, theo dõi thời gian thực
+                </span>
+              </div>
+            </div>
+
+            <div className="benefit">
+              <div className="benefit-icon people-bg">
+                ●
+              </div>
+
+              <div>
+                <strong>Hiệu quả</strong>
+                <span>
+                  Tối ưu nguồn lực, nâng cao năng suất
+                </span>
+              </div>
+            </div>
 
           </div>
 
-          {/* =========================
-              FORM
-          ========================= */}
-          <form
-            onSubmit={
-              isRegister
-                ? handleRegister
-                : handleLogin
-            }
-          >
+        </aside>
 
-            {/* EMAIL */}
-            <div className="form-group">
+        {/* FORM */}
+        <section className="form-panel">
 
-              <label>Email</label>
+          {/* TABS */}
+          <div className="auth-tabs">
 
-              <div className="input-wrapper">
+            <button
+              type="button"
+              className={!isRegister ? "active" : ""}
+              onClick={switchToLogin}
+            >
+              Đăng nhập
+            </button>
 
-                <span className="input-icon">
+            <button
+              type="button"
+              className={isRegister ? "active" : ""}
+              onClick={switchToRegister}
+            >
+              Đăng ký
+            </button>
+
+          </div>
+
+          <div className="form-content">
+
+            <div className="form-heading">
+              <h2>
+                {isRegister
+                  ? "Tạo tài khoản"
+                  : "Chào mừng trở lại!"}
+
+                {!isRegister && (
+                  <span className="wave">👋</span>
+                )}
+              </h2>
+
+              <p>
+                {isRegister
+                  ? "Đăng ký tài khoản để bắt đầu quản lý công trình của bạn."
+                  : "Đăng nhập để tiếp tục quản lý công trình của bạn."}
+              </p>
+            </div>
+
+            <form
+              onSubmit={
+                isRegister
+                  ? handleRegister
+                  : handleLogin
+              }
+            >
+
+              {/* EMAIL */}
+              <div className="modern-input">
+
+                <span className="field-icon">
                   ✉
                 </span>
 
                 <input
                   type="email"
-                  placeholder="name@company.com"
+                  placeholder="Email"
                   value={email}
                   onChange={(e) =>
                     setEmail(e.target.value)
@@ -383,183 +526,173 @@ function App() {
                 />
 
               </div>
-            </div>
 
-            {/* MẬT KHẨU */}
-            <div className="form-group">
+              {/* PASSWORD */}
+              <div className="modern-input">
 
-              <div className="password-label">
-
-                <label>
-                  Mật khẩu
-                </label>
-
-                {!isRegister && (
-                  <span>
-                    Quên mật khẩu?
-                  </span>
-                )}
-
-              </div>
-
-              <div className="input-wrapper">
-
-                <span className="input-icon">
-                  ●
+                <span className="field-icon lock-icon">
+                  ♙
                 </span>
 
                 <input
-                  type="password"
-                  placeholder="Nhập mật khẩu"
+                  type={
+                    showPassword
+                      ? "text"
+                      : "password"
+                  }
+                  placeholder="Mật khẩu"
                   value={password}
                   onChange={(e) =>
                     setPassword(e.target.value)
                   }
-                  required
                   minLength={6}
+                  required
                 />
 
+                <button
+                  type="button"
+                  className="show-password"
+                  onClick={() =>
+                    setShowPassword(!showPassword)
+                  }
+                  aria-label="Hiện hoặc ẩn mật khẩu"
+                >
+                  {showPassword ? "◉" : "⊙"}
+                </button>
+
               </div>
-            </div>
 
-            {/* XÁC NHẬN MẬT KHẨU */}
-            {isRegister && (
-              <div className="form-group">
+              {/* CONFIRM PASSWORD */}
+              {isRegister && (
+                <div className="modern-input">
 
-                <label>
-                  Xác nhận mật khẩu
-                </label>
-
-                <div className="input-wrapper">
-
-                  <span className="input-icon">
-                    ●
+                  <span className="field-icon lock-icon">
+                    ♙
                   </span>
 
                   <input
-                    type="password"
-                    placeholder="Nhập lại mật khẩu"
+                    type={
+                      showPassword
+                        ? "text"
+                        : "password"
+                    }
+                    placeholder="Xác nhận mật khẩu"
                     value={confirmPassword}
                     onChange={(e) =>
                       setConfirmPassword(
                         e.target.value
                       )
                     }
-                    required
                     minLength={6}
+                    required
                   />
 
                 </div>
-              </div>
-            )}
-
-            {/* THÔNG BÁO LỖI */}
-            {message && (
-              <div className="message">
-                {message}
-              </div>
-            )}
-
-            {/* THÔNG BÁO THÀNH CÔNG */}
-            {successMessage && (
-              <div className="message success-message">
-                {successMessage}
-              </div>
-            )}
-
-            {/* BUTTON */}
-            <button
-              type="submit"
-              className="login-button"
-              disabled={loading}
-            >
-
-              {loading
-                ? isRegister
-                  ? "Đang đăng ký..."
-                  : "Đang đăng nhập..."
-                : isRegister
-                ? "Đăng ký tài khoản"
-                : "Đăng nhập"}
-
-              {!loading && (
-                <span>→</span>
               )}
 
-            </button>
+              {/* OPTIONS */}
+              {!isRegister && (
+                <div className="login-options">
 
-          </form>
+                  <label className="remember">
 
-          {/* =========================
-              CHUYỂN LOGIN / REGISTER
-          ========================= */}
-          <div
-            style={{
-              textAlign: "center",
-              marginTop: "22px",
-              fontSize: "14px",
-            }}
-          >
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) =>
+                        setRememberMe(
+                          e.target.checked
+                        )
+                      }
+                    />
+
+                    <span>
+                      Ghi nhớ đăng nhập
+                    </span>
+
+                  </label>
+
+                  <button
+                    type="button"
+                    className="forgot-password"
+                  >
+                    Quên mật khẩu?
+                  </button>
+
+                </div>
+              )}
+
+              {/* ERROR */}
+              {message && (
+                <div className="message error-message">
+                  {message}
+                </div>
+              )}
+
+              {/* SUCCESS */}
+              {successMessage && (
+                <div className="message success-message">
+                  {successMessage}
+                </div>
+              )}
+
+              {/* SUBMIT */}
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={loading}
+              >
+                {loading
+                  ? isRegister
+                    ? "Đang đăng ký..."
+                    : "Đang đăng nhập..."
+                  : isRegister
+                  ? "Đăng ký"
+                  : "Đăng nhập"}
+
+                {!loading && <span>→</span>}
+              </button>
+
+            </form>
+
+          </div>
+
+          {/* BOTTOM SWITCH */}
+          <div className="form-bottom">
 
             {isRegister ? (
               <>
-                Đã có tài khoản?{" "}
+                <span>Đã có tài khoản?</span>
 
                 <button
                   type="button"
                   onClick={switchToLogin}
-                  style={{
-                    border: "none",
-                    background: "none",
-                    cursor: "pointer",
-                    fontWeight: "700",
-                    color: "#2563eb",
-                    padding: "0",
-                  }}
                 >
-                  Đăng nhập
+                  Đăng nhập ngay
+                  <span>→</span>
                 </button>
               </>
             ) : (
               <>
-                Chưa có tài khoản?{" "}
+                <span>Chưa có tài khoản?</span>
 
                 <button
                   type="button"
                   onClick={switchToRegister}
-                  style={{
-                    border: "none",
-                    background: "none",
-                    cursor: "pointer",
-                    fontWeight: "700",
-                    color: "#2563eb",
-                    padding: "0",
-                  }}
                 >
                   Đăng ký ngay
+                  <span>→</span>
                 </button>
               </>
             )}
 
           </div>
 
-          <div className="login-footer">
-            <span></span>
-
-            Bảo mật & quản lý tập trung
-
-            <span></span>
-          </div>
-
-        </div>
-
-        <p className="copyright">
-          © 2026 Construction Management Platform
-        </p>
+        </section>
 
       </section>
 
-    </div>
+    </main>
   );
 }
 
