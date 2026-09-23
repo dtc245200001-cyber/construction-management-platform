@@ -3,14 +3,12 @@ const session = require("express-session");
 const cors = require("cors");
 require("dotenv").config();
 
-const pool = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
 const categoryRoutes = require("./routes/categoryRoutes");
-
+const projectRoutes = require("./routes/projectRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
 
 app.use(
   cors({
@@ -19,10 +17,8 @@ app.use(
   })
 );
 
-
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
 
 app.use(
   session({
@@ -36,13 +32,16 @@ app.use(
   })
 );
 
-
+// Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/categories", categoryRoutes);
+app.use("/api/projects", projectRoutes);
 
-// Health check endpoint (dùng cho Render, Docker healthcheck)
+// Health check cho Render / Docker
 app.get("/health", (req, res) => {
-  res.status(200).json({ status: "ok" });
+  res.status(200).json({
+    status: "ok",
+  });
 });
 
 app.listen(PORT, () => {

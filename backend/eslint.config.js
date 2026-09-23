@@ -2,14 +2,18 @@ const js = require("@eslint/js");
 
 module.exports = [
   {
-    ignores: ["node_modules/**", "coverage/**"]
+    ignores: ["node_modules/**", "coverage/**"],
   },
+
   js.configs.recommended,
+
   {
     files: ["**/*.js"],
+
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "commonjs",
+
       globals: {
         require: "readonly",
         module: "readonly",
@@ -18,7 +22,9 @@ module.exports = [
         process: "readonly",
         __dirname: "readonly",
         __filename: "readonly",
+
         // Jest globals
+        jest: "readonly",
         describe: "readonly",
         it: "readonly",
         test: "readonly",
@@ -26,11 +32,12 @@ module.exports = [
         beforeAll: "readonly",
         afterAll: "readonly",
         beforeEach: "readonly",
-        afterEach: "readonly"
-      }
+        afterEach: "readonly",
+      },
     },
+
     rules: {
-      "no-unused-vars": "warn"
-    }
-  }
+      "no-unused-vars": "warn",
+    },
+  },
 ];
