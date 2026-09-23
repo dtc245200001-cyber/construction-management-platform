@@ -82,14 +82,66 @@ jobs:
   #     - name: Test
   #       run: npm run test
 
-  # Job deploy đã được TẮT vì Render.com tự động deploy khi có code mới push lên nhánh main.
-  # Render kết nối trực tiếp với GitHub repository và tự build + deploy không cần bước này.
-  #
-  # deploy:
-  #   name: Deploy to Staging
-  #   runs-on: ubuntu-latest
-  #   needs: backend
-  #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-  #   steps:
-  #     - name: Deploy via SSH (cũ - dùng Serveo/ngrok)
-  #       uses: appleboy/ssh-action@v1.0.3
+  # =========================================================================
+  # T-03: Build Docker image và push lên GitHub Container Registry (ghcr.io)
+  # Chỉ chạy khi push vào main VÀ job backend (lint/build/test) đã pass.
+  # =========================================================================
+  build-image:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    needs: backend
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}-backend:${{ github.sha }}
+            ghcr.io/${{ github.repository }}-backend:latest
+
+  # =========================================================================
+  # T-03: Deploy lên staging server qua SSH
+  # Dùng deploy.sh (blue/green rollback) đã có sẵn trong deploy/
+  # Cần cấu hình GitHub Secrets: STAGING_HOST, STAGING_USER, STAGING_SSH_KEY,
+  # STAGING_DEPLOY_PATH
+  # =========================================================================
+  deploy:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build-image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            cd ${{ secrets.STAGING_DEPLOY_PATH }}
+
+            # Login vào ghcr.io để pull image private (nếu repo private)
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Chạy deploy.sh blue/green với image mới (tag = commit SHA)
+            # Script sẽ: pull image → start container mới → healthcheck →
+            # nếu OK: xóa cũ, rename mới; nếu FAIL: rollback, giữ bản cũ
+            chmod +x deploy.sh
+            ./deploy.sh "ghcr.io/${{ github.repository }}-backend:${{ github.sha }}"

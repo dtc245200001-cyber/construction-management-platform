@@ -14,7 +14,7 @@ services:
       - postgres_staging_data:/var/lib/postgresql/data
 
   backend:
-    image: ghcr.io/<org>/<repo>-backend:latest
+    image: ghcr.io/dtc245200001-cyber/construction-management-platform-backend:latest
     container_name: construction_backend_staging
     restart: unless-stopped
     environment:
