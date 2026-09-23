@@ -16,6 +16,7 @@ Admin repository cần cấu hình 3 Secrets sau tại **Settings > Secrets and 
 - `STAGING_HOST`: Địa chỉ IP/Domain của máy chủ Staging.
 - `STAGING_SSH_USER`: Tên user truy cập SSH (vd: `ubuntu`).
 - `STAGING_SSH_KEY`: Nội dung Private SSH Key để đăng nhập vào server.
+- SSH port được cố định là `22` trong workflow deploy.
 
 ### Cách xem Log Deploy
 - Truy cập vào tab **Actions** trên GitHub.
