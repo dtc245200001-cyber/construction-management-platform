@@ -23,6 +23,13 @@ module.exports = {
         type: "timestamp",
         notNull: false,
       },
+
+      created_at: {
+        type: "timestamp",
+        notNull: true,
+        default: pgm.func("current_timestamp"),
+      },
+
       updated_at: {
         type: "timestamp",
         notNull: true,
@@ -42,11 +49,6 @@ module.exports = {
   },
 
   down: (pgm) => {
-    pgm.dropColumns("users", [
-      "password_hash",
-      "failed_login_attempts",
-      "locked_until",
-      "updated_at",
-    ]);
+    pgm.dropTable("users");
   },
 };
