@@ -1,34 +1,15 @@
 exports.up = (pgm) => {
   pgm.createTable('project_members', {
     id: 'id',
-    user_id: {
-      type: 'integer',
-      notNull: true,
-      references: 'users',
-      onDelete: 'CASCADE',
-    },
-    project_id: {
-      type: 'integer',
-      notNull: true,
-      references: 'projects',
-      onDelete: 'CASCADE',
-    },
-    role: {
-      type: 'varchar(50)',
-      notNull: true,
-    },
-    created_at: {
-      type: 'timestamp',
-      notNull: true,
-      default: pgm.func('current_timestamp'),
-    },
+    project_id: { type: 'integer', notNull: true, references: '"projects"', onDelete: 'CASCADE' },
+    user_id: { type: 'integer', notNull: true, references: '"users"', onDelete: 'CASCADE' },
+    role: { type: 'varchar(50)', notNull: true, default: 'member' },
+    created_at: { type: 'timestamp', notNull: true, default: pgm.func('current_timestamp') }
   });
 
-  pgm.addConstraint('project_members', 'unique_user_project', {
-    unique: ['user_id', 'project_id'],
+  pgm.addConstraint('project_members', 'unique_project_user', {
+    unique: ['project_id', 'user_id']
   });
-
-  pgm.createIndex('project_members', 'project_id');
 };
 
 exports.down = (pgm) => {

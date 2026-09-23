@@ -1,14 +1,14 @@
 const express = require("express");
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
-const requireProjectRoles = require("../middleware/projectAccess");
+const { checkProjectAccess, requireProjectRoles } = require('../middleware/projectAccess');
 
 const router = express.Router();
 
 router.get(
   "/:projectId",
   requireAuth,
-  requireProjectRoles(["OWNER", "MANAGER", "MEMBER"]),
+  checkProjectAccess,
   async (req, res) => {
     try {
       const result = await db.query(
@@ -26,7 +26,7 @@ router.get(
 
       return res.json({
         project: result.rows[0],
-        membership: req.projectMember,
+        membership: req.projectRole,
       });
     } catch (error) {
       console.error("GET PROJECT ERROR:", error);
@@ -41,6 +41,7 @@ router.get(
 router.get(
   "/:projectId/unconfigured",
   requireAuth,
+  checkProjectAccess,
   requireProjectRoles(),
   (req, res) => {
     return res.json({

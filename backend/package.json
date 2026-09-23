@@ -19,6 +19,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-session": "^1.19.0",
+    "knex": "^3.3.0",
     "node-pg-migrate": "^6.2.2",
     "pg": "^8.13.1"
   },
