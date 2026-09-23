@@ -130,8 +130,10 @@ jobs:
     steps:
       - name: Check staging secrets
         id: check-secrets
+        env:
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
         run: |
-          if [ -z "${{ secrets.STAGING_HOST }}" ]; then
+          if [ -z "$STAGING_HOST" ]; then
             echo "has_secrets=false" >> $GITHUB_OUTPUT
             echo "⚠️ STAGING_HOST chưa được cấu hình."
             echo "➡️ Để bật auto-deploy, vào repo Settings → Secrets → Actions và thêm:"
@@ -164,4 +166,5 @@ jobs:
             # nếu OK: xóa cũ, rename mới; nếu FAIL: rollback, giữ bản cũ
             chmod +x deploy.sh
             ./deploy.sh "ghcr.io/${{ github.repository }}-backend:${{ github.sha }}"
+
 
