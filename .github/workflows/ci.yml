@@ -128,7 +128,26 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
+      - name: Check staging secrets
+        id: check-secrets
+        run: |
+          if [ -z "${{ secrets.STAGING_HOST }}" ]; then
+            echo "has_secrets=false" >> $GITHUB_OUTPUT
+            echo "⚠️ STAGING_HOST chưa được cấu hình."
+            echo "➡️ Để bật auto-deploy, vào repo Settings → Secrets → Actions và thêm:"
+            echo "   - STAGING_HOST (IP server staging)"
+            echo "   - STAGING_USER (SSH username)"
+            echo "   - STAGING_SSH_KEY (SSH private key)"
+            echo "   - STAGING_DEPLOY_PATH (đường dẫn thư mục deploy trên server)"
+            echo ""
+            echo "📦 Image đã được push thành công lên ghcr.io — sẵn sàng deploy khi có server."
+          else
+            echo "has_secrets=true" >> $GITHUB_OUTPUT
+            echo "✅ Staging secrets đã cấu hình. Bắt đầu deploy..."
+          fi
+
       - name: Deploy via SSH
+        if: steps.check-secrets.outputs.has_secrets == 'true'
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.STAGING_HOST }}
@@ -145,3 +164,4 @@ jobs:
             # nếu OK: xóa cũ, rename mới; nếu FAIL: rollback, giữ bản cũ
             chmod +x deploy.sh
             ./deploy.sh "ghcr.io/${{ github.repository }}-backend:${{ github.sha }}"
+
