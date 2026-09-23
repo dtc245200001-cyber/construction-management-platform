@@ -26,7 +26,7 @@ function App() {
     const checkSession = async () => {
       try {
         const response = await fetch(
-          "http://localhost:3000/api/auth/me",
+          "https://construction-management-platform.onrender.com/api/auth/me",
           {
             credentials: "include",
           }
@@ -58,7 +58,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://localhost:3000/api/auth/login",
+        "https://construction-management-platform.onrender.com/api/auth/login",
         {
           method: "POST",
           headers: {
@@ -112,7 +112,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://localhost:3000/api/auth/register",
+        "https://construction-management-platform.onrender.com/api/auth/register",
         {
           method: "POST",
           headers: {
@@ -155,7 +155,7 @@ function App() {
   // =========================
   const handleLogout = async () => {
     try {
-      await fetch("http://localhost:3000/api/auth/logout", {
+      await fetch("https://construction-management-platform.onrender.com/api/auth/logout", {
         method: "POST",
         credentials: "include",
       });
