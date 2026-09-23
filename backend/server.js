@@ -6,6 +6,7 @@ require("dotenv").config();
 const pool = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
 
+const categoryRoutes = require("./routes/categoryRoutes");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -37,6 +38,7 @@ app.use(
 // Route đăng nhập
 app.use("/api/auth", authRoutes);
 
+app.use("/api", categoryRoutes);
 // Kiểm tra backend
 app.get("/", (req, res) => {
   res.json({
