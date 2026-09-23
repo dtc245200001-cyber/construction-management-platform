@@ -82,25 +82,23 @@ jobs:
   #     - name: Test
   #       run: npm run test
 
-  deploy:
-    name: Deploy to Staging
-    runs-on: self-hosted
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
     needs: backend
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    timeout-minutes: 10
     permissions:
       contents: read
       packages: write
-
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -110,7 +108,7 @@ jobs:
         run: echo "REPO=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v5
         with:
           context: ./backend
           push: true
@@ -118,13 +116,14 @@ jobs:
             ghcr.io/${{ env.REPO }}-backend:latest
             ghcr.io/${{ env.REPO }}-backend:${{ github.sha }}
 
-      - name: Deploy to Staging via SSH
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.STAGING_HOST }}
-          username: ${{ secrets.STAGING_SSH_USER }}
-          key: ${{ secrets.STAGING_SSH_KEY }}
-          port: 22
-          script: |
-            cd ~/construction-management-platform || exit 1
-            bash deploy/deploy.sh ghcr.io/${{ env.REPO }}-backend:${{ github.sha }}
+  trigger-deploy:
+    name: Trigger Deployment on VM
+    runs-on: self-hosted
+    needs: build-and-push
+    steps:
+      - name: Run deployment script natively
+        run: |
+          cd ~/construction-management-platform
+          git pull origin main
+          REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          bash deploy/deploy.sh ghcr.io/${REPO}-backend:${{ github.sha }}
