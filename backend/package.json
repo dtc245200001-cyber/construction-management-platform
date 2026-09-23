@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "start:migrate": "node -r dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate up && node server.js",
     "dev": "nodemon server.js",
     "lint": "eslint .",
     "build": "node -e \"require('./app.js'); console.log('Build check passed')\"",
@@ -18,12 +19,12 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-session": "^1.19.0",
+    "node-pg-migrate": "^6.2.2",
     "pg": "^8.13.1"
   },
   "devDependencies": {
     "eslint": "^8.57.0",
     "jest": "^29.7.0",
-    "node-pg-migrate": "^6.2.2",
     "nodemon": "^3.1.9",
     "supertest": "^6.3.4"
   },
