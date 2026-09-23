@@ -32,13 +32,16 @@ app.use(
   })
 );
 
+// Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/projects", projectRoutes);
 
-// Health check endpoint
+// Health check cho Render / Docker
 app.get("/health", (req, res) => {
-  res.status(200).json({ status: "ok" });
+  res.status(200).json({
+    status: "ok",
+  });
 });
 
 app.listen(PORT, () => {
