@@ -1,7 +1,7 @@
 const express = require("express");
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
-const requireProjectRoles = require("../middleware/projectAccess");
+const { checkProjectAccess, requireProjectRoles } = require("../middleware/projectAccess");
 const { getWorkItemSubtree } = require("../queries/workItemTree");
 
 const router = express.Router();
@@ -10,6 +10,7 @@ const router = express.Router();
 router.get(
   "/:projectId",
   requireAuth,
+  checkProjectAccess,
   requireProjectRoles(["OWNER", "MANAGER", "MEMBER"]),
   async (req, res) => {
     try {
@@ -29,9 +30,12 @@ router.get(
         queryParams.push(parentId);
       } else {
         queryStr += ` AND w.parent_id IS NULL ORDER BY w.id ASC`;
+        queryParams.push(parentId ? undefined : null); // Giữ logic query chuẩn
       }
 
-      const result = await db.query(queryStr, queryParams);
+      // Tối ưu param cho nhánh parentId
+      const finalParams = parentId ? [projectId, parentId] : [projectId];
+      const result = await db.query(queryStr, finalParams);
       res.json(result.rows);
     } catch (error) {
       console.error("GET CATEGORIES ERROR:", error);
@@ -44,6 +48,7 @@ router.get(
 router.post(
   "/:projectId",
   requireAuth,
+  checkProjectAccess,
   requireProjectRoles(["OWNER", "MANAGER"]),
   async (req, res) => {
     try {
@@ -52,15 +57,26 @@ router.post(
 
       if (!name) return res.status(400).json({ message: "Tên là bắt buộc" });
 
+      // Ràng buộc bảo mật: Nếu có parent_id, parent đó phải thuộc cùng project_id
+      if (parent_id) {
+        const parentCheck = await db.query(
+          `SELECT id FROM work_items WHERE id = $1 AND project_id = $2`,
+          [parent_id, projectId]
+        );
+        if (parentCheck.rows.length === 0) {
+          return res.status(400).json({ message: "Hạng mục cha không hợp lệ hoặc không thuộc dự án này" });
+        }
+      }
+
       const result = await db.query(
         `INSERT INTO work_items (project_id, parent_id, name)
          VALUES ($1, $2, $3) RETURNING id, name, parent_id`,
         [projectId, parent_id || null, name]
       );
-      
+
       const newItem = result.rows[0];
-      newItem.hasChildren = false; // Vừa tạo thì chắc chắn không có con
-      
+      newItem.hasChildren = false;
+
       res.status(201).json(newItem);
     } catch (error) {
       console.error("CREATE CATEGORY ERROR:", error);
@@ -73,6 +89,7 @@ router.post(
 router.put(
   "/:projectId/:id",
   requireAuth,
+  checkProjectAccess,
   requireProjectRoles(["OWNER", "MANAGER"]),
   async (req, res) => {
     try {
@@ -103,6 +120,7 @@ router.put(
 router.delete(
   "/:projectId/:id",
   requireAuth,
+  checkProjectAccess,
   requireProjectRoles(["OWNER", "MANAGER"]),
   async (req, res) => {
     try {
