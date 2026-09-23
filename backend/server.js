@@ -40,6 +40,10 @@ app.use(
 app.use("/api/auth", authRoutes);
 app.use("/api/categories", categoryRoutes);
 
+// Health check endpoint (dùng cho Render, Docker healthcheck)
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "ok" });
+});
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
