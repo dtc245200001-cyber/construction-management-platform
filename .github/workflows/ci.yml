@@ -84,7 +84,7 @@ jobs:
 
   deploy:
     name: Deploy to Staging
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: backend
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     timeout-minutes: 10
