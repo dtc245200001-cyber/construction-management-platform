@@ -3,6 +3,8 @@ import "./App.css";
 import heroImage from "./assets/hero.png";
 import CategoryTreeWrapper from "./components/CategoryTreeWrapper";
 
+const API_URL = "http://localhost:3000/api";
+
 function App() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -31,12 +33,9 @@ function App() {
   useEffect(() => {
     const checkSession = async () => {
       try {
-        const response = await fetch(
-          "https://construction-management-platform.onrender.com/api/auth/me",
-          {
-            credentials: "include",
-          }
-        );
+        const response = await fetch(`${API_URL}/auth/me`, {
+          credentials: "include",
+        });
 
         if (response.ok) {
           const data = await response.json();
@@ -63,20 +62,17 @@ function App() {
     setSuccessMessage("");
 
     try {
-      const response = await fetch(
-        "https://construction-management-platform.onrender.com/api/auth/login",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-          body: JSON.stringify({
-            email,
-            password,
-          }),
-        }
-      );
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
 
       const data = await response.json();
 
@@ -117,21 +113,18 @@ function App() {
     setLoading(true);
 
     try {
-      const response = await fetch(
-        "https://construction-management-platform.onrender.com/api/auth/register",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-          body: JSON.stringify({
-            email,
-            password,
-            confirmPassword,
-          }),
-        }
-      );
+      const response = await fetch(`${API_URL}/auth/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          email,
+          password,
+          confirmPassword,
+        }),
+      });
 
       const data = await response.json();
 
@@ -139,7 +132,6 @@ function App() {
         setIsRegister(false);
         setPassword("");
         setConfirmPassword("");
-
         setMessage("");
 
         setSuccessMessage(
@@ -161,13 +153,10 @@ function App() {
   // =========================
   const handleLogout = async () => {
     try {
-      await fetch(
-        "https://construction-management-platform.onrender.com/api/auth/logout",
-        {
-          method: "POST",
-          credentials: "include",
-        }
-      );
+      await fetch(`${API_URL}/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
 
       setUser(null);
       setProjectId(null);
@@ -285,9 +274,7 @@ function App() {
                 textAlign: "center",
               }}
             >
-              <p>
-                Vui lòng chọn dự án để xem cây hạng mục
-              </p>
+              <p>Vui lòng chọn dự án để xem cây hạng mục</p>
 
               <button
                 className="login-button"
@@ -316,9 +303,7 @@ function App() {
                   alignItems: "center",
                 }}
               >
-                <h3>
-                  Đang xem dự án #{projectId}
-                </h3>
+                <h3>Đang xem dự án #{projectId}</h3>
 
                 <button
                   onClick={() => setProjectId(null)}
@@ -334,9 +319,7 @@ function App() {
                 </button>
               </div>
 
-              <CategoryTreeWrapper
-                projectId={projectId}
-              />
+              <CategoryTreeWrapper projectId={projectId} />
             </div>
           )}
         </div>
@@ -349,10 +332,7 @@ function App() {
   // =========================
   return (
     <main className="auth-page">
-      {/* =========================
-          BACKGROUND
-      ========================= */}
-
+      {/* BACKGROUND */}
       <div
         className="background-photo"
         style={{
@@ -362,10 +342,7 @@ function App() {
 
       <div className="background-overlay" />
 
-      {/* =========================
-          HEADER
-      ========================= */}
-
+      {/* HEADER */}
       <header className="top-header">
         <div className="main-brand">
           <div className="main-logo">
@@ -380,9 +357,7 @@ function App() {
 
         <div className="header-right">
           <span>Better Construction</span>
-
           <i>•</i>
-
           <span>Smarter Management</span>
 
           <button
@@ -403,19 +378,13 @@ function App() {
         </div>
       </header>
 
-      {/* =========================
-          LEFT CONTENT
-      ========================= */}
-
+      {/* LEFT CONTENT */}
       <section className="landing-content">
         <div className="hero-copy">
           <h1>
             Kiến tạo công trình,
             <br />
-
-            <span>
-              quản lý hiệu quả
-            </span>
+            <span>quản lý hiệu quả</span>
           </h1>
 
           <p>
@@ -426,10 +395,7 @@ function App() {
 
           <div className="feature-grid">
             <div className="feature-item">
-              <div className="feature-icon blue">
-                ▣
-              </div>
-
+              <div className="feature-icon blue">▣</div>
               <span>
                 Quản lý
                 <br />
@@ -438,10 +404,7 @@ function App() {
             </div>
 
             <div className="feature-item">
-              <div className="feature-icon purple">
-                ▦
-              </div>
-
+              <div className="feature-icon purple">▦</div>
               <span>
                 Theo dõi
                 <br />
@@ -450,10 +413,7 @@ function App() {
             </div>
 
             <div className="feature-item">
-              <div className="feature-icon green">
-                ♟
-              </div>
-
+              <div className="feature-icon green">♟</div>
               <span>
                 Phân công
                 <br />
@@ -462,10 +422,7 @@ function App() {
             </div>
 
             <div className="feature-item">
-              <div className="feature-icon violet">
-                ▥
-              </div>
-
+              <div className="feature-icon violet">▥</div>
               <span>
                 Báo cáo
                 <br />
@@ -493,15 +450,9 @@ function App() {
         </div>
       </section>
 
-      {/* =========================
-          MAIN AUTH CARD
-      ========================= */}
-
+      {/* MAIN AUTH CARD */}
       <section className="auth-card">
-        {/* =========================
-            PANEL GIỚI THIỆU
-        ========================= */}
-
+        {/* PANEL GIỚI THIỆU */}
         <aside className="intro-panel">
           <div className="welcome-badge">
             <span></span>
@@ -523,7 +474,6 @@ function App() {
           <div className="short-line"></div>
 
           {/* BUILDING ART */}
-
           <div className="building-art">
             <div className="building-crane">
               ─────╱
@@ -550,7 +500,6 @@ function App() {
           </div>
 
           {/* BENEFITS */}
-
           <div className="benefits">
             <div className="benefit">
               <div className="benefit-icon">
@@ -559,7 +508,6 @@ function App() {
 
               <div>
                 <strong>An toàn</strong>
-
                 <span>
                   Quản lý rủi ro, đảm bảo an toàn lao động
                 </span>
@@ -573,7 +521,6 @@ function App() {
 
               <div>
                 <strong>Minh bạch</strong>
-
                 <span>
                   Dữ liệu rõ ràng, theo dõi thời gian thực
                 </span>
@@ -587,7 +534,6 @@ function App() {
 
               <div>
                 <strong>Hiệu quả</strong>
-
                 <span>
                   Tối ưu nguồn lực, nâng cao năng suất
                 </span>
@@ -596,21 +542,13 @@ function App() {
           </div>
         </aside>
 
-        {/* =========================
-            FORM PANEL
-        ========================= */}
-
+        {/* FORM PANEL */}
         <section className="form-panel">
           {/* TABS */}
-
           <div className="auth-tabs">
             <button
               type="button"
-              className={
-                !isRegister
-                  ? "active"
-                  : ""
-              }
+              className={!isRegister ? "active" : ""}
               onClick={switchToLogin}
             >
               Đăng nhập
@@ -618,11 +556,7 @@ function App() {
 
             <button
               type="button"
-              className={
-                isRegister
-                  ? "active"
-                  : ""
-              }
+              className={isRegister ? "active" : ""}
               onClick={switchToRegister}
             >
               Đăng ký
@@ -658,7 +592,6 @@ function App() {
               }
             >
               {/* EMAIL */}
-
               <div className="modern-input">
                 <span className="field-icon">
                   ✉
@@ -676,7 +609,6 @@ function App() {
               </div>
 
               {/* PASSWORD */}
-
               <div className="modern-input">
                 <span className="field-icon lock-icon">
                   ♙
@@ -701,20 +633,15 @@ function App() {
                   type="button"
                   className="show-password"
                   onClick={() =>
-                    setShowPassword(
-                      !showPassword
-                    )
+                    setShowPassword(!showPassword)
                   }
                   aria-label="Hiện hoặc ẩn mật khẩu"
                 >
-                  {showPassword
-                    ? "◉"
-                    : "⊙"}
+                  {showPassword ? "◉" : "⊙"}
                 </button>
               </div>
 
               {/* CONFIRM PASSWORD */}
-
               {isRegister && (
                 <div className="modern-input">
                   <span className="field-icon lock-icon">
@@ -741,7 +668,6 @@ function App() {
               )}
 
               {/* OPTIONS */}
-
               {!isRegister && (
                 <div className="login-options">
                   <label className="remember">
@@ -770,7 +696,6 @@ function App() {
               )}
 
               {/* ERROR */}
-
               {message && (
                 <div className="message error-message">
                   {message}
@@ -778,7 +703,6 @@ function App() {
               )}
 
               {/* SUCCESS */}
-
               {successMessage && (
                 <div className="message success-message">
                   {successMessage}
@@ -786,7 +710,6 @@ function App() {
               )}
 
               {/* SUBMIT */}
-
               <button
                 type="submit"
                 className="primary-button"
@@ -800,17 +723,12 @@ function App() {
                   ? "Đăng ký"
                   : "Đăng nhập"}
 
-                {!loading && (
-                  <span>→</span>
-                )}
+                {!loading && <span>→</span>}
               </button>
             </form>
           </div>
 
-          {/* =========================
-              BOTTOM SWITCH
-          ========================= */}
-
+          {/* BOTTOM SWITCH */}
           <div className="form-bottom">
             {isRegister ? (
               <>
