@@ -62,11 +62,13 @@ router.post("/register", async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
 
     // Thêm tài khoản vào database
+    // Tạo tên mặc định từ email và gán role_id = 2 (ban_quan_ly)
+    const defaultName = normalizedEmail.split('@')[0];
     const result = await pool.query(
-      `INSERT INTO users (email, password_hash)
-       VALUES ($1, $2)
+      `INSERT INTO users (name, email, password, password_hash, role_id)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING id, email, created_at`,
-      [normalizedEmail, passwordHash]
+      [defaultName, normalizedEmail, passwordHash, passwordHash, 2]
     );
 
     return res.status(201).json({

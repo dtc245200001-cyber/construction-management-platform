@@ -1,0 +1,123 @@
+.tree-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: inherit;
+}
+
+.tree-node {
+  display: flex;
+  flex-direction: column;
+}
+
+.tree-item-content {
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+}
+
+.tree-item-content:hover {
+  background-color: #f3f4f6;
+}
+
+.tree-indent {
+  width: 24px;
+  flex-shrink: 0;
+}
+
+.tree-toggle {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #4b5563;
+  border-radius: 4px;
+}
+
+.tree-toggle:hover {
+  background-color: #e5e7eb;
+}
+
+.tree-toggle svg {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.2s ease-in-out;
+}
+
+.tree-toggle.expanded svg {
+  transform: rotate(90deg);
+}
+
+.tree-toggle.empty svg {
+  opacity: 0;
+}
+
+.tree-label-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding-left: 8px;
+}
+
+.tree-label {
+  font-size: 15px;
+  user-select: none;
+}
+
+.tree-input {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 15px;
+  border: 1px solid #2563eb;
+  border-radius: 4px;
+  outline: none;
+  margin-left: 8px;
+}
+
+.tree-actions {
+  display: flex;
+  opacity: 0;
+  transition: opacity 0.2s;
+  gap: 4px;
+}
+
+.tree-item-content:hover .tree-actions {
+  opacity: 1;
+}
+
+.tree-action-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4b5563;
+  border-radius: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.tree-action-btn:hover {
+  background-color: #e5e7eb;
+  color: #1f2937;
+}
+
+.tree-action-btn.delete:hover {
+  color: #ef4444;
+  background-color: #fee2e2;
+}
+
+.tree-children {
+  display: none;
+  flex-direction: column;
+}
+
+.tree-children.expanded {
+  display: flex;
+}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 import heroImage from "./assets/hero.png";
+import CategoryTreeWrapper from "./components/CategoryTreeWrapper";
 
 function App() {
   const [email, setEmail] = useState("");
@@ -13,7 +14,14 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
+
+  // Chức năng chọn dự án từ main
+  const [projectId, setProjectId] = useState(null);
+
+  // false = đăng nhập
+  // true = đăng ký
   const [isRegister, setIsRegister] = useState(false);
+
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
 
@@ -24,7 +32,7 @@ function App() {
     const checkSession = async () => {
       try {
         const response = await fetch(
-          "http://localhost:3000/api/auth/me",
+          "https://construction-management-platform.onrender.com/api/auth/me",
           {
             credentials: "include",
           }
@@ -56,7 +64,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://localhost:3000/api/auth/login",
+        "https://construction-management-platform.onrender.com/api/auth/login",
         {
           method: "POST",
           headers: {
@@ -110,7 +118,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://localhost:3000/api/auth/register",
+        "https://construction-management-platform.onrender.com/api/auth/register",
         {
           method: "POST",
           headers: {
@@ -131,7 +139,9 @@ function App() {
         setIsRegister(false);
         setPassword("");
         setConfirmPassword("");
+
         setMessage("");
+
         setSuccessMessage(
           "Đăng ký thành công. Bạn có thể đăng nhập bằng tài khoản vừa tạo."
         );
@@ -151,15 +161,21 @@ function App() {
   // =========================
   const handleLogout = async () => {
     try {
-      await fetch("http://localhost:3000/api/auth/logout", {
-        method: "POST",
-        credentials: "include",
-      });
+      await fetch(
+        "https://construction-management-platform.onrender.com/api/auth/logout",
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
 
       setUser(null);
+      setProjectId(null);
+
       setEmail("");
       setPassword("");
       setConfirmPassword("");
+
       setMessage("");
       setSuccessMessage("Đăng xuất thành công");
     } catch (error) {
@@ -168,22 +184,35 @@ function App() {
     }
   };
 
+  // =========================
+  // CHUYỂN SANG ĐĂNG KÝ
+  // =========================
   const switchToRegister = () => {
     setIsRegister(true);
+
     setPassword("");
     setConfirmPassword("");
+
     setMessage("");
     setSuccessMessage("");
   };
 
+  // =========================
+  // CHUYỂN SANG ĐĂNG NHẬP
+  // =========================
   const switchToLogin = () => {
     setIsRegister(false);
+
     setPassword("");
     setConfirmPassword("");
+
     setMessage("");
     setSuccessMessage("");
   };
 
+  // =========================
+  // LOADING
+  // =========================
   if (checkingSession) {
     return (
       <div className="loading-page">
@@ -198,8 +227,24 @@ function App() {
   // =========================
   if (user) {
     return (
-      <div className="dashboard">
-        <div className="dashboard-card">
+      <div
+        className="dashboard"
+        style={{
+          flexDirection: "column",
+          padding: "40px",
+          gap: "20px",
+          alignItems: "center",
+          minHeight: "100vh",
+          background: "#f3f4f6",
+        }}
+      >
+        <div
+          className="dashboard-card"
+          style={{
+            width: "100%",
+            maxWidth: "800px",
+          }}
+        >
           <div className="logo-small">CM</div>
 
           <h1>Hệ thống quản lý thi công</h1>
@@ -215,20 +260,99 @@ function App() {
           <button
             onClick={handleLogout}
             className="logout-button"
+            style={{
+              marginBottom: "20px",
+            }}
           >
             Đăng xuất
           </button>
+        </div>
+
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "800px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "16px",
+          }}
+        >
+          {/* Tạm thời chọn Project demo */}
+          {!projectId ? (
+            <div
+              className="dashboard-card"
+              style={{
+                textAlign: "center",
+              }}
+            >
+              <p>
+                Vui lòng chọn dự án để xem cây hạng mục
+              </p>
+
+              <button
+                className="login-button"
+                style={{
+                  marginTop: "10px",
+                  width: "auto",
+                  padding: "10px 20px",
+                }}
+                onClick={() => setProjectId(1)}
+              >
+                Tải Dự Án #1 (Demo)
+              </button>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "10px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <h3>
+                  Đang xem dự án #{projectId}
+                </h3>
+
+                <button
+                  onClick={() => setProjectId(null)}
+                  style={{
+                    background: "none",
+                    border: "1px solid #ccc",
+                    padding: "4px 8px",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Đóng dự án
+                </button>
+              </div>
+
+              <CategoryTreeWrapper
+                projectId={projectId}
+              />
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
+  // =========================
+  // LOGIN / REGISTER PAGE
+  // =========================
   return (
     <main className="auth-page">
-
       {/* =========================
           BACKGROUND
       ========================= */}
+
       <div
         className="background-photo"
         style={{
@@ -241,6 +365,7 @@ function App() {
       {/* =========================
           HEADER
       ========================= */}
+
       <header className="top-header">
         <div className="main-brand">
           <div className="main-logo">
@@ -255,7 +380,9 @@ function App() {
 
         <div className="header-right">
           <span>Better Construction</span>
+
           <i>•</i>
+
           <span>Smarter Management</span>
 
           <button
@@ -279,13 +406,16 @@ function App() {
       {/* =========================
           LEFT CONTENT
       ========================= */}
-      <section className="landing-content">
 
+      <section className="landing-content">
         <div className="hero-copy">
           <h1>
             Kiến tạo công trình,
             <br />
-            <span>quản lý hiệu quả</span>
+
+            <span>
+              quản lý hiệu quả
+            </span>
           </h1>
 
           <p>
@@ -295,11 +425,11 @@ function App() {
           </p>
 
           <div className="feature-grid">
-
             <div className="feature-item">
               <div className="feature-icon blue">
                 ▣
               </div>
+
               <span>
                 Quản lý
                 <br />
@@ -311,6 +441,7 @@ function App() {
               <div className="feature-icon purple">
                 ▦
               </div>
+
               <span>
                 Theo dõi
                 <br />
@@ -322,6 +453,7 @@ function App() {
               <div className="feature-icon green">
                 ♟
               </div>
+
               <span>
                 Phân công
                 <br />
@@ -333,13 +465,13 @@ function App() {
               <div className="feature-icon violet">
                 ▥
               </div>
+
               <span>
                 Báo cáo
                 <br />
                 chi tiết
               </span>
             </div>
-
           </div>
         </div>
 
@@ -350,23 +482,27 @@ function App() {
             một nền tảng quản lý tốt.
           </div>
 
-          <button type="button" className="play-button">
+          <button
+            type="button"
+            className="play-button"
+          >
             ▶
           </button>
 
           <span>Xem giới thiệu</span>
         </div>
-
       </section>
 
       {/* =========================
           MAIN AUTH CARD
       ========================= */}
+
       <section className="auth-card">
+        {/* =========================
+            PANEL GIỚI THIỆU
+        ========================= */}
 
-        {/* PANEL GIỚI THIỆU */}
         <aside className="intro-panel">
-
           <div className="welcome-badge">
             <span></span>
             Welcome to
@@ -385,6 +521,8 @@ function App() {
           </p>
 
           <div className="short-line"></div>
+
+          {/* BUILDING ART */}
 
           <div className="building-art">
             <div className="building-crane">
@@ -411,8 +549,9 @@ function App() {
             </div>
           </div>
 
-          <div className="benefits">
+          {/* BENEFITS */}
 
+          <div className="benefits">
             <div className="benefit">
               <div className="benefit-icon">
                 ✓
@@ -420,6 +559,7 @@ function App() {
 
               <div>
                 <strong>An toàn</strong>
+
                 <span>
                   Quản lý rủi ro, đảm bảo an toàn lao động
                 </span>
@@ -433,6 +573,7 @@ function App() {
 
               <div>
                 <strong>Minh bạch</strong>
+
                 <span>
                   Dữ liệu rõ ràng, theo dõi thời gian thực
                 </span>
@@ -446,25 +587,30 @@ function App() {
 
               <div>
                 <strong>Hiệu quả</strong>
+
                 <span>
                   Tối ưu nguồn lực, nâng cao năng suất
                 </span>
               </div>
             </div>
-
           </div>
-
         </aside>
 
-        {/* FORM */}
+        {/* =========================
+            FORM PANEL
+        ========================= */}
+
         <section className="form-panel">
-
           {/* TABS */}
-          <div className="auth-tabs">
 
+          <div className="auth-tabs">
             <button
               type="button"
-              className={!isRegister ? "active" : ""}
+              className={
+                !isRegister
+                  ? "active"
+                  : ""
+              }
               onClick={switchToLogin}
             >
               Đăng nhập
@@ -472,16 +618,18 @@ function App() {
 
             <button
               type="button"
-              className={isRegister ? "active" : ""}
+              className={
+                isRegister
+                  ? "active"
+                  : ""
+              }
               onClick={switchToRegister}
             >
               Đăng ký
             </button>
-
           </div>
 
           <div className="form-content">
-
             <div className="form-heading">
               <h2>
                 {isRegister
@@ -489,7 +637,9 @@ function App() {
                   : "Chào mừng trở lại!"}
 
                 {!isRegister && (
-                  <span className="wave">👋</span>
+                  <span className="wave">
+                    👋
+                  </span>
                 )}
               </h2>
 
@@ -507,10 +657,9 @@ function App() {
                   : handleLogin
               }
             >
-
               {/* EMAIL */}
-              <div className="modern-input">
 
+              <div className="modern-input">
                 <span className="field-icon">
                   ✉
                 </span>
@@ -524,12 +673,11 @@ function App() {
                   }
                   required
                 />
-
               </div>
 
               {/* PASSWORD */}
-              <div className="modern-input">
 
+              <div className="modern-input">
                 <span className="field-icon lock-icon">
                   ♙
                 </span>
@@ -553,19 +701,22 @@ function App() {
                   type="button"
                   className="show-password"
                   onClick={() =>
-                    setShowPassword(!showPassword)
+                    setShowPassword(
+                      !showPassword
+                    )
                   }
                   aria-label="Hiện hoặc ẩn mật khẩu"
                 >
-                  {showPassword ? "◉" : "⊙"}
+                  {showPassword
+                    ? "◉"
+                    : "⊙"}
                 </button>
-
               </div>
 
               {/* CONFIRM PASSWORD */}
+
               {isRegister && (
                 <div className="modern-input">
-
                   <span className="field-icon lock-icon">
                     ♙
                   </span>
@@ -586,16 +737,14 @@ function App() {
                     minLength={6}
                     required
                   />
-
                 </div>
               )}
 
               {/* OPTIONS */}
+
               {!isRegister && (
                 <div className="login-options">
-
                   <label className="remember">
-
                     <input
                       type="checkbox"
                       checked={rememberMe}
@@ -609,7 +758,6 @@ function App() {
                     <span>
                       Ghi nhớ đăng nhập
                     </span>
-
                   </label>
 
                   <button
@@ -618,11 +766,11 @@ function App() {
                   >
                     Quên mật khẩu?
                   </button>
-
                 </div>
               )}
 
               {/* ERROR */}
+
               {message && (
                 <div className="message error-message">
                   {message}
@@ -630,6 +778,7 @@ function App() {
               )}
 
               {/* SUCCESS */}
+
               {successMessage && (
                 <div className="message success-message">
                   {successMessage}
@@ -637,6 +786,7 @@ function App() {
               )}
 
               {/* SUBMIT */}
+
               <button
                 type="submit"
                 className="primary-button"
@@ -650,19 +800,23 @@ function App() {
                   ? "Đăng ký"
                   : "Đăng nhập"}
 
-                {!loading && <span>→</span>}
+                {!loading && (
+                  <span>→</span>
+                )}
               </button>
-
             </form>
-
           </div>
 
-          {/* BOTTOM SWITCH */}
-          <div className="form-bottom">
+          {/* =========================
+              BOTTOM SWITCH
+          ========================= */}
 
+          <div className="form-bottom">
             {isRegister ? (
               <>
-                <span>Đã có tài khoản?</span>
+                <span>
+                  Đã có tài khoản?
+                </span>
 
                 <button
                   type="button"
@@ -674,7 +828,9 @@ function App() {
               </>
             ) : (
               <>
-                <span>Chưa có tài khoản?</span>
+                <span>
+                  Chưa có tài khoản?
+                </span>
 
                 <button
                   type="button"
@@ -685,13 +841,9 @@ function App() {
                 </button>
               </>
             )}
-
           </div>
-
         </section>
-
       </section>
-
     </main>
   );
 }
