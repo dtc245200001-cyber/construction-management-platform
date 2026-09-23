@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 import heroImage from "./assets/hero.png";
-
+import CategoryTreeWrapper from "./components/CategoryTreeWrapper";
 function App() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -13,6 +13,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
+  const [projectId, setProjectId] = useState(null); // Project ID selected by user
 
   // false = đăng nhập
   // true = đăng ký
@@ -205,10 +206,11 @@ function App() {
   // =========================
   // ĐÃ ĐĂNG NHẬP
   // =========================
+  // ... (inside the App component, after checking user)
   if (user) {
     return (
-      <div className="dashboard">
-        <div className="dashboard-card">
+      <div className="dashboard" style={{ flexDirection: 'column', padding: '40px', gap: '20px', alignItems: 'center', minHeight: '100vh', background: '#f3f4f6' }}>
+        <div className="dashboard-card" style={{ width: '100%', maxWidth: '800px' }}>
           <div className="logo-small">CM</div>
 
           <h1>Hệ thống quản lý thi công</h1>
@@ -222,9 +224,39 @@ function App() {
           <button
             onClick={handleLogout}
             className="logout-button"
+            style={{ marginBottom: '20px' }}
           >
             Đăng xuất
           </button>
+        </div>
+
+        <div style={{ width: '100%', maxWidth: '800px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Tạm thời cung cấp UI chọn Project do chức năng chọn dự án chưa có (nằm ngoài phạm vi T-09) */}
+          {!projectId ? (
+            <div className="dashboard-card" style={{ textAlign: 'center' }}>
+              <p>Vui lòng chọn dự án để xem cây hạng mục</p>
+              <button 
+                className="login-button" 
+                style={{ marginTop: '10px', width: 'auto', padding: '10px 20px' }}
+                onClick={() => setProjectId(1)}
+              >
+                Tải Dự Án #1 (Demo)
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3>Đang xem dự án #{projectId}</h3>
+                <button 
+                  onClick={() => setProjectId(null)}
+                  style={{ background: 'none', border: '1px solid #ccc', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}
+                >
+                  Đóng dự án
+                </button>
+              </div>
+              <CategoryTreeWrapper projectId={projectId} />
+            </div>
+          )}
         </div>
       </div>
     );
