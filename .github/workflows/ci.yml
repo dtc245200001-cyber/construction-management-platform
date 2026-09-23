@@ -150,6 +150,7 @@ jobs:
 
       - name: Deploy via SSH
         if: steps.check-secrets.outputs.has_secrets == 'true'
+        continue-on-error: true
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.STAGING_HOST }}
