@@ -8,7 +8,9 @@
     "dev": "nodemon server.js",
     "lint": "eslint .",
     "build": "node -e \"require('./app.js'); console.log('Build check passed')\"",
-    "test": "jest"
+    "test": "jest",
+    "migrate:up": "node-pg-migrate up",
+    "migrate:down": "node-pg-migrate down"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
