@@ -53,6 +53,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Migrate Database
+        run: npm run migrate:up
+
       - name: Test
         run: npm test -- --runInBand
 
