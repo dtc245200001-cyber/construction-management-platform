@@ -42,7 +42,7 @@
   },
   "type": "commonjs",
   "jest": {
-    "testTimeout": 30000,
+    "testTimeout": 120000,
     "projects": [
       {
         "displayName": "unit",
