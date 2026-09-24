@@ -33,6 +33,38 @@ let DUMMY_HASH = null;
 })();
 
 // ─── ĐĂNG KÝ ─────────────────────────────────────────────────────────────────
+/**
+ * @openapi
+ * /api/auth/register:
+ *   post:
+ *     summary: Đăng ký tài khoản
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - email
+ *               - password
+ *               - confirmPassword
+ *             properties:
+ *               name:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               confirmPassword:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Đăng ký tài khoản thành công
+ *       400:
+ *         description: Thông tin không hợp lệ
+ */
 router.post(
   "/register",
   asyncHandler(async (req, res) => {
@@ -105,6 +137,30 @@ router.post(
 );
 
 // ─── ĐĂNG NHẬP ───────────────────────────────────────────────────────────────
+/**
+ * @openapi
+ * /api/auth/login:
+ *   post:
+ *     summary: Đăng nhập hệ thống
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Đăng nhập thành công, trả về cookie cmp.sid
+ */
 router.post(
   "/login",
   asyncHandler(async (req, res) => {
@@ -266,6 +322,18 @@ router.get("/me", (req, res) => {
 });
 
 // ─── ĐĂNG XUẤT ───────────────────────────────────────────────────────────────
+/**
+ * @openapi
+ * /api/auth/logout:
+ *   post:
+ *     summary: Đăng xuất hệ thống
+ *     tags: [Auth]
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Đăng xuất thành công, xóa cookie session
+ */
 router.post(
   "/logout",
   asyncHandler(async (req, res) => {

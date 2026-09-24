@@ -1,0 +1,49 @@
+# render.yaml - Render Blueprint
+services:
+  # ─── BACKEND API ───────────────────────────────────────────────────────────
+  - type: web
+    name: construction-api
+    env: node
+    plan: free
+    region: singapore
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm run start:migrate
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: construction-db
+          property: connectionString
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        # Update this URL once Render provides the frontend domain
+        value: https://construction-ui.onrender.com
+
+  # ─── FRONTEND REACT ─────────────────────────────────────────────────────────
+  - type: web
+    name: construction-ui
+    env: static
+    plan: free
+    region: singapore
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://construction-api.onrender.com/api
+    routes:
+      # Redirect all requests to index.html for React Router (SPA)
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+databases:
+  # ─── POSTGRESQL ─────────────────────────────────────────────────────────────
+  - name: construction-db
+    databaseName: construction
+    user: admin
+    plan: free
+    region: singapore

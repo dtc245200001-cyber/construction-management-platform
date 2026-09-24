@@ -20,6 +20,8 @@ const categoryRoutes = require("./routes/categoryRoutes");
 const projectRoutes = require("./routes/projectRoutes");
 const { notFoundHandler, errorHandler } = require("./middleware/errorHandler");
 const logger = require("./utils/logger");
+const swaggerUi = require("swagger-ui-express");
+const swaggerSpec = require("./swagger");
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -129,6 +131,9 @@ app.get("/ready", async (_req, res) => {
     res.status(503).json({ status: "unavailable", db: "error" });
   }
 });
+
+// Swagger docs
+app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use("/api/auth/login", loginLimiter);
 app.use("/api/auth/register", registerLimiter);

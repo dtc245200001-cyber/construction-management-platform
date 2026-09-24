@@ -29,7 +29,9 @@
     "node-pg-migrate": "^6.2.2",
     "pg": "^8.13.1",
     "pino": "^10.3.1",
-    "pino-http": "^11.0.0"
+    "pino-http": "^11.0.0",
+    "swagger-jsdoc": "^6.3.0",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "eslint": "^8.57.0",
@@ -45,13 +47,21 @@
       {
         "displayName": "unit",
         "testEnvironment": "node",
-        "testMatch": ["<rootDir>/__tests__/*.test.js"],
-        "testPathIgnorePatterns": ["workItemTree.test.js", "integration"]
+        "testMatch": [
+          "<rootDir>/__tests__/*.test.js"
+        ],
+        "testPathIgnorePatterns": [
+          "workItemTree.test.js",
+          "integration"
+        ]
       },
       {
         "displayName": "integration",
         "testEnvironment": "node",
-        "testMatch": ["<rootDir>/__tests__/integration/**/*.test.js", "<rootDir>/__tests__/workItemTree.test.js"]
+        "testMatch": [
+          "<rootDir>/__tests__/integration/**/*.test.js",
+          "<rootDir>/__tests__/workItemTree.test.js"
+        ]
       }
     ]
   }
