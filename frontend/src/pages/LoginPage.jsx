@@ -4,6 +4,7 @@ import api from '../utils/api';
 import heroImage from '../assets/hero.png';
 
 const LoginPage = ({ setUser }) => {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -45,21 +46,27 @@ const LoginPage = ({ setUser }) => {
     setMessage("");
     setSuccessMessage("");
 
+    if (!name.trim()) {
+      setMessage("Vui lòng nhập họ và tên");
+      return;
+    }
+
     if (password !== confirmPassword) {
       setMessage("Mật khẩu xác nhận không khớp");
       return;
     }
 
-    if (password.length < 6) {
-      setMessage("Mật khẩu phải có ít nhất 6 ký tự");
+    if (password.length < 8) {
+      setMessage("Mật khẩu phải có ít nhất 8 ký tự");
       return;
     }
 
     setLoading(true);
 
     try {
-      await api.post('/auth/register', { email, password, confirmPassword });
+      await api.post('/auth/register', { name, email, password, confirmPassword });
       setIsRegister(false);
+      setName("");
       setPassword("");
       setConfirmPassword("");
       setMessage("");
@@ -74,6 +81,7 @@ const LoginPage = ({ setUser }) => {
 
   const switchToRegister = () => {
     setIsRegister(true);
+    setName("");
     setPassword("");
     setConfirmPassword("");
     setMessage("");
@@ -82,6 +90,7 @@ const LoginPage = ({ setUser }) => {
 
   const switchToLogin = () => {
     setIsRegister(false);
+    setName("");
     setPassword("");
     setConfirmPassword("");
     setMessage("");
@@ -168,6 +177,13 @@ const LoginPage = ({ setUser }) => {
             </div>
 
             <form onSubmit={isRegister ? handleRegister : handleLogin}>
+              {isRegister && (
+                <div className="modern-input">
+                  <span className="field-icon">👤</span>
+                  <input type="text" placeholder="Họ và tên" value={name} onChange={(e) => setName(e.target.value)} required />
+                </div>
+              )}
+
               <div className="modern-input">
                 <span className="field-icon">✉</span>
                 <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
@@ -175,14 +191,14 @@ const LoginPage = ({ setUser }) => {
 
               <div className="modern-input">
                 <span className="field-icon lock-icon">♙</span>
-                <input type={showPassword ? "text" : "password"} placeholder="Mật khẩu" value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} required />
+                <input type={showPassword ? "text" : "password"} placeholder="Mật khẩu" value={password} onChange={(e) => setPassword(e.target.value)} minLength={isRegister ? 8 : 6} required />
                 <button type="button" className="show-password" onClick={() => setShowPassword(!showPassword)}>{showPassword ? "◉" : "⊙"}</button>
               </div>
 
               {isRegister && (
                 <div className="modern-input">
                   <span className="field-icon lock-icon">♙</span>
-                  <input type={showPassword ? "text" : "password"} placeholder="Xác nhận mật khẩu" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} minLength={6} required />
+                  <input type={showPassword ? "text" : "password"} placeholder="Xác nhận mật khẩu" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} minLength={8} required />
                 </div>
               )}
 
