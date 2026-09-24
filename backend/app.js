@@ -41,7 +41,7 @@ const SESSION_SECRET = process.env.SESSION_SECRET || "dev-secret-key-unsafe";
 // Ví dụ: CORS_ORIGINS=http://localhost:5173,https://app.example.com
 const allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5173")
   .split(",")
-  .map((o) => o.trim())
+  .map((o) => o.trim().replace(/\/$/, ""))
   .filter(Boolean);
 
 // ─── RATE LIMIT ───────────────────────────────────────────────────────────────
