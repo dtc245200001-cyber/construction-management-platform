@@ -32,7 +32,7 @@ describe("Categories & Projects Integration Tests", () => {
 
     // Project Members: A -> P1, B -> P2
     await pool.query(
-      "INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, 'member'), ($3, $4, 'member')",
+      "INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, 'MEMBER'), ($3, $4, 'MEMBER')",
       [p1, uA, p2, uB]
     );
 
@@ -82,7 +82,7 @@ describe("Categories & Projects Integration Tests", () => {
 
     // Project Members: A -> P1, B -> P2
     await pool.query(
-      "INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, 'manager'), ($3, $4, 'manager')",
+      "INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, 'MANAGER'), ($3, $4, 'MANAGER')",
       [p1, uA, p2, uB]
     );
   });
