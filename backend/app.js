@@ -89,7 +89,7 @@ const pinoHttp = require("pino-http")({ logger });
 app.use(pinoHttp);
 
 // Session
-const sameSite = process.env.COOKIE_SAMESITE || "lax";
+const sameSite = process.env.COOKIE_SAMESITE || (isProd ? "none" : "lax");
 app.use(
   session({
     name: "cmp.sid",
