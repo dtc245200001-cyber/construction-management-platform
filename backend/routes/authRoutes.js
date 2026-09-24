@@ -22,9 +22,7 @@ const router = express.Router();
 // ─── KHỞI ĐỘNG: DUMMY HASH & ROLE ID ─────────────────────────────────────────
 //
 // Tính sẵn hash giả để dùng trong timing equalization khi email không tồn tại.
-// Tính sẵn role_id của 'ban_quan_ly' để tránh magic number trong INSERT.
 let DUMMY_HASH = null;
-let DEFAULT_ROLE_ID = null;
 
 (async () => {
   try {
@@ -32,31 +30,16 @@ let DEFAULT_ROLE_ID = null;
   } catch (err) {
     logger.error({ err }, "Không thể khởi tạo dummy hash");
   }
-
-  try {
-    const result = await pool.query(
-      "SELECT id FROM roles WHERE name = $1",
-      ["ban_quan_ly"]
-    );
-    if (result.rows.length > 0) {
-      DEFAULT_ROLE_ID = result.rows[0].id;
-    } else {
-      logger.error("Không tìm thấy vai trò 'ban_quan_ly' trong bảng roles — đăng ký sẽ không hoạt động.");
-    }
-  } catch (err) {
-    // Pool chưa kết nối được khi test mock — không crash tiến trình
-    logger.warn({ err }, "Không thể tra cứu DEFAULT_ROLE_ID lúc khởi động (có thể do môi trường test)");
-  }
 })();
 
 // ─── ĐĂNG KÝ ─────────────────────────────────────────────────────────────────
 router.post(
   "/register",
   asyncHandler(async (req, res) => {
-    const { email, password, confirmPassword } = req.body;
+    const { name, email, password, confirmPassword } = req.body;
 
     // Kiểm tra nhập đầy đủ
-    if (!email || !password || !confirmPassword) {
+    if (!name || !email || !password || !confirmPassword) {
       return res.status(400).json({ message: "Vui lòng nhập đầy đủ thông tin" });
     }
 
@@ -99,12 +82,19 @@ router.post(
     // Băm mật khẩu bằng argon2id
     const passwordHash = await argon2.hash(password);
 
+    // Lấy role mặc định động để tránh lỗi khi test/khởi động
+    const roleResult = await pool.query("SELECT id FROM roles WHERE name = 'ban_quan_ly'");
+    if (roleResult.rows.length === 0) {
+      return res.status(500).json({ message: "Lỗi hệ thống: Không tìm thấy vai trò mặc định" });
+    }
+    const defaultRoleId = roleResult.rows[0].id;
+
     // Chèn user mới (không ghi cột password cũ — xem migration 1790200000001)
     const result = await pool.query(
-      `INSERT INTO users (email, password_hash, role_id)
-       VALUES ($1, $2, $3)
-       RETURNING id, email, created_at`,
-      [normalizedEmail, passwordHash, DEFAULT_ROLE_ID]
+      `INSERT INTO users (name, email, password_hash, role_id)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, name, email, created_at`,
+      [name, normalizedEmail, passwordHash, defaultRoleId]
     );
 
     return res.status(201).json({

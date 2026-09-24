@@ -9,9 +9,9 @@
     "dev": "nodemon server.js",
     "lint": "eslint .",
     "build": "node --check server.js app.js routes/authRoutes.js routes/categoryRoutes.js routes/projectRoutes.js middleware/auth.js middleware/projectAccess.js middleware/errorHandler.js config/db.js utils/logger.js utils/asyncHandler.js utils/validators.js && echo 'Syntax check passed'",
-    "test": "jest --testPathIgnorePatterns='workItemTree.test.js'",
-    "test:unit": "jest --testPathIgnorePatterns='workItemTree.test.js' --runInBand",
-    "test:integration": "jest __tests__/workItemTree.test.js --runInBand",
+    "test": "jest --runInBand",
+    "test:unit": "jest --selectProjects unit --runInBand",
+    "test:integration": "jest --selectProjects integration --runInBand",
     "migrate:up": "node -r dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate up",
     "migrate:down": "node -r dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate down"
   },
@@ -40,7 +40,19 @@
   },
   "type": "commonjs",
   "jest": {
-    "testEnvironment": "node",
-    "testTimeout": 30000
+    "testTimeout": 30000,
+    "projects": [
+      {
+        "displayName": "unit",
+        "testEnvironment": "node",
+        "testMatch": ["<rootDir>/__tests__/*.test.js"],
+        "testPathIgnorePatterns": ["workItemTree.test.js", "integration"]
+      },
+      {
+        "displayName": "integration",
+        "testEnvironment": "node",
+        "testMatch": ["<rootDir>/__tests__/integration/**/*.test.js", "<rootDir>/__tests__/workItemTree.test.js"]
+      }
+    ]
   }
 }

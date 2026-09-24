@@ -17,13 +17,16 @@ const checkProjectAccess = asyncHandler(async (req, res, next) => {
   // Chỉ dùng req.user.id (được gán bởi middleware/auth.js từ session)
   const userId = req.user.id;
 
-  if (!projectId) {
-    return res.status(400).json({ error: "Thiếu projectId" });
+  const { parsePositiveInt } = require("../utils/validators");
+  const parsedProjectId = parsePositiveInt(projectId);
+
+  if (!parsedProjectId) {
+    return res.status(400).json({ error: "Thiếu projectId hoặc projectId không hợp lệ" });
   }
 
   const result = await pool.query(
     `SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2`,
-    [projectId, userId]
+    [parsedProjectId, userId]
   );
 
   if (result.rows.length === 0) {
