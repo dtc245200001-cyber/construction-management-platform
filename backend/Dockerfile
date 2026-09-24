@@ -1,18 +1,16 @@
 # Stage 1: Cài dependencies production
-FROM node:20-alpine AS deps
+FROM node:20-slim AS deps
 
 WORKDIR /app
 
-# Cài công cụ cần thiết để build argon2
-RUN apk add --no-cache python3 make g++
-
+# Không cần cài thêm tool compile C++ vì node:20-slim hỗ trợ tải binary prebuilt
 COPY package*.json ./
 
 RUN npm ci --omit=dev
 
 
 # Stage 2: Image production
-FROM node:20-alpine
+FROM node:20-slim
 
 WORKDIR /app
 
