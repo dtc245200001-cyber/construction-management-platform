@@ -54,33 +54,32 @@ jobs:
         run: npm run build
 
       - name: Test
-        run: npm run test
+        run: npm test -- --runInBand
 
-  # Job frontend đang TẮT vì thư mục frontend/ chưa có mã nguồn (mới có .gitkeep).
-  # Bật lại job này ngay khi task scaffold frontend (ví dụ T-06) hoàn thành,
-  # để không chặn nhầm các PR chỉ sửa backend.
-  #
-  # frontend:
-  #   name: Frontend CI (Node.js)
-  #   runs-on: ubuntu-latest
-  #   defaults:
-  #     run:
-  #       working-directory: ./frontend
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
-  #     - name: Setup Node.js 20
-  #       uses: actions/setup-node@v4
-  #       with:
-  #         node-version: '20'
-  #     - name: Install dependencies
-  #       run: npm ci
-  #     - name: Lint
-  #       run: npm run lint
-  #     - name: Build
-  #       run: npm run build
-  #     - name: Test
-  #       run: npm run test
+  # =========================================================================
+  # Frontend CI
+  # =========================================================================
+  frontend:
+    name: Frontend CI (Node.js)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
+      - name: Test
+        run: echo "No tests for frontend yet"
 
   # =========================================================================
   # T-03: Build Docker image và push lên GitHub Container Registry (ghcr.io)
