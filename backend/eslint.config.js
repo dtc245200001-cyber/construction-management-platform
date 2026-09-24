@@ -23,6 +23,14 @@ module.exports = [
         __dirname: "readonly",
         __filename: "readonly",
 
+        // Timer globals (Node.js built-ins)
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+        setImmediate: "readonly",
+        clearImmediate: "readonly",
+
         // Jest globals
         jest: "readonly",
         describe: "readonly",
@@ -37,7 +45,7 @@ module.exports = [
     },
 
     rules: {
-      "no-unused-vars": "warn",
+      "no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
     },
   },
 ];

@@ -2,8 +2,9 @@ jest.mock("../config/db", () => ({
   query: jest.fn(),
 }));
 
+// eslint-disable-next-line no-unused-vars
 const db = require("../config/db");
-const { checkProjectAccess, requireProjectRoles } = require('../middleware/projectAccess');
+const { checkProjectAccess: _checkProjectAccess, requireProjectRoles } = require('../middleware/projectAccess');
 
 function createResponse() {
   const res = {};

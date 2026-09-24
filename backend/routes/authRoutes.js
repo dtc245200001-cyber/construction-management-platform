@@ -1,252 +1,259 @@
+// routes/authRoutes.js — Xác thực người dùng (đăng ký, đăng nhập, đăng xuất, kiểm tra session).
+//
+// Bảo mật áp dụng:
+//   - Mật khẩu băm bằng argon2id (NFR E-02 / S-02).
+//   - Rehash bcrypt → argon2id tự động khi user cũ đăng nhập (backward compat).
+//   - Khoá tài khoản sau 5 lần sai: UPDATE atomic, reset khi hết hạn khoá.
+//   - Timing equalization: email không tồn tại vẫn chạy verify giả để
+//     thời gian phản hồi tương đương email có tồn tại (giảm timing attack).
+//   - session.regenerate() sau đăng nhập thành công (ngăn session fixation).
+
+"use strict";
+
 const express = require("express");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcrypt"); // Giữ lại để verify hash cũ; sẽ bỏ khi DB không còn bcrypt hash
+const argon2 = require("argon2");
 const pool = require("../config/db");
+const logger = require("../utils/logger");
+const asyncHandler = require("../utils/asyncHandler");
 
 const router = express.Router();
 
-// ======================================================
-// ĐĂNG KÝ
-// ======================================================
-router.post("/register", async (req, res) => {
+// ─── KHỞI ĐỘNG: DUMMY HASH & ROLE ID ─────────────────────────────────────────
+//
+// Tính sẵn hash giả để dùng trong timing equalization khi email không tồn tại.
+// Tính sẵn role_id của 'ban_quan_ly' để tránh magic number trong INSERT.
+let DUMMY_HASH = null;
+let DEFAULT_ROLE_ID = null;
+
+(async () => {
   try {
+    DUMMY_HASH = await argon2.hash("dummy-password-for-timing");
+  } catch (err) {
+    logger.error({ err }, "Không thể khởi tạo dummy hash");
+  }
+
+  try {
+    const result = await pool.query(
+      "SELECT id FROM roles WHERE name = $1",
+      ["ban_quan_ly"]
+    );
+    if (result.rows.length > 0) {
+      DEFAULT_ROLE_ID = result.rows[0].id;
+    } else {
+      logger.error("Không tìm thấy vai trò 'ban_quan_ly' trong bảng roles — đăng ký sẽ không hoạt động.");
+    }
+  } catch (err) {
+    // Pool chưa kết nối được khi test mock — không crash tiến trình
+    logger.warn({ err }, "Không thể tra cứu DEFAULT_ROLE_ID lúc khởi động (có thể do môi trường test)");
+  }
+})();
+
+// ─── ĐĂNG KÝ ─────────────────────────────────────────────────────────────────
+router.post(
+  "/register",
+  asyncHandler(async (req, res) => {
     const { email, password, confirmPassword } = req.body;
 
     // Kiểm tra nhập đầy đủ
     if (!email || !password || !confirmPassword) {
-      return res.status(400).json({
-        message: "Vui lòng nhập đầy đủ thông tin",
-      });
+      return res.status(400).json({ message: "Vui lòng nhập đầy đủ thông tin" });
     }
 
     // Chuẩn hóa email
     const normalizedEmail = email.trim().toLowerCase();
 
-    // Kiểm tra định dạng email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (!emailRegex.test(normalizedEmail)) {
-      return res.status(400).json({
-        message: "Email không hợp lệ",
-      });
+    // Kiểm tra độ dài email
+    if (normalizedEmail.length > 255) {
+      return res.status(400).json({ message: "Email không hợp lệ" });
     }
 
-    // Kiểm tra mật khẩu
-    if (password.length < 6) {
-      return res.status(400).json({
-        message: "Mật khẩu phải có ít nhất 6 ký tự",
-      });
+    // Kiểm tra định dạng email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(normalizedEmail)) {
+      return res.status(400).json({ message: "Email không hợp lệ" });
+    }
+
+    // Kiểm tra mật khẩu (đồng bộ với frontend: tối thiểu 8, tối đa 128 ký tự)
+    if (password.length < 8) {
+      return res.status(400).json({ message: "Mật khẩu phải có ít nhất 8 ký tự" });
+    }
+    if (password.length > 128) {
+      return res.status(400).json({ message: "Mật khẩu không được vượt quá 128 ký tự" });
     }
 
     // Kiểm tra xác nhận mật khẩu
     if (password !== confirmPassword) {
-      return res.status(400).json({
-        message: "Mật khẩu xác nhận không khớp",
-      });
+      return res.status(400).json({ message: "Mật khẩu xác nhận không khớp" });
     }
 
-    // Kiểm tra email đã tồn tại
+    // Kiểm tra email đã tồn tại (index lower(email) đảm bảo tốc độ)
     const existingUser = await pool.query(
-      `SELECT id
-       FROM users
-       WHERE LOWER(email) = $1`,
+      `SELECT id FROM users WHERE LOWER(email) = $1`,
       [normalizedEmail]
     );
-
     if (existingUser.rows.length > 0) {
-      return res.status(409).json({
-        message: "Email đã được sử dụng",
-      });
+      return res.status(409).json({ message: "Email đã được sử dụng" });
     }
 
-    // Mã hóa mật khẩu
-    const passwordHash = await bcrypt.hash(password, 10);
+    // Băm mật khẩu bằng argon2id
+    const passwordHash = await argon2.hash(password);
 
-    // ======================================================
-    // THÊM USER
-    // Bảng users hiện tại:
-    // - không có name
-    // - không có password
-    // - không có role_id
-    // ======================================================
+    // Chèn user mới (không ghi cột password cũ — xem migration 1790200000001)
     const result = await pool.query(
-      `INSERT INTO users (
-        email,
-        password_hash
-      )
-      VALUES ($1, $2)
-      RETURNING id, email, created_at`,
-      [normalizedEmail, passwordHash]
+      `INSERT INTO users (email, password_hash, role_id)
+       VALUES ($1, $2, $3)
+       RETURNING id, email, created_at`,
+      [normalizedEmail, passwordHash, DEFAULT_ROLE_ID]
     );
 
     return res.status(201).json({
       message: "Đăng ký tài khoản thành công",
       user: result.rows[0],
     });
-  } catch (error) {
-    console.error("REGISTER ERROR:", error);
+  })
+);
 
-    // Email trùng
-    if (error.code === "23505") {
-      return res.status(409).json({
-        message: "Email đã được sử dụng",
-      });
-    }
-
-    return res.status(500).json({
-      message: "Lỗi máy chủ",
-    });
-  }
-});
-
-// ======================================================
-// ĐĂNG NHẬP
-// ======================================================
-router.post("/login", async (req, res) => {
-  try {
+// ─── ĐĂNG NHẬP ───────────────────────────────────────────────────────────────
+router.post(
+  "/login",
+  asyncHandler(async (req, res) => {
     const { email, password } = req.body;
 
-    // Kiểm tra nhập đầy đủ
     if (!email || !password) {
-      return res.status(400).json({
-        message: "Vui lòng nhập email và mật khẩu",
-      });
+      return res.status(400).json({ message: "Vui lòng nhập email và mật khẩu" });
     }
 
-    // Chuẩn hóa email
     const normalizedEmail = email.trim().toLowerCase();
 
-    // Tìm user
+    // Chỉ lấy các cột cần thiết (không SELECT *)
     const result = await pool.query(
-      `SELECT *
+      `SELECT id, email, password_hash, failed_login_attempts, locked_until, role_id
        FROM users
        WHERE LOWER(email) = $1`,
       [normalizedEmail]
     );
 
+    // ── Timing equalization: email không tồn tại vẫn chạy verify giả ──────────
     if (result.rows.length === 0) {
-      return res.status(401).json({
-        message: "Email hoặc mật khẩu không đúng",
-      });
+      if (DUMMY_HASH) {
+        await argon2.verify(DUMMY_HASH, password).catch(() => {});
+      }
+      return res.status(401).json({ message: "Email hoặc mật khẩu không đúng" });
     }
 
     const user = result.rows[0];
 
-    // ======================================================
-    // KIỂM TRA KHÓA TÀI KHOẢN
-    // ======================================================
-    if (
-      user.locked_until &&
-      new Date(user.locked_until).getTime() > Date.now()
-    ) {
-      return res.status(423).json({
-        message:
-          "Tài khoản đang bị khóa tạm thời. Vui lòng thử lại sau.",
-      });
-    }
-
-    // ======================================================
-    // KIỂM TRA PASSWORD HASH
-    // ======================================================
-    if (!user.password_hash) {
-      console.error(
-        "LOGIN ERROR: User không có password_hash:",
-        user.id
-      );
-
-      return res.status(500).json({
-        message: "Tài khoản chưa có mật khẩu hợp lệ",
-      });
-    }
-
-    // So sánh mật khẩu
-    const passwordCorrect = await bcrypt.compare(
-      password,
-      user.password_hash
-    );
-
-    // ======================================================
-    // MẬT KHẨU SAI
-    // ======================================================
-    if (!passwordCorrect) {
-      const currentAttempts =
-        Number(user.failed_login_attempts) || 0;
-
-      const newAttempts = currentAttempts + 1;
-
-      // Sai từ lần thứ 5
-      if (newAttempts >= 5) {
-        try {
-          await pool.query(
-            `UPDATE users
-             SET failed_login_attempts = 5,
-                 locked_until = NOW() + INTERVAL '15 minutes',
-                 updated_at = NOW()
-             WHERE id = $1`,
-            [user.id]
-          );
-
-          return res.status(423).json({
-            message:
-              "Đăng nhập sai quá 5 lần. Tài khoản bị khóa 15 phút.",
-          });
-        } catch (lockError) {
-          console.error(
-            "LOGIN LOCK UPDATE ERROR:",
-            lockError.message
-          );
-
-          return res.status(401).json({
-            message: "Email hoặc mật khẩu không đúng",
-          });
-        }
-      }
-
-      // Sai lần 1 -> 4
-      try {
-        await pool.query(
-          `UPDATE users
-           SET failed_login_attempts = $1,
-               updated_at = NOW()
-           WHERE id = $2`,
-          [newAttempts, user.id]
-        );
-      } catch (attemptError) {
-        console.error(
-          "LOGIN ATTEMPT UPDATE ERROR:",
-          attemptError.message
-        );
-      }
-
-      return res.status(401).json({
-        message: "Email hoặc mật khẩu không đúng",
-      });
-    }
-
-    // ======================================================
-    // ĐĂNG NHẬP THÀNH CÔNG
-    // ======================================================
-
-    // Reset số lần đăng nhập sai
-    try {
+    // ── Reset khi khoá đã hết hạn ─────────────────────────────────────────────
+    if (user.locked_until && new Date(user.locked_until) <= new Date()) {
       await pool.query(
-        `UPDATE users
-         SET failed_login_attempts = 0,
-             locked_until = NULL,
-             updated_at = NOW()
-         WHERE id = $1`,
+        `UPDATE users SET failed_login_attempts = 0, locked_until = NULL, updated_at = NOW() WHERE id = $1`,
         [user.id]
       );
-    } catch (resetError) {
-      console.error(
-        "LOGIN RESET ERROR:",
-        resetError.message
-      );
+      user.failed_login_attempts = 0;
+      user.locked_until = null;
     }
 
-    // Tạo session
+    // ── Kiểm tra khoá tài khoản ───────────────────────────────────────────────
+    if (user.locked_until && new Date(user.locked_until) > new Date()) {
+      return res.status(423).json({
+        message: "Tài khoản đang bị khóa tạm thời. Vui lòng thử lại sau.",
+      });
+    }
+
+    // ── Kiểm tra password_hash ────────────────────────────────────────────────
+    if (!user.password_hash) {
+      logger.error({ userId: user.id }, "Tài khoản không có password_hash hợp lệ");
+      return res.status(500).json({ message: "Tài khoản chưa có mật khẩu hợp lệ" });
+    }
+
+    // ── So sánh mật khẩu (hỗ trợ cả bcrypt và argon2id) ─────────────────────
+    let passwordCorrect = false;
+    const isBcryptHash = user.password_hash.startsWith("$2");
+
+    if (isBcryptHash) {
+      // Hash cũ: verify bằng bcrypt
+      passwordCorrect = await bcrypt.compare(password, user.password_hash);
+
+      // Rehash on login: nếu đúng → nâng cấp sang argon2id
+      if (passwordCorrect) {
+        try {
+          const newHash = await argon2.hash(password);
+          await pool.query(
+            `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
+            [newHash, user.id]
+          );
+          logger.info({ userId: user.id }, "Đã nâng cấp hash mật khẩu từ bcrypt sang argon2id");
+        } catch (rehashErr) {
+          // Không dừng đăng nhập nếu rehash lỗi — chỉ log
+          logger.warn({ err: rehashErr, userId: user.id }, "Không thể rehash mật khẩu sang argon2id");
+        }
+      }
+    } else {
+      // Hash mới: verify bằng argon2
+      passwordCorrect = await argon2.verify(user.password_hash, password);
+    }
+
+    // ── Mật khẩu sai ─────────────────────────────────────────────────────────
+    if (!passwordCorrect) {
+      // Atomic increment: một câu UPDATE, RETURNING để đọc giá trị mới
+      const { rows } = await pool.query(
+        `UPDATE users
+         SET failed_login_attempts = failed_login_attempts + 1,
+             locked_until = CASE
+               WHEN failed_login_attempts + 1 >= 5
+               THEN NOW() + INTERVAL '15 minutes'
+               ELSE locked_until
+             END,
+             updated_at = NOW()
+         WHERE id = $1
+         RETURNING failed_login_attempts, locked_until`,
+        [user.id]
+      );
+
+      if (rows[0] && rows[0].locked_until) {
+        logger.warn({ userId: user.id }, "Tài khoản bị khóa sau nhiều lần đăng nhập sai");
+        return res.status(423).json({
+          message: "Đăng nhập sai quá 5 lần. Tài khoản bị khóa 15 phút.",
+        });
+      }
+
+      return res.status(401).json({ message: "Email hoặc mật khẩu không đúng" });
+    }
+
+    // ── Đăng nhập thành công ──────────────────────────────────────────────────
+
+    // Reset bộ đếm sai
+    await pool.query(
+      `UPDATE users
+       SET failed_login_attempts = 0, locked_until = NULL, updated_at = NOW()
+       WHERE id = $1`,
+      [user.id]
+    );
+
+    // Lấy tên vai trò hệ thống để đưa vào session
+    let roleName = null;
+    try {
+      const roleResult = await pool.query(
+        "SELECT name FROM roles WHERE id = $1",
+        [user.role_id]
+      );
+      if (roleResult.rows.length > 0) {
+        roleName = roleResult.rows[0].name;
+      }
+    } catch (roleErr) {
+      logger.warn({ err: roleErr }, "Không thể lấy tên vai trò");
+    }
+
+    // session.regenerate() ngăn session fixation attack
+    await new Promise((resolve, reject) => {
+      req.session.regenerate((err) => (err ? reject(err) : resolve()));
+    });
+
     req.session.user = {
       id: user.id,
       email: user.email,
+      role: roleName,
     };
 
     return res.status(200).json({
@@ -254,57 +261,37 @@ router.post("/login", async (req, res) => {
       user: {
         id: user.id,
         email: user.email,
+        role: roleName,
       },
     });
-  } catch (error) {
-    console.error("LOGIN ERROR:", error);
+  })
+);
 
-    return res.status(500).json({
-      message: "Lỗi máy chủ",
-    });
-  }
-});
-
-// ======================================================
-// KIỂM TRA SESSION
-// ======================================================
+// ─── KIỂM TRA SESSION ────────────────────────────────────────────────────────
 router.get("/me", (req, res) => {
   if (!req.session || !req.session.user) {
-    return res.status(401).json({
-      message: "Chưa đăng nhập",
-    });
+    return res.status(401).json({ message: "Chưa đăng nhập" });
   }
-
-  return res.status(200).json({
-    user: req.session.user,
-  });
+  return res.status(200).json({ user: req.session.user });
 });
 
-// ======================================================
-// ĐĂNG XUẤT
-// ======================================================
-router.post("/logout", (req, res) => {
-  if (!req.session) {
-    return res.status(200).json({
-      message: "Đăng xuất thành công",
-    });
-  }
-
-  req.session.destroy((error) => {
-    if (error) {
-      console.error("LOGOUT ERROR:", error);
-
-      return res.status(500).json({
-        message: "Đăng xuất thất bại",
-      });
+// ─── ĐĂNG XUẤT ───────────────────────────────────────────────────────────────
+router.post(
+  "/logout",
+  asyncHandler(async (req, res) => {
+    if (!req.session) {
+      return res.status(200).json({ message: "Đăng xuất thành công" });
     }
 
-    res.clearCookie("connect.sid");
-
-    return res.status(200).json({
-      message: "Đăng xuất thành công",
+    await new Promise((resolve, reject) => {
+      req.session.destroy((err) => (err ? reject(err) : resolve()));
     });
-  });
-});
+
+    // Xóa cookie cmp.sid với cùng options đã đặt (sameSite, path)
+    res.clearCookie("cmp.sid", { path: "/" });
+
+    return res.status(200).json({ message: "Đăng xuất thành công" });
+  })
+);
 
 module.exports = router;
