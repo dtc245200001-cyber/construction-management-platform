@@ -2,7 +2,7 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN apk add --no-cache python3 make g++ && npm ci --omit=dev
 
 # Stage 2: Image production
 FROM node:20-alpine
