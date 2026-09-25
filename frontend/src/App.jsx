@@ -10,6 +10,7 @@ import MainLayout from './layouts/MainLayout';
 // Pages
 import LoginPage from './pages/LoginPage';
 import ProjectsPage from './pages/ProjectsPage';
+import LandingPage from './pages/LandingPage';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -42,16 +43,20 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route element={<AuthLayout />}>
-          <Route path="/login" element={user ? <Navigate to="/projects" replace /> : <LoginPage setUser={setUser} />} />
+          <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginPage setUser={setUser} />} />
         </Route>
         
+        {/* Full screen dashboard layout */}
+        <Route path="/dashboard" element={user ? <LandingPage user={user} setUser={setUser} /> : <Navigate to="/login" replace />} />
+
+        {/* Existing MainLayout for other pages */}
         <Route element={<MainLayout user={user} setUser={setUser} />}>
           <Route path="/projects" element={<ProjectsPage />} />
           {/* Support future dynamic routes like /projects/:id here or in ProjectsPage */}
         </Route>
         
         {/* Default route */}
-        <Route path="*" element={<Navigate to={user ? "/projects" : "/login"} replace />} />
+        <Route path="*" element={<Navigate to={user ? "/dashboard" : "/login"} replace />} />
       </Routes>
     </BrowserRouter>
   );
