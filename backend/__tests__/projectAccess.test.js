@@ -23,7 +23,6 @@ describe("T-07 project access middleware", () => {
       params: { projectId: "1" },
       projectRole: "MEMBER"
     };
-
     const res = createResponse();
     const next = jest.fn();
 
@@ -39,7 +38,6 @@ describe("T-07 project access middleware", () => {
       params: { projectId: "1" },
       projectRole: undefined
     };
-
     const res = createResponse();
     const next = jest.fn();
 
@@ -55,7 +53,6 @@ describe("T-07 project access middleware", () => {
       params: { projectId: "1" },
       projectRole: "MEMBER"
     };
-
     const res = createResponse();
     const next = jest.fn();
 
@@ -71,7 +68,6 @@ describe("T-07 project access middleware", () => {
       params: { projectId: "1" },
       projectRole: "MEMBER"
     };
-
     const res = createResponse();
     const next = jest.fn();
 
