@@ -1,108 +1,112 @@
+const request = require("supertest");
+const express = require("express");
+
+const mockQuery = jest.fn();
 jest.mock("../config/db", () => ({
-  query: jest.fn(),
+  query: (...args) => mockQuery(...args),
 }));
 
-const db = require("../config/db");
-const requireProjectRoles = require("../middleware/projectAccess");
+const mockLoggerWarn = jest.fn();
+jest.mock("../utils/logger", () => ({
+  warn: (...args) => mockLoggerWarn(...args),
+}));
 
-function createResponse() {
-  const res = {};
+const { checkProjectAccess, requireProjectRoles } = require("../middleware/projectAccess");
 
-  res.status = jest.fn(() => res);
-  res.json = jest.fn(() => res);
+describe("projectAccess middleware (1.9)", () => {
+  let app;
 
-  return res;
-}
-
-describe("T-07 project access middleware", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    app = express();
+    app.use(express.json());
+    // Mock middleware auth
+    app.use((req, res, next) => {
+      req.user = { id: 10 };
+      next();
+    });
   });
 
-  test("route khong khai bao role phai tra 403", async () => {
-    const req = {
-      user: { id: 1 },
-      params: { projectId: "1" },
-    };
-
-    const res = createResponse();
-    const next = jest.fn();
-
-    await requireProjectRoles()(req, res, next);
-
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(next).not.toHaveBeenCalled();
-    expect(db.query).not.toHaveBeenCalled();
-  });
-
-  test("user khong tham gia project phai tra 403", async () => {
-    db.query.mockResolvedValue({
-      rows: [],
+  describe("checkProjectAccess", () => {
+    test("tra 400 thi thieu projectId", async () => {
+      app.get("/test", checkProjectAccess, (req, res) => res.sendStatus(200));
+      const res = await request(app).get("/test");
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("Thiếu projectId hoặc projectId không hợp lệ");
     });
 
-    const req = {
-      user: { id: 10 },
-      params: { projectId: "1" },
-    };
+    test("tra 403 va ghi log co cau truc khi khong la thanh vien", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+      app.get("/test/:projectId", checkProjectAccess, (req, res) => res.sendStatus(200));
 
-    const res = createResponse();
-    const next = jest.fn();
+      const res = await request(app).get("/test/1");
 
-    await requireProjectRoles(["MEMBER"])(req, res, next);
-
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(next).not.toHaveBeenCalled();
-  });
-
-  test("user co role hop le duoc phep truy cap", async () => {
-    db.query.mockResolvedValue({
-      rows: [
-        {
-          id: 1,
-          user_id: 10,
-          project_id: 1,
-          role: "member",
-        },
-      ],
+      expect(res.status).toBe(403);
+      expect(res.body.error).toMatch(/quyền truy cập/);
+      
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 10,
+          projectId: "1",
+          reason: "NOT_MEMBER",
+        }),
+        "Truy cập bị từ chối: user không phải thành viên dự án"
+      );
     });
 
-    const req = {
-      user: { id: 10 },
-      params: { projectId: "1" },
-    };
+    test("di tiep va gan req.projectRole khi la thanh vien", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "manager" }] });
+      app.get("/test/:projectId", checkProjectAccess, (req, res) => {
+        res.json({ role: req.projectRole });
+      });
 
-    const res = createResponse();
-    const next = jest.fn();
-
-    await requireProjectRoles(["MEMBER"])(req, res, next);
-
-    expect(next).toHaveBeenCalledTimes(1);
-    expect(res.status).not.toHaveBeenCalled();
+      const res = await request(app).get("/test/1");
+      expect(res.status).toBe(200);
+      expect(res.body.role).toBe("MANAGER");
+    });
   });
 
-  test("user thuoc project nhung sai role phai tra 403", async () => {
-    db.query.mockResolvedValue({
-      rows: [
-        {
-          id: 1,
-          user_id: 10,
-          project_id: 1,
-          role: "member",
-        },
-      ],
+  describe("requireProjectRoles", () => {
+    test("tra 403 va ghi log mac dinh tu choi (default deny) neu khong truyen role", async () => {
+      app.get("/test/:projectId", (req, res, next) => {
+        req.projectRole = "OWNER";
+        next();
+      }, requireProjectRoles(), (req, res) => res.sendStatus(200));
+
+      const res = await request(app).get("/test/1");
+      expect(res.status).toBe(403);
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: "ROLE_NOT_ALLOWED" }),
+        expect.stringContaining("default deny")
+      );
     });
 
-    const req = {
-      user: { id: 10 },
-      params: { projectId: "1" },
-    };
+    test("tra 403 va ghi log neu role khong nam trong allowed", async () => {
+      app.get("/test/:projectId", (req, res, next) => {
+        req.projectRole = "MEMBER";
+        next();
+      }, requireProjectRoles(["OWNER"]), (req, res) => res.sendStatus(200));
 
-    const res = createResponse();
-    const next = jest.fn();
+      const res = await request(app).get("/test/1");
+      expect(res.status).toBe(403);
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          currentRole: "MEMBER",
+          allowedRoles: ["OWNER"],
+          reason: "ROLE_NOT_ALLOWED"
+        }),
+        "Truy cập bị từ chối: vai trò không đủ quyền"
+      );
+    });
 
-    await requireProjectRoles(["OWNER"])(req, res, next);
+    test("di tiep neu role thuoc allowed", async () => {
+      app.get("/test/:projectId", (req, res, next) => {
+        req.projectRole = "OWNER";
+        next();
+      }, requireProjectRoles(["MANAGER", "OWNER"]), (req, res) => res.sendStatus(200));
 
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(next).not.toHaveBeenCalled();
+      const res = await request(app).get("/test/1");
+      expect(res.status).toBe(200);
+    });
   });
 });

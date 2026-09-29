@@ -1,85 +1,93 @@
-const db = require("../config/db");
+// middleware/projectAccess.js — Kiểm tra quyền truy cập dự án (RBAC).
+//
+// checkProjectAccess: xác nhận user là thành viên của dự án, gắn req.projectRole.
+// requireProjectRoles: kiểm tra vai trò cụ thể; không truyền role → default deny (S-03).
+//
+// Mọi lần từ chối (403) đều ghi nhật ký có cấu trúc theo NFR S-03.
 
-/**
- * Middleware kiểm tra quyền truy cập theo project.
- *
- * Default deny:
- * - Không khai báo role => 403
- * - Không phải thành viên project => 403
- * - Role không được phép => 403
- */
-function requireProjectRoles(allowedRoles = []) {
-  const normalizedAllowedRoles = Array.isArray(allowedRoles)
-    ? allowedRoles.map((role) => String(role).toUpperCase())
-    : [];
+"use strict";
 
-  return async (req, res, next) => {
-    try {
-      // DEFAULT DENY
-      if (normalizedAllowedRoles.length === 0) {
-        return res.status(403).json({
-          message: "Forbidden: route chưa khai báo quyền truy cập",
-        });
-      }
+const pool = require("../config/db");
+const logger = require("../utils/logger");
+const asyncHandler = require("../utils/asyncHandler");
 
-      // Chưa đăng nhập
-      if (!req.user || !req.user.id) {
-        return res.status(401).json({
-          message: "Chưa đăng nhập",
-        });
-      }
+// Middleware xác thực thành viên thuộc dự án
+const checkProjectAccess = asyncHandler(async (req, res, next) => {
+  const projectId = req.params.projectId || req.body.projectId;
+  // Chỉ dùng req.user.id (được gán bởi middleware/auth.js từ session)
+  const userId = req.user.id;
 
-      const projectId = Number(req.params.projectId);
+  const { parsePositiveInt } = require("../utils/validators");
+  const parsedProjectId = parsePositiveInt(projectId);
 
-      // Project ID không hợp lệ
-      if (!Number.isInteger(projectId) || projectId <= 0) {
-        return res.status(400).json({
-          message: "Project ID không hợp lệ",
-        });
-      }
+  if (!parsedProjectId) {
+    return res.status(400).json({ error: "Thiếu projectId hoặc projectId không hợp lệ" });
+  }
 
-      // Kiểm tra user có thuộc project không
-      const result = await db.query(
-        `SELECT id, user_id, project_id, role
-         FROM project_members
-         WHERE user_id = $1
-           AND project_id = $2
-         LIMIT 1`,
-        [req.user.id, projectId]
-      );
+  const result = await pool.query(
+    `SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2`,
+    [parsedProjectId, userId]
+  );
 
-      // Không phải thành viên project
-      if (result.rows.length === 0) {
-        return res.status(403).json({
-          message: "Forbidden: bạn không phải thành viên của dự án",
-        });
-      }
+  if (result.rows.length === 0) {
+    // Ghi nhật ký 403 có cấu trúc (NFR S-03) — không log body
+    logger.warn({
+      userId,
+      projectId,
+      method: req.method,
+      path: req.path,
+      reason: "NOT_MEMBER",
+      ip: req.ip,
+    }, "Truy cập bị từ chối: user không phải thành viên dự án");
 
-      const membership = result.rows[0];
+    return res.status(403).json({ error: "Bạn không có quyền truy cập dự án này" });
+  }
 
-      const memberRole = String(membership.role).toUpperCase();
+  // Chuẩn hóa role về chữ hoa (OWNER, MANAGER, MEMBER)
+  req.projectRole = String(result.rows[0].role).toUpperCase();
+  return next();
+});
 
-      // Có trong project nhưng role không được phép
-      if (!normalizedAllowedRoles.includes(memberRole)) {
-        return res.status(403).json({
-          message: "Forbidden: bạn không có quyền thực hiện thao tác này",
-        });
-      }
+// Middleware kiểm tra vai trò cụ thể trong dự án
+const requireProjectRoles = (allowedRoles = []) => {
+  return (req, res, next) => {
+    // Không truyền role nào → default deny (S-03)
+    if (!allowedRoles || allowedRoles.length === 0) {
+      logger.warn({
+        userId: req.user && req.user.id,
+        projectId: req.params.projectId,
+        method: req.method,
+        path: req.path,
+        reason: "ROLE_NOT_ALLOWED",
+        ip: req.ip,
+      }, "Truy cập bị từ chối: route chưa khai báo role (default deny)");
 
-      // Lưu membership cho handler phía sau
-      req.projectMember = membership;
-
-      return next();
-    } catch (error) {
-      console.error("PROJECT ACCESS ERROR:", error);
-
-      return res.status(500).json({
-        message: "Lỗi máy chủ khi kiểm tra quyền dự án",
-      });
+      return res.status(403).json({ error: "Không có quyền thực hiện hành động này" });
     }
-  };
-}
 
-// QUAN TRỌNG:
-// export trực tiếp function để require(...) nhận được function
-module.exports = requireProjectRoles;
+    const currentRole = req.projectRole;
+    const normalizedAllowedRoles = allowedRoles.map((r) => String(r).toUpperCase());
+
+    if (!currentRole || !normalizedAllowedRoles.includes(currentRole)) {
+      logger.warn({
+        userId: req.user && req.user.id,
+        projectId: req.params.projectId,
+        currentRole,
+        allowedRoles: normalizedAllowedRoles,
+        method: req.method,
+        path: req.path,
+        reason: "ROLE_NOT_ALLOWED",
+        ip: req.ip,
+      }, "Truy cập bị từ chối: vai trò không đủ quyền");
+
+      return res.status(403).json({ error: "Vai trò của bạn không đủ quyền hạn" });
+    }
+
+    return next();
+  };
+};
+
+module.exports = {
+  checkProjectAccess,
+  requireProjectRoles,
+};

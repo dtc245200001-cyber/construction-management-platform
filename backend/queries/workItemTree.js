@@ -26,7 +26,7 @@ const SUBTREE_SQL = `
       ON wi.parent_id = s.id
      AND wi.project_id = s.project_id
   )
-  SELECT * FROM subtree
+  SELECT id, project_id, parent_id, name, code, created_at, updated_at, depth FROM subtree
   ORDER BY depth, id;
 `;
 

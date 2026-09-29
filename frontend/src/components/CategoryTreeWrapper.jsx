@@ -7,7 +7,8 @@ export default function CategoryTreeWrapper({ projectId }) {
   const treeInstanceRef = useRef(null);
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    const currentContainer = containerRef.current;
+    if (!currentContainer) return;
 
     // Callbacks to interact with backend
     const options = {
@@ -69,13 +70,13 @@ export default function CategoryTreeWrapper({ projectId }) {
       }
     };
 
-    const tree = new CategoryTree(containerRef.current, options);
+    const tree = new CategoryTree(currentContainer, options);
     treeInstanceRef.current = tree;
     tree.init();
 
     return () => {
-      if (containerRef.current) {
-        containerRef.current.innerHTML = '';
+      if (currentContainer) {
+        currentContainer.innerHTML = '';
       }
     };
   }, [projectId]);
