@@ -1,4 +1,8 @@
 node_modules/
 .env
+backend/.env
 npm-debug.log*
 coverage/
+server_key.txt
+*.pem
+*.key
