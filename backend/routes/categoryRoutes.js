@@ -1,4 +1,3 @@
- feature/t06-s03-project-access
 // routes/categoryRoutes.js — Quản lý hạng mục công việc (work_items) theo dự án.
 //
 // Mọi route đều yêu cầu:
@@ -211,4 +210,3 @@ router.delete(
 );
 
 module.exports = router;
-main
