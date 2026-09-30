@@ -10,9 +10,10 @@
 const express = require("express");
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
-const { checkProjectAccess, requireProjectRoles } = require("../middleware/projectAccess");
+const { checkProjectAccess, requireProjectRoles, defaultDeny } = require("../middleware/projectAccess");
 const asyncHandler = require("../utils/asyncHandler");
 const { parsePositiveInt, normalizeName } = require("../utils/validators");
+const { ROLES } = require("../utils/constants");
 
 const router = express.Router();
 
@@ -21,7 +22,7 @@ router.get(
   "/:projectId",
   requireAuth,
   checkProjectAccess,
-  requireProjectRoles(["OWNER", "MANAGER", "MEMBER"]),
+  requireProjectRoles(Object.values(ROLES)),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) {
@@ -65,7 +66,7 @@ router.get(
   "/:projectId/tree/all",
   requireAuth,
   checkProjectAccess,
-  requireProjectRoles(["OWNER", "MANAGER", "MEMBER"]),
+  requireProjectRoles(Object.values(ROLES)),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) {
@@ -89,7 +90,7 @@ router.post(
   "/:projectId",
   requireAuth,
   checkProjectAccess,
-  requireProjectRoles(["OWNER", "MANAGER"]),
+  requireProjectRoles([ROLES.BAN_QUAN_LY]),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) {
@@ -155,7 +156,7 @@ router.put(
   "/:projectId/:id",
   requireAuth,
   checkProjectAccess,
-  requireProjectRoles(["OWNER", "MANAGER"]),
+  requireProjectRoles([ROLES.BAN_QUAN_LY]),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     const id = parsePositiveInt(req.params.id);
@@ -188,7 +189,7 @@ router.delete(
   "/:projectId/:id",
   requireAuth,
   checkProjectAccess,
-  requireProjectRoles(["OWNER", "MANAGER"]),
+  requireProjectRoles([ROLES.BAN_QUAN_LY]),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     const id = parsePositiveInt(req.params.id);
@@ -208,5 +209,8 @@ router.delete(
     return res.json({ success: true });
   })
 );
+
+// Fallback default deny
+router.use("/:projectId*", defaultDeny);
 
 module.exports = router;

@@ -13,7 +13,7 @@ const asyncHandler = require("../utils/asyncHandler");
 
 // Middleware xác thực thành viên thuộc dự án
 const checkProjectAccess = asyncHandler(async (req, res, next) => {
-  const projectId = req.params.projectId || req.body.projectId;
+  const projectId = req.params.projectId;
   // Chỉ dùng req.user.id (được gán bởi middleware/auth.js từ session)
   const userId = req.user.id;
 
@@ -43,8 +43,8 @@ const checkProjectAccess = asyncHandler(async (req, res, next) => {
     return res.status(403).json({ error: "Bạn không có quyền truy cập dự án này" });
   }
 
-  // Chuẩn hóa role về chữ hoa (OWNER, MANAGER, MEMBER)
-  req.projectRole = String(result.rows[0].role).toUpperCase();
+  // Không chuẩn hóa chữ hoa nữa vì role đã là chữ thường (ban_quan_ly, v.v.)
+  req.projectRole = String(result.rows[0].role);
   return next();
 });
 
@@ -66,7 +66,7 @@ const requireProjectRoles = (allowedRoles = []) => {
     }
 
     const currentRole = req.projectRole;
-    const normalizedAllowedRoles = allowedRoles.map((r) => String(r).toUpperCase());
+    const normalizedAllowedRoles = allowedRoles.map((r) => String(r));
 
     if (!currentRole || !normalizedAllowedRoles.includes(currentRole)) {
       logger.warn({
@@ -83,11 +83,28 @@ const requireProjectRoles = (allowedRoles = []) => {
       return res.status(403).json({ error: "Vai trò của bạn không đủ quyền hạn" });
     }
 
+    res.locals.roleChecked = true;
     return next();
   };
+};
+
+const defaultDeny = (req, res, next) => {
+  if (!res.locals.roleChecked) {
+    logger.warn({
+      userId: req.user && req.user.id,
+      projectId: req.params.projectId,
+      method: req.method,
+      path: req.path,
+      reason: "DEFAULT_DENY",
+      ip: req.ip,
+    }, "Truy cập bị từ chối: route chưa kiểm tra quyền (default deny fall-through)");
+    return res.status(403).json({ error: "Chưa phân quyền cho endpoint này" });
+  }
+  next();
 };
 
 module.exports = {
   checkProjectAccess,
   requireProjectRoles,
+  defaultDeny,
 };

@@ -1,7 +1,8 @@
 const express = require("express");
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
-const { checkProjectAccess } = require('../middleware/projectAccess');
+const { checkProjectAccess, requireProjectRoles, defaultDeny } = require('../middleware/projectAccess');
+const { ROLES } = require('../utils/constants');
 
 const router = express.Router();
 
@@ -57,8 +58,8 @@ router.post(
 
       await client.query(
         `INSERT INTO project_members (project_id, user_id, role) 
-         VALUES ($1, $2, 'OWNER')`,
-        [newProject.id, req.session.user.id]
+         VALUES ($1, $2, $3)`,
+        [newProject.id, req.session.user.id, ROLES.BAN_QUAN_LY]
       );
 
       await client.query("COMMIT");
@@ -81,6 +82,7 @@ router.get(
   "/:projectId",
   requireAuth,
   checkProjectAccess,
+  requireProjectRoles(Object.values(ROLES)),
   async (req, res, next) => {
     try {
       const result = await db.query(
@@ -105,5 +107,8 @@ router.get(
     }
   }
 );
+
+// Fallback default deny
+router.use("/:projectId*", defaultDeny);
 
 module.exports = router;
