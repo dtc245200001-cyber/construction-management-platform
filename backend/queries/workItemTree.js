@@ -13,7 +13,7 @@ const SUBTREE_SQL = `
       id, project_id, parent_id, name, code, created_at, updated_at,
       0 AS depth
     FROM work_items
-    WHERE id = $1
+    WHERE id = $1 AND project_id = $2
 
     UNION ALL
 
@@ -35,13 +35,14 @@ const SUBTREE_SQL = `
  *
  * @param {import('pg').Pool | import('pg').PoolClient} db - pool hoặc client pg
  * @param {number} workItemId - id của hạng mục gốc cần lấy cây con
+ * @param {number} projectId - id của dự án
  * @param {{ includeRoot?: boolean }} [options] - includeRoot=false thì bỏ chính hạng mục gốc, chỉ trả về hậu duệ
  * @returns {Promise<Array<object>>} danh sách hạng mục trong cây con, sắp theo độ sâu tăng dần
  */
-async function getWorkItemSubtree(db, workItemId, options = {}) {
+async function getWorkItemSubtree(db, workItemId, projectId, options = {}) {
   const { includeRoot = true } = options;
 
-  const { rows } = await db.query(SUBTREE_SQL, [workItemId]);
+  const { rows } = await db.query(SUBTREE_SQL, [workItemId, projectId]);
 
   return includeRoot ? rows : rows.filter((row) => row.depth > 0);
 }
@@ -52,14 +53,15 @@ async function getWorkItemSubtree(db, workItemId, options = {}) {
  *
  * @param {import('pg').Pool | import('pg').PoolClient} db
  * @param {number} workItemId
+ * @param {number} projectId
  * @returns {Promise<number[]>}
  */
-async function getDescendantIds(db, workItemId) {
-  const rows = await getWorkItemSubtree(db, workItemId, { includeRoot: false });
+async function getDescendantIds(db, workItemId, projectId) {
+  const rows = await getWorkItemSubtree(db, workItemId, projectId, { includeRoot: false });
   return rows.map((row) => row.id);
 }
 
-async function countTasksInSubtree(db, workItemId) {
+async function countTasksInSubtree(db, workItemId, projectId) {
   // Check if 'tasks' table exists
   const tableCheck = await db.query(`
     SELECT to_regclass('tasks') IS NOT NULL AS "exists"
@@ -68,7 +70,7 @@ async function countTasksInSubtree(db, workItemId) {
     return 0; // Sprint 1: tasks table doesn't exist yet
   }
 
-  const ids = [workItemId, ...(await getDescendantIds(db, workItemId))];
+  const ids = [workItemId, ...(await getDescendantIds(db, workItemId, projectId))];
   
   const result = await db.query(
     `SELECT COUNT(*) FROM tasks WHERE work_item_id = ANY($1::int[])`,

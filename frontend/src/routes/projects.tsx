@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useEffect } from 'react'
-import api from '../utils/api'
+import api from '../lib/api'
 import CategoryTreeWrapper from '../components/CategoryTreeWrapper'
 import { Button } from '@/components/ui/button'
 

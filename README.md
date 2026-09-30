@@ -1,41 +1,87 @@
 # Construction Management Platform
 
-## Triển khai Staging (Staging Deployment)
+## 1. Chạy ở máy cá nhân (Local Development)
 
-Quy trình deploy lên môi trường staging diễn ra hoàn toàn tự động thông qua GitHub Actions khi có code mới được merge vào nhánh `main`.
+Dự án này sử dụng Docker để giả lập môi trường Database và có thể dễ dàng chạy ứng dụng trên máy cá nhân mà không cần cài đặt nhiều phụ thuộc phức tạp (ngoại trừ Docker và Node.js). 
 
-### Sơ đồ luồng (Workflow)
-1. **Merge `main`**: Developer merge PR vào nhánh chính.
-2. **CI Build & Test**: Job `backend` chạy các bước kiểm tra code (lint, test).
-3. **Build & Push Image**: Nếu test pass, job `deploy` sẽ build Docker image từ thư mục `backend/` và đẩy lên GHCR (GitHub Container Registry).
-4. **SSH Deploy**: GitHub Actions dùng SSH truy cập vào server Staging và kích hoạt script `deploy/deploy.sh`.
-5. **Healthcheck & Rollback (Blue/Green)**: Container mới được khởi động song song. Đợi healthcheck (`GET /health`). Nếu lỗi (crash, timeout), kịch bản tự động xóa container mới, hệ thống cũ vẫn giữ nguyên, CI trả về thất bại. Nếu thành công, xóa container cũ và đổi tên container mới, CI thành công.
+Hãy thực hiện lần lượt các bước sau:
 
-### Cấu hình Secrets (Yêu cầu trước khi chạy CI/CD)
-Admin repository cần cấu hình 3 Secrets sau tại **Settings > Secrets and variables > Actions**:
-- `STAGING_HOST`: Địa chỉ IP/Domain của máy chủ Staging.
-- `STAGING_SSH_USER`: Tên user truy cập SSH (vd: `ubuntu`).
-- `STAGING_SSH_KEY`: Nội dung Private SSH Key để đăng nhập vào server.
-- SSH port được cố định là `22` trong workflow deploy.
-
-### Cách xem Log Deploy
-- Truy cập vào tab **Actions** trên GitHub.
-- Mở lần chạy (workflow run) gần nhất.
-- Bấm vào job **Deploy to Staging** > mở xem chi tiết bước **Deploy to Staging via SSH**. Bạn sẽ thấy các log cụ thể của từng bước được sinh ra từ script `deploy.sh` (pull image, start container, healthcheck,...).
-
-### Rollback Thủ Công
-Trong trường hợp kịch bản tự động (Blue/Green) gặp lỗi không mong muốn hoặc cần lùi lại phiên bản trước đó:
-1. Đăng nhập SSH vào server staging.
-2. Chuyển tới thư mục dự án và chạy thủ công:
+1. **Cài đặt Docker & Node.js:** Đảm bảo máy tính của bạn đã cài đặt [Docker Desktop](https://www.docker.com/products/docker-desktop) và [Node.js](https://nodejs.org/).
+2. **Cấu hình Biến môi trường:** 
    ```bash
-   docker stop construction_backend_staging || true
-   docker rm construction_backend_staging || true
-   
-   # Chạy lại phiên bản cũ (thay <TAG-CU> bằng mã SHA của commit lúc trước)
-   docker run -d \
-     --name construction_backend_staging \
-     --network deploy_default \
-     --env-file .env.staging \
-     -p 3000:3000 \
-     ghcr.io/<org>/<repo>-backend:<TAG-CU>
+   cp .env.example .env
+   ```
+   *(Bạn có thể giữ nguyên các thông số trong `.env` để phát triển tại local).*
+3. **Khởi động Database:** 
+   ```bash
+   docker compose up -d
+   ```
+   *(Lệnh này sẽ khởi động PostgreSQL và PgAdmin ở chế độ background).*
+4. **Cài đặt thư viện Backend:** 
+   ```bash
+   cd backend
+   npm ci
+   ```
+5. **Chạy Migration Database:**
+   ```bash
+   npm run migrate:up
+   ```
+6. **Khởi động Backend:** 
+   ```bash
+   npm run dev
+   ```
+7. **Khởi động Frontend:** Mở một terminal mới, chuyển vào thư mục `frontend` và chạy:
+   ```bash
+   cd frontend
+   npm ci
+   npm run dev
+   ```
+
+## 2. Biến môi trường
+
+Toàn bộ các cấu hình được quản lý qua biến môi trường. Vui lòng xem file `.env.example` để biết chi tiết. Một số biến quan trọng:
+- `DATABASE_URL`: Chuỗi kết nối Database.
+- `SESSION_SECRET`: Bí mật để mã hóa session (BẮT BUỘC trên môi trường Production/Staging).
+- `CORS_ORIGINS`: Danh sách các domain Frontend được phép gọi API.
+
+## 3. Khôi phục & Xử lý sự cố (Troubleshooting)
+
+- **Lỗi Migration:** Nếu bạn chạy lỗi migration hoặc muốn lùi db, có thể dùng `npm run migrate:down`.
+- **Dọn dẹp hoàn toàn Docker:** Để làm mới cơ sở dữ liệu nếu có lỗi dữ liệu nặng nề (mất toàn bộ dữ liệu ở máy local):
+  ```bash
+  docker compose down -v
+  docker compose up -d
+  ```
+- **Port Conflict (Cổng đã được sử dụng):** Nếu cổng 5432, 3000 hoặc 5173 đã bị chiếm dụng, hãy tắt các dịch vụ đang chạy cổng này hoặc đổi port trong file `.env` và `docker-compose.yml`.
+
+## 4. Triển khai (Deployment)
+
+Hệ thống sử dụng cơ chế Deploy Blue/Green với Docker trên môi trường Staging.
+Quy trình được tự động hóa qua GitHub Actions.
+
+### Cấu hình Secrets cho GitHub Actions
+Bạn cần thiết lập 4 Secrets sau trên GitHub (Settings > Secrets and variables > Actions):
+1. `STAGING_HOST`: Địa chỉ IP/Domain của máy chủ Staging.
+2. `STAGING_USER`: Tên user truy cập SSH (thay cho STAGING_SSH_USER cũ).
+3. `STAGING_SSH_KEY`: Private SSH Key để đăng nhập.
+4. `GHCR_PAT` (hoặc bí mật thứ 4 tùy chọn nếu dùng repo private để pull image).
+
+### Luồng Deploy tự động (Blue/Green)
+1. Kéo Image mới về server.
+2. Chạy container mới (phiên bản Green) song song với container cũ (Blue).
+3. Container mới thực hiện **Migration DB** trực tiếp trong lúc khởi động (hoặc qua bước migrate độc lập).
+4. Kiểm tra sức khỏe (Healthcheck) qua endpoint `/api/ready`.
+5. Nếu container mới KHỎE và migration thành công: Chuyển lưu lượng Nginx sang container mới, sau đó tắt container cũ.
+6. Nếu container mới LỖI: Hủy container mới, hệ thống vẫn dùng container cũ không bị gián đoạn.
+
+## 5. Rollback thủ công
+
+Trong trường hợp luồng deploy bị kẹt hoặc cần rollback về bản cũ:
+1. SSH vào server staging.
+2. Xác định tên container cũ đang chạy hoặc chạy lệnh lùi phiên bản image:
+   ```bash
+   docker stop construction_backend_staging_new || true
+   docker rm construction_backend_staging_new || true
+   # Đảm bảo container chính chạy lại:
+   docker start construction_backend_staging
    ```

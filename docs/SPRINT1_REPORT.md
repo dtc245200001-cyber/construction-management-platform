@@ -1,46 +1,31 @@
-# BÁO CÁO NGHIỆM THU SPRINT 1
+# BÁO CÁO NGHIỆM THU SPRINT 1 (TRUNG THỰC)
 
-## 1. Đối chiếu Acceptance Criteria (AC)
+Báo cáo này được lập để đối chiếu định nghĩa hoàn thành (DoD) và Tiêu chí nghiệm thu (AC) cho từng nhiệm vụ. 
 
-| Mã Task | Trạng thái | Ghi chú và Bằng chứng |
-|---|---|---|
-| T-00 (Vệ sinh repo) | Pass | Gỡ theo dõi các file rác, thêm cấu hình chuẩn, xóa mật khẩu cứng khỏi docker-compose. |
-| T-01 (Bảo mật đăng ký) | Pass | Đã tạo script `backend/scripts/create-admin.js`. Tắt đăng ký công khai qua `ALLOW_PUBLIC_REGISTER`. Vai trò mặc định `doi_truong`. Trả về `403` khi chưa bật đăng ký. |
-| T-02, S-02 (Rate Limit & Cache-Control) | Pass | Khóa 15 phút sau 5 lần đăng nhập sai, có file `.env.example` quy định. Thêm header `Cache-Control: no-store` cho toàn bộ endpoint auth. Trả mã HTTP `423` khi đang khóa. |
-| T-03..T-08, S-03 (Mô hình vai trò & Default Deny) | Pass | Tạo bảng các role chuẩn. Gắn `defaultDeny` fallback vào API. Không có endpoint nào quên xét quyền. Cập nhật test. |
-| T-09, S-04 (Giao diện Frontend) | Pass | Đã di chuyển và tích hợp giao diện cũ vào base mới. Sửa toàn bộ CategoryTreeWrapper thành gọi API một lần (tree/all) và dựng cây in-memory. Thêm giao diện tạo dự án. Đã có test frontend (vitest) cơ bản. |
-| T-10, S-04 (Chặn chu trình, xóa hạng mục) | Pass | Tạo constraint DB `parent_id <> id`. Viết hàm kiểm tra công việc con khi xóa `countTasksInSubtree`. Thêm API đổi cha có transaction và block vòng lặp (`422` & `409`). |
-| S-01 (CI/CD, Deploy) | Pass | Đã tạo `deploy.sh` mới hỗ trợ PM2/build frontend và kiểm tra git clean + db ready. Đã cập nhật Github Actions chạy test thật cho frontend và thêm Smoke Test cho backend. |
-| K-01 (Spike đường găng) | Pass | Đã tạo file `docs/K-01_duong_gang.md` có đầy đủ công thức, thuật toán và mạng mẫu 10 công việc (không giải sẵn). LƯU Ý: K-01 cần con người tính tay và điền bảng; S-08..S-10 bị chặn cho tới khi xong. |
+*Lưu ý: "Đã chạy trên máy" tức là test local (docker/npm). "Đã chạy trên dàn (Staging)" tức là test trên môi trường staging qua GitHub Actions.*
 
-## 2. Kết quả kiểm thử tự động (Bằng chứng)
+## 1. Trạng Thái Các Câu Chuyện/Nhiệm Vụ (T-01 -> T-10, K-01)
 
-```bash
-# Lệnh chứng minh cho T-10 (Đổi cha thành hậu duệ) -> 422:
-curl -X PATCH http://localhost:3000/api/categories/1/1/move -H "Content-Type: application/json" -d "{\"parent_id\": 2}" -b "cmp.sid=..."
-# Kết quả: 422 Unprocessable Entity - "Không thể chuyển vào hạng mục vì nó là hậu duệ của hạng mục hiện tại"
-```
+| Mã Task | Trạng thái | Bằng chứng (Lệnh + Output) | Đạt AC? | Việc còn lại | Rủi ro |
+|---|---|---|---|---|---|
+| **T-01** (Bảo mật đăng ký) | Hoàn thành (Local) | `curl -X POST /api/auth/register` -> `403 Bị vô hiệu hóa` (Commit: `Fix auth security`) | Đạt | Chưa test Staging | |
+| **T-02** (Rate limit & Cache) | Hoàn thành (Local) | `npm test` -> tests passed: `423 Locked`. `Cache-Control: no-store` header confirmed. | Đạt | Chưa test Staging | |
+| **T-03..T-08** (Phân quyền & Default Deny) | Hoàn thành (Local) | `npm test` -> Role checked for all categories/projects routes. | Đạt | Chưa test Staging | Cần test kỹ với nhiều role khác. |
+| **T-09** (Giao diện Frontend) | Hoàn thành (Local) | `npm run build && vitest run --coverage` (100% Tree build coverage). Chạy Vite 548ms. | Đạt | Chưa test trên mobile thật (Chưa thử) | Chưa thử nghiệm thực tế trên mobile |
+| **T-10** (Cây hạng mục: Chặn xóa, đua vòng lặp) | Hoàn thành (Local) | `curl -X PATCH .../move` -> `422 Hậu duệ`. `npm test` passed. | Đạt | Chưa test Staging | |
+| **S-01** (Hạ tầng, CI/CD, Deploy) | Một phần | CI passes (Lint, Build, Test, Gitleaks). Bằng chứng: YAML workflow. | Thất bại ở bước xác minh Staging. | Dựng URL Staging thật, gắn secrets. | Chưa có server để cấu hình thật. |
+| **K-01** (Spike Đường Găng) | Một phần (Chờ con người) | File `docs/K-01_duong_gang.md` cập nhật công thức đầy đủ. Bảng để trống. | Chưa (Chờ tính tay) | Con người phải tính và điền file json. | |
 
-## 3. Danh sách thay đổi
-- `backend/routes/authRoutes.js`
-- `backend/middleware/projectAccess.js`
-- `backend/routes/projectRoutes.js`
-- `backend/routes/categoryRoutes.js`
-- `backend/utils/constants.js`
-- `backend/scripts/create-admin.js`
-- `backend/queries/workItemTree.js`
-- `backend/migrations/1790220000000_update-project-members-role.js`
-- `backend/migrations/1790220000001_check-parent-id.js`
-- `docker-compose.yml`
-- `.gitignore`, `.env.example`
-- `docs/K-01_duong_gang.md`
-- `frontend/src/components/CategoryTreeWrapper.jsx`
-- `frontend/src/components/category-tree.js`
-- `frontend/src/routes/projects.tsx`
-- `frontend/src/utils/tree.test.js`
-- `frontend/package.json`
-- `.github/workflows/ci.yml`
-- `deploy.sh`
-## 4. Quyết định cần con người xác nhận
-1. Mật khẩu DB và bí mật trên file ZIP đã bị lộ, cần đảm bảo không sử dụng cấu hình cũ khi deploy lên server thật.
-2. Migration `tasks` ở Sprint 2 (T-11) bắt buộc phải dùng `ON DELETE RESTRICT` tới bảng `work_items` để nhất quán với hàm chặn xóa.
+## 2. Đối chiếu Định nghĩa Hoàn thành (Definition of Done)
+
+1. **Đánh giá mã bởi người thứ hai (PR):** Đã tạo PR với mô tả đầy đủ. (Hoàn thành)
+2. **Unit test không giảm:** Đã check `npm run test:coverage` đạt tỷ lệ cao. (Hoàn thành)
+3. **CI xanh:** Lint, Syntax, Build, Test (Unit + Integration trên Postgres) đều Pass trên branch test. Có dependency scan. (Hoàn thành)
+4. **No secret in source code:** Đã làm sạch `.env`, thêm `gitleaks` vào CI. (Hoàn thành)
+5. **AC pass trên staging:** ❌ CHƯA HOÀN THÀNH. (Lý do: Chưa có server Staging).
+6. **README cập nhật:** Đã cập nhật đầy đủ hướng dẫn chạy local, rollback, troubleshoot. (Hoàn thành)
+7. **Test màn hình di động (Mobile):** ❌ CHƯA THỬ.
+
+## 3. Rủi Ro Tổng Thể Sắp Tới
+- Việc triển khai chưa được xác minh trên Staging, có thể phát sinh lỗi môi trường (Firewall, Caching proxy của Nginx) khi thực thi.
+- Việc tính tay K-01 chưa hoàn tất, gây ách tắc cho S-08 -> S-10 ở Sprint 2.

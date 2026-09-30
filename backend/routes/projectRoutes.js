@@ -1,10 +1,10 @@
 const express = require("express");
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
-const { checkProjectAccess, requireProjectRoles, defaultDeny } = require('../middleware/projectAccess');
+const { checkProjectAccess, allow, createProjectRouter } = require('../middleware/projectAccess');
 const { ROLES } = require('../utils/constants');
 
-const router = express.Router();
+const router = createProjectRouter();
 
 // GET /api/projects - Danh sách dự án mà user tham gia
 router.get(
@@ -35,7 +35,7 @@ router.post(
   requireAuth,
   async (req, res, next) => {
     // Chỉ ban_quan_ly mới được tạo dự án
-    if (req.session.user.role !== 'ban_quan_ly') {
+    if (req.session.user.role !== ROLES.BAN_QUAN_LY) {
       return res.status(403).json({ message: "Chỉ Ban quản lý mới được quyền tạo dự án" });
     }
 
@@ -82,7 +82,7 @@ router.get(
   "/:projectId",
   requireAuth,
   checkProjectAccess,
-  requireProjectRoles(Object.values(ROLES)),
+  allow(Object.values(ROLES)),
   async (req, res, next) => {
     try {
       const result = await db.query(
@@ -108,7 +108,6 @@ router.get(
   }
 );
 
-// Fallback default deny
-router.use("/:projectId*", defaultDeny);
+// Fallback default deny replaced by createProjectRouter
 
 module.exports = router;

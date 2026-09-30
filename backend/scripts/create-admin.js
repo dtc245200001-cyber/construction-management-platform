@@ -1,42 +1,66 @@
-const argon2 = require('argon2');
-const pool = require('../config/db');
-require('dotenv').config();
+const { Pool } = require("pg");
+const argon2 = require("argon2");
+require("dotenv").config({ path: __dirname + "/../.env" });
 
 async function createAdmin() {
-  const email = process.argv[2] || process.env.ADMIN_EMAIL;
-  const password = process.argv[3] || process.env.ADMIN_PASSWORD;
+  const email = process.argv[2];
+  const password = process.argv[3];
+  const name = process.argv[4] || "Admin";
 
   if (!email || !password) {
-    console.error('Vui lòng cung cấp email và password thông qua tham số (node create-admin.js <email> <password>) hoặc biến môi trường ADMIN_EMAIL, ADMIN_PASSWORD.');
+    console.error(
+      "Usage: node create-admin.js <email> <password> [name]"
+    );
     process.exit(1);
   }
 
+  const pool = new Pool({
+    connectionString:
+      process.env.DATABASE_URL ||
+      process.env.LOCAL_DATABASE_URL ||
+      `postgresql://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`,
+  });
+
   try {
-    const roleResult = await pool.query("SELECT id FROM roles WHERE name = 'ban_quan_ly'");
-    if (roleResult.rows.length === 0) {
-      console.error('Lỗi: Không tìm thấy vai trò ban_quan_ly trong database.');
+    const roleRes = await pool.query(
+      `SELECT id FROM roles WHERE code = 'admin'`
+    );
+    if (roleRes.rows.length === 0) {
+      console.error("Admin role not found in database.");
       process.exit(1);
     }
-    const roleId = roleResult.rows[0].id;
+    const adminRoleId = roleRes.rows[0].id;
 
-    const existingUser = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
-    if (existingUser.rows.length > 0) {
-      console.error('Lỗi: Email đã tồn tại.');
-      process.exit(1);
-    }
-
-    const hash = await argon2.hash(password);
-    
-    await pool.query(
-      'INSERT INTO users (name, email, password_hash, role_id) VALUES ($1, $2, $3, $4)',
-      ['Admin', email, hash, roleId]
+    const existingUser = await pool.query(
+      `SELECT id FROM users WHERE email = $1`,
+      [email.toLowerCase()]
     );
 
-    console.log('Tạo tài khoản ban_quan_ly thành công.');
-    process.exit(0);
+    const hash = await argon2.hash(password, {
+      type: argon2.argon2id,
+      memoryCost: 65536,
+      timeCost: 3,
+      parallelism: 4,
+    });
+
+    if (existingUser.rows.length > 0) {
+      console.log("User already exists. Updating password and role...");
+      await pool.query(
+        `UPDATE users SET password_hash = $1, role_id = $2 WHERE email = $3`,
+        [hash, adminRoleId, email.toLowerCase()]
+      );
+      console.log("Admin updated successfully.");
+    } else {
+      await pool.query(
+        `INSERT INTO users (name, email, password_hash, role_id) VALUES ($1, $2, $3, $4)`,
+        [name, email.toLowerCase(), hash, adminRoleId]
+      );
+      console.log("Admin created successfully.");
+    }
   } catch (err) {
-    console.error('Lỗi khi tạo admin:', err);
-    process.exit(1);
+    console.error("Error creating admin:", err);
+  } finally {
+    await pool.end();
   }
 }
 

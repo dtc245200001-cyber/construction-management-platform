@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import CategoryTreeWrapper from '../components/CategoryTreeWrapper';
-import api from '../utils/api';
+import api from '../lib/api';
 
 const ProjectsPage = () => {
   const [projectId, setProjectId] = useState(null);

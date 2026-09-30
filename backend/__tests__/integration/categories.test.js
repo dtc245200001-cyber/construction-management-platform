@@ -82,7 +82,7 @@ describe("Categories & Projects Integration Tests", () => {
 
     // Project Members: A -> P1, B -> P2
     await pool.query(
-      "INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, 'MANAGER'), ($3, $4, 'MANAGER')",
+      "INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, 'ban_quan_ly'), ($3, $4, 'ban_quan_ly')",
       [p1, uA, p2, uB]
     );
   });
@@ -141,6 +141,61 @@ describe("Categories & Projects Integration Tests", () => {
       expect(res.status).toBe(200);
       expect(res.body.length).toBe(2);
       // Project ID is implicit in the response as the API scopes the query
+    });
+
+    it("T-10: Chống đua (race condition) khi di chuyển hạng mục vòng lặp", async () => {
+      // Tạo Node A và Node B
+      const resA = await request(app).post(`/api/categories/${p1}`).set("Cookie", cookieA).send({ name: "Node A" });
+      const resB = await request(app).post(`/api/categories/${p1}`).set("Cookie", cookieA).send({ name: "Node B" });
+      const idA = resA.body.id;
+      const idB = resB.body.id;
+
+      // Cố tình tạo race condition: A -> B và B -> A cùng lúc
+      const req1 = request(app).patch(`/api/categories/${p1}/${idA}/move`).set("Cookie", cookieA).send({ parent_id: idB });
+      const req2 = request(app).patch(`/api/categories/${p1}/${idB}/move`).set("Cookie", cookieA).send({ parent_id: idA });
+
+      const [res1, res2] = await Promise.all([req1, req2]);
+      
+      // Một cái phải thành công (200), một cái thất bại (422) HOẶC deadlock (409)
+      const statuses = [res1.status, res2.status];
+      expect(statuses).toContain(200);
+      expect(statuses.some(s => s === 422 || s === 409)).toBe(true);
+
+      // Verify DB không có vòng lặp (cả 2 không thể là con của nhau)
+      const { rows } = await pool.query("SELECT parent_id FROM work_items WHERE id IN ($1, $2)", [idA, idB]);
+      const hasRoot = rows.some(r => r.parent_id === null);
+      expect(hasRoot).toBe(true);
+    });
+
+    it("T-09: Không xóa được hạng mục nếu chứa task", async () => {
+      // Tạo bảng tasks tạm thời
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS tasks (
+          id SERIAL PRIMARY KEY,
+          work_item_id INT NOT NULL REFERENCES work_items(id) ON DELETE RESTRICT
+        )
+      `);
+      
+      const resCreate = await request(app).post(`/api/categories/${p1}`).set("Cookie", cookieA).send({ name: "Task Category" });
+      const catId = resCreate.body.id;
+      
+      await pool.query(`INSERT INTO tasks (work_item_id) VALUES ($1)`, [catId]);
+      
+      const resDel = await request(app).delete(`/api/categories/${p1}/${catId}`).set("Cookie", cookieA);
+      expect(resDel.status).toBe(409);
+      expect(resDel.body.message).toMatch(/công việc bên trong/);
+      
+      await pool.query(`DROP TABLE tasks`);
+    });
+
+    it("T-09: Không xóa được hạng mục nếu có hạng mục con (RESTRICT)", async () => {
+       const resParent = await request(app).post(`/api/categories/${p1}`).set("Cookie", cookieA).send({ name: "Parent" });
+       const parentId = resParent.body.id;
+       await request(app).post(`/api/categories/${p1}`).set("Cookie", cookieA).send({ name: "Child", parent_id: parentId });
+
+       const resDel = await request(app).delete(`/api/categories/${p1}/${parentId}`).set("Cookie", cookieA);
+       expect(resDel.status).toBe(409);
+       expect(resDel.body.message).toMatch(/hạng mục con/);
     });
   });
 });

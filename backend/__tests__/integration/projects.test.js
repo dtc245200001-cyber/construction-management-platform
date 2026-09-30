@@ -60,7 +60,7 @@ describe("Projects Integration Tests", () => {
       expect(res.body.project.name).toBe("Manager Project");
       
       const { rows } = await pool.query("SELECT role FROM project_members WHERE project_id = $1", [res.body.project.id]);
-      expect(rows[0].role).toBe("OWNER");
+      expect(rows[0].role).toBe("ban_quan_ly");
     });
   });
 

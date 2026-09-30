@@ -164,6 +164,7 @@ router.post(
     const result = await pool.query(
       `SELECT
          id,
+         name,
          email,
          password_hash,
          failed_login_attempts,
@@ -310,6 +311,7 @@ router.post(
         const lockedUserResult = await client.query(
           `SELECT
              id,
+             name,
              email,
              password_hash,
              failed_login_attempts,
@@ -375,15 +377,16 @@ router.post(
         let updateResult;
 
         if (shouldLock) {
+          const lockTime = new Date(Date.now() + lockTimeMinutes * 60000);
           updateResult = await client.query(
             `UPDATE users
              SET
                failed_login_attempts = $1,
-               locked_until = NOW() + INTERVAL '1 minute' * $3,
+               locked_until = $3,
                updated_at = NOW()
              WHERE id = $2
              RETURNING failed_login_attempts, locked_until`,
-            [newFailedAttempts, user.id, lockTimeMinutes]
+            [newFailedAttempts, user.id, lockTime]
           );
         } else {
           updateResult = await client.query(
@@ -402,20 +405,14 @@ router.post(
 
         const updatedUser = updateResult.rows[0];
 
-        // Nếu vừa đạt ngưỡng -> trả 423
+        // Nếu vừa đạt ngưỡng -> khóa nhưng vẫn trả 401 (S-02)
         if (updatedUser && updatedUser.locked_until) {
           logger.warn(
             { userId: user.id },
             "Tài khoản bị khóa sau khi vượt ngưỡng đăng nhập sai"
           );
-
-          return res.status(423).json({
-            message:
-              "Tài khoản đã bị khóa tạm thời. Vui lòng thử lại sau.",
-          });
         }
 
-        // Chưa đủ 10 lần
         return res.status(401).json({
           message: "Email hoặc mật khẩu không đúng",
         });
@@ -489,6 +486,7 @@ router.post(
 
     req.session.user = {
       id: user.id,
+      name: user.name,
       email: user.email,
       role: roleName,
     };
@@ -501,6 +499,7 @@ router.post(
       message: "Đăng nhập thành công",
       user: {
         id: user.id,
+        name: user.name,
         email: user.email,
         role: roleName,
       },

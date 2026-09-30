@@ -1,5 +1,9 @@
 name: CI
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:
@@ -10,9 +14,21 @@ on:
       - main
 
 jobs:
+  security-scans:
+    name: Security Scans (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Secret Scan
+        uses: zricethezav/gitleaks-action@v2
+
   backend:
     name: Backend CI (Node.js)
     runs-on: ubuntu-latest
+    needs: security-scans
 
     services:
       postgres:
@@ -31,6 +47,7 @@ jobs:
 
     env:
       DATABASE_URL: postgres://postgres:postgres123@localhost:5433/construction_db_test
+      SESSION_SECRET: ci-test-secret
 
     defaults:
       run:
@@ -43,9 +60,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
+
+      - name: NPM Audit
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Lint
         run: npm run lint
@@ -63,14 +85,13 @@ jobs:
         run: |
           npm run start &
           sleep 5
-          curl -f http://localhost:3000/api/auth/me || true
+          curl -f http://localhost:3000/ready
+          curl -f http://localhost:3000/health
 
-  # =========================================================================
-  # Frontend CI
-  # =========================================================================
   frontend:
     name: Frontend CI (Node.js)
     runs-on: ubuntu-latest
+    needs: security-scans
     defaults:
       run:
         working-directory: ./frontend
@@ -81,23 +102,25 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: NPM Audit
+        run: npm audit --omit=dev --audit-level=high
       - name: Lint
         run: npm run lint
+      - name: Typecheck
+        run: npx tsc --noEmit
       - name: Build
         run: npm run build
       - name: Test
         run: npm test
 
-  # =========================================================================
-  # T-03: Build Docker image và push lên GitHub Container Registry (ghcr.io)
-  # Chỉ chạy khi push vào main VÀ job backend (lint/build/test) đã pass.
-  # =========================================================================
   build-image:
     name: Build & Push Docker Image
     runs-on: ubuntu-latest
-    needs: backend
+    needs: [backend, frontend]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
@@ -123,12 +146,6 @@ jobs:
             ghcr.io/${{ github.repository }}-backend:${{ github.sha }}
             ghcr.io/${{ github.repository }}-backend:latest
 
-  # =========================================================================
-  # T-03: Deploy lên staging server qua SSH
-  # Dùng deploy.sh (blue/green rollback) đã có sẵn trong deploy/
-  # Cần cấu hình GitHub Secrets: STAGING_HOST, STAGING_USER, STAGING_SSH_KEY,
-  # STAGING_DEPLOY_PATH
-  # =========================================================================
   deploy:
     name: Deploy to Staging
     runs-on: ubuntu-latest
@@ -144,12 +161,6 @@ jobs:
           if [ -z "$STAGING_HOST" ]; then
             echo "has_secrets=false" >> $GITHUB_OUTPUT
             echo "⚠️ STAGING_HOST chưa được cấu hình."
-            echo "➡️ Để bật auto-deploy, vào repo Settings → Secrets → Actions và thêm:"
-            echo "   - STAGING_HOST (IP server staging)"
-            echo "   - STAGING_USER (SSH username)"
-            echo "   - STAGING_SSH_KEY (SSH private key)"
-            echo "   - STAGING_DEPLOY_PATH (đường dẫn thư mục deploy trên server)"
-            echo ""
             echo "📦 Image đã được push thành công lên ghcr.io — sẵn sàng deploy khi có server."
           else
             echo "has_secrets=true" >> $GITHUB_OUTPUT
@@ -158,7 +169,6 @@ jobs:
 
       - name: Deploy via SSH
         if: steps.check-secrets.outputs.has_secrets == 'true'
-        continue-on-error: true
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.STAGING_HOST }}
@@ -166,14 +176,6 @@ jobs:
           key: ${{ secrets.STAGING_SSH_KEY }}
           script: |
             cd ${{ secrets.STAGING_DEPLOY_PATH }}
-
-            # Login vào ghcr.io để pull image private (nếu repo private)
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-            # Chạy deploy.sh blue/green với image mới (tag = commit SHA)
-            # Script sẽ: pull image → start container mới → healthcheck →
-            # nếu OK: xóa cũ, rename mới; nếu FAIL: rollback, giữ bản cũ
+            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             chmod +x deploy.sh
             ./deploy.sh "ghcr.io/${{ github.repository }}-backend:${{ github.sha }}"
-
-

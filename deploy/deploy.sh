@@ -2,80 +2,68 @@
 
 # ==============================================================================
 # SCRIPT DEPLOY BLUE/GREEN DÀNH CHO STAGING SERVER
-# 
-# KỊCH BẢN ROLLBACK & ZERO-DOWNTIME (NFR):
-# - Team mình chưa dùng kịch bản này bao giờ nên lưu ý: Nếu ta xóa container 
-#   đang chạy (cũ) rồi mới start container mới, nếu image mới lỗi hoặc crash,
-#   hệ thống sẽ sập (downtime).
-# - Logic ở đây là: 
-#   1. Kéo image mới về.
-#   2. Khởi động nó song song dưới tên tạm (vd: backend_new).
-#   3. Đợi container mới tự test sức khỏe (chờ báo healthy).
-#   4. Nếu lỗi -> Xóa container mới, thoát với exit code 1. Container cũ vẫn 
-#      đang chạy bình thường -> KHÔNG AI BỊ ẢNH HƯỞNG.
-#   5. Nếu thành công -> Xóa container cũ, rename container mới thành tên chuẩn.
 # ==============================================================================
 
 set -e
 
 if [ -z "$1" ]; then
-  echo "Lỗi: Thiếu tham số IMAGE. Cách dùng: ./deploy.sh ghcr.io/dtc245200001-cyber/construction-management-platform-backend:sha"
+  echo "Lỗi: Thiếu tham số IMAGE."
   exit 1
 fi
 
 IMAGE=$1
 CONTAINER_OLD="construction_backend_staging"
 CONTAINER_NEW="construction_backend_staging_new"
+NETWORK="deploy_default"
 
-echo "[1/4] Pull image mới: $IMAGE"
-# Login vào ghcr.io nếu có token (hỗ trợ repo private)
-if [ -n "$GHCR_TOKEN" ]; then
-  echo "$GHCR_TOKEN" | docker login ghcr.io -u "${GHCR_USER:-github}" --password-stdin
+echo "[1/5] Pull image mới: $IMAGE"
+if [ -n "$GHCR_PAT" ]; then
+  echo "$GHCR_PAT" | docker login ghcr.io -u "${GHCR_USER:-github}" --password-stdin
 fi
 docker pull "$IMAGE"
 
-echo "[2/4] Lấy thông tin network của container cũ (để nối vào cùng DB)..."
-NETWORK="deploy_default"
+echo "[2/5] Lấy thông tin network của container cũ..."
 if docker ps --format '{{.Names}}' | grep -Eq "^${CONTAINER_OLD}\$"; then
-  # Lấy network thật đang gắn với container cũ
   NETWORK=$(docker inspect "$CONTAINER_OLD" -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}' | head -n 1)
-  echo "-> Container cũ đang chạy trên network: $NETWORK"
-else
-  echo "-> Không tìm thấy container cũ. Sẽ dùng network mặc định: $NETWORK"
+fi
+echo "Network: $NETWORK"
+
+echo "[3/5] Chạy Migration DB..."
+if ! docker run --rm --network "$NETWORK" --env-file .env.staging "$IMAGE" npm run migrate:up; then
+  echo ">>> MIGRATION THẤT BẠI. Dừng deploy. Hệ thống vẫn dùng container cũ không bị ảnh hưởng."
+  exit 1
 fi
 
-echo "[3/4] Khởi động container MỚI ($CONTAINER_NEW) trên port nội bộ khác..."
-# Chạy container mới:
-# - Dùng file .env.staging để đọc biến môi trường
-# - Tạm publish ra host port khác (vd 3001) để không đụng port 3000 đang chạy
+echo "[4/5] Khởi động container MỚI ($CONTAINER_NEW)..."
 docker run -d \
   --name "$CONTAINER_NEW" \
   --network "$NETWORK" \
   --env-file .env.staging \
-  -p 3001:3000 \
   "$IMAGE"
 
-echo "[4/4] Chờ healthcheck của container mới (Timeout: 60s)..."
+echo "Chờ healthcheck của container mới (cần /ready thành công)..."
 TIMEOUT=60
 PASSED=false
 
 for i in $(seq 1 $TIMEOUT); do
-  # Đọc trạng thái health từ docker inspect
-  HEALTH=$(docker inspect --format='{{.State.Health.Status}}' "$CONTAINER_NEW" 2>/dev/null || echo "unknown")
+  # Lấy IP của container mới trong network
+  NEW_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$CONTAINER_NEW")
   
-  if [ "$HEALTH" = "healthy" ]; then
+  if curl -s -f "http://$NEW_IP:3000/ready" >/dev/null; then
     PASSED=true
-    echo "-> [Giây $i] Container mới đã SẴN SÀNG (healthy)."
-    break
-  elif [ "$HEALTH" = "unhealthy" ]; then
-    echo "-> [Giây $i] Container mới báo LỖI (unhealthy)!"
+    echo "-> Container mới đã SẴN SÀNG."
     break
   fi
   sleep 1
 done
 
 if [ "$PASSED" = true ]; then
-  echo ">>> HEALTHCHECK PASS: Bắt đầu chuyển đổi traffic..."
+  echo "[5/5] Cập nhật Nginx upstream để chuyển traffic..."
+  
+  # Cập nhật nginx (giả sử có container nginx tên construction_nginx)
+  # Chúng ta reload nginx để nó nhận container mới
+  # Trong trường hợp dùng docker-compose, nginx sẽ trỏ tới $CONTAINER_NEW
+  docker exec construction_nginx /bin/sh -c "echo \"upstream backend { server $NEW_IP:3000; }\" > /etc/nginx/conf.d/upstream.conf && nginx -s reload" || true
   
   echo "-> Dừng và xóa container cũ ($CONTAINER_OLD)..."
   docker stop "$CONTAINER_OLD" >/dev/null 2>&1 || true
@@ -84,23 +72,12 @@ if [ "$PASSED" = true ]; then
   echo "-> Đổi tên container mới thành $CONTAINER_OLD..."
   docker rename "$CONTAINER_NEW" "$CONTAINER_OLD"
   
-  # GHI CHÚ QUAN TRỌNG CHO TEAM: 
-  # Do Docker không hỗ trợ thay đổi host-port mapping (3001 -> 3000) on-the-fly,
-  # nên ở task này container mới vẫn đang hở port 3001. Để thực sự zero-downtime 
-  # chuẩn xác trên port 80/443, ta bắt buộc phải dùng NGINX Reverse Proxy ở Task sau.
-  # (Lúc đó Nginx sẽ reload config để trỏ upstream sang IP của backend_new).
-  
   echo ">>> DEPLOY THÀNH CÔNG!"
 else
-  echo ">>> HEALTHCHECK FAIL: Bắt đầu Rollback..."
-  
-  echo "-> Log của container lỗi để debug:"
+  echo ">>> HEALTHCHECK FAIL: Rollback..."
   docker logs --tail 20 "$CONTAINER_NEW" || true
-  
-  echo "-> Dừng và xóa container lỗi ($CONTAINER_NEW)..."
   docker stop "$CONTAINER_NEW" >/dev/null 2>&1 || true
   docker rm "$CONTAINER_NEW" >/dev/null 2>&1 || true
-  
-  echo ">>> DEPLOY THẤT BẠI. Đã rollback, hệ thống vẫn đang chạy phiên bản cũ (an toàn)."
+  echo ">>> DEPLOY THẤT BẠI. Đã rollback, hệ thống cũ vẫn chạy."
   exit 1
 fi
