@@ -1,393 +1,418 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import LogoutButton from '../components/LogoutButton';
+import React, { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import api from "../lib/api";
+import {
+  Home,
+  Network,
+  TrendingUp,
+  Camera,
+  FileText,
+  CheckSquare,
+  Wallet,
+  Users,
+  Settings,
+  LogOut,
+  RefreshCw,
+  Bell,
+  Plus,
+  ChevronRight,
+  ChevronDown,
+  CalendarDays,
+  Building2,
+  UsersRound,
+  ClipboardList,
+  AlertTriangle,
+  Info,
+  AlertCircle,
+  ShieldCheck,
+  Zap,
+  HeartHandshake,
+  Pencil,
+} from "lucide-react";
 
-const LandingPage = ({ user, setUser }) => {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [openDropdown, setOpenDropdown] = useState(null);
-  
-  const [locationLabel, setLocationLabel] = useState('Tất cả địa điểm');
-  const [typeLabel, setTypeLabel] = useState('Tất cả loại dự án');
+import heroImage from "../assets/hero-site.jpg";
 
-  const navigate = useNavigate();
+const navItems = [
+  { label: "Tổng quan", icon: Home, active: true },
+  { label: "Cơ cấu công việc (WBS)", icon: Network },
+  { label: "Tiến độ & Đường găng", icon: TrendingUp },
+  { label: "Hiện trường & Giao việc", icon: Camera },
+  { label: "Nhật ký thi công", icon: FileText },
+  { label: "Nghiệm thu khối lượng", icon: CheckSquare },
+  { label: "Thanh toán & Chi phí", icon: Wallet },
+  { label: "Thành viên & Tổ đội", icon: Users },
+];
 
-  const toggleDropdown = (e, name) => {
-    e.stopPropagation();
-    setOpenDropdown(openDropdown === name ? null : name);
-  };
+const summary = [
+  { icon: Building2, label: "Dự án An Phú", sub: "Tổng quan công trình", strong: true },
+  { icon: CalendarDays, label: "Ngày bắt đầu", value: "25/09/2026" },
+  { icon: UsersRound, label: "Số lượng nhân sự", value: "5 người" },
+  { icon: CalendarDays, label: "Thời gian sprint", value: "1 tuần" },
+];
 
-  const handleDocumentClick = () => {
-    setOpenDropdown(null);
-  };
+const tasks = [
+  {
+    code: "CV-02 Ép cọc",
+    team: "Đội nền móng 01",
+    progress: "62%",
+    due: "Ngày 15",
+    status: "GĂNG",
+    tone: "danger"
+  },
+  {
+    code: "CV-03 Đài móng",
+    team: "Đội kết cấu 01",
+    progress: "20%",
+    due: "Ngày 23",
+    status: "GĂNG",
+    tone: "danger"
+  },
+  {
+    code: "CV-07 Điện nước âm sàn",
+    team: "Đội MEP",
+    progress: "40%",
+    due: "Ngày 29",
+    status: "Đúng tiến độ",
+    tone: "success"
+  },
+  {
+    code: "CV-01 Đào hố móng",
+    team: "Đội nền móng 01",
+    progress: "100%",
+    due: "Ngày 5",
+    status: "Chờ nghiệm thu",
+    tone: "warning"
+  },
+];
 
-  React.useEffect(() => {
-    document.addEventListener('click', handleDocumentClick);
-    return () => {
-      document.removeEventListener('click', handleDocumentClick);
-    };
-  }, []);
+const todayWork = [
+  { title: "Móng cọc - Khu A", sub: "Đội nền móng · 3/5", time: "08:00", dot: "bg-info" },
+  { title: "Thi công cột tầng 1", sub: "Đội kết cấu · 2/4", time: "10:30", dot: "bg-warning" },
+  { title: "Nghiệm thu thép D20", sub: "Kỹ sư giám sát · 0/1", time: "14:00", dot: "bg-info" },
+  { title: "Báo cáo tiến độ ngày", sub: "Chỉ huy trưởng · 1/1", time: "16:30", dot: "bg-success" },
+];
 
-  return (
-    <div className="landing-container w-full min-h-screen flex flex-col bg-[#F8FAFC] text-[#111827] font-sans antialiased">
-      {/* 1. HEADER */}
-      <header className="sticky top-0 z-50 bg-white border-b border-[#E5E7EB] h-[72px] flex items-center">
-        <div className="max-w-[1280px] w-full mx-auto px-6 flex justify-between items-center h-full">
-            
-            {/* Logo */}
-            <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/projects')}>
-                <div className="w-[42px] h-[42px] bg-[#1D4ED8] text-white rounded-[10px] flex items-center justify-center shrink-0">
-                    <i className="ph ph-buildings text-[28px]"></i>
-                </div>
-                <div className="hidden sm:block">
-                    <h1 className="text-[15px] font-bold text-[#1E3A8A] leading-[1.2] tracking-tight uppercase">NỀN TẢNG THI CÔNG<br/>CÔNG TRÌNH</h1>
-                    <p className="text-[11px] text-[#6B7280] leading-tight mt-0.5">Kết nối nhà thầu – Chủ đầu tư – Kiến tạo tương lai</p>
-                </div>
-            </div>
+const risks = [
+  {
+    icon: AlertTriangle,
+    title: "Mưa lớn 48h tới",
+    sub: "Có thể ảnh hưởng thi công ngoài trời",
+    tone: "danger"
+  },
+  {
+    icon: AlertCircle,
+    title: "Chậm vật tư thép D20",
+    sub: "Dự kiến giao trễ 2 ngày",
+    tone: "warning"
+  },
+  {
+    icon: Info,
+    title: "Thiếu nhân công cố pha",
+    sub: "Còn thiếu 3 người",
+    tone: "info"
+  },
+];
 
-            {/* Mobile Menu Toggle */}
-            <button 
-                className="lg:hidden text-[#6B7280] hover:text-[#1D4ED8] transition-colors p-2" 
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                aria-label="Menu"
-            >
-                <i className="ph ph-list text-2xl"></i>
-            </button>
-
-            {/* Desktop Nav */}
-            <nav className="hidden lg:flex items-center gap-9 h-full">
-                <a href="#" className="text-[#1D4ED8] font-semibold text-[14px] border-b-2 border-[#1D4ED8] h-[72px] flex items-center">Trang chủ</a>
-                <a href="#" onClick={(e) => { e.preventDefault(); navigate('/projects'); }} className="text-[#111827] font-medium text-[14px] hover:text-[#1D4ED8] transition-colors h-[72px] flex items-center">Quản lý Dự án</a>
-                <a href="#" className="text-[#111827] font-medium text-[14px] hover:text-[#1D4ED8] transition-colors h-[72px] flex items-center">Nhà thầu</a>
-                <a href="#" className="text-[#111827] font-medium text-[14px] hover:text-[#1D4ED8] transition-colors h-[72px] flex items-center">Vật tư - Thiết bị</a>
-                <a href="#" className="text-[#111827] font-medium text-[14px] hover:text-[#1D4ED8] transition-colors h-[72px] flex items-center">Tin tức</a>
-                <a href="#" className="text-[#111827] font-medium text-[14px] hover:text-[#1D4ED8] transition-colors h-[72px] flex items-center">Liên hệ</a>
-            </nav>
-
-            {/* Right Actions */}
-            <div className="hidden lg:flex items-center gap-3">
-                <button className="w-10 h-10 flex items-center justify-center text-[#6B7280] hover:text-[#1D4ED8] transition-colors" aria-label="Search">
-                    <i className="ph ph-magnifying-glass text-[20px]"></i>
-                </button>
-                <div className="px-[18px] py-[9px] border border-[#E5E7EB] text-[#111827] font-medium text-[14px] rounded-full flex items-center gap-2">
-                    <i className="ph ph-user text-[18px]"></i>
-                    {user?.email || 'User'}
-                </div>
-                <LogoutButton setUser={setUser} />
-            </div>
-        </div>
-
-        {/* Mobile Menu */}
-        {mobileMenuOpen && (
-            <div className="absolute top-[72px] left-0 w-full bg-white border-b border-[#E5E7EB] shadow-lg lg:hidden flex flex-col z-40">
-                <a href="#" className="px-6 py-4 text-[#1D4ED8] font-medium border-l-4 border-[#1D4ED8] bg-blue-50/50">Trang chủ</a>
-                <a href="#" onClick={(e) => { e.preventDefault(); navigate('/projects'); }} className="px-6 py-4 text-[#111827] font-medium hover:bg-gray-50 border-l-4 border-transparent">Quản lý Dự án</a>
-                <a href="#" className="px-6 py-4 text-[#111827] font-medium hover:bg-gray-50 border-l-4 border-transparent">Nhà thầu</a>
-                <a href="#" className="px-6 py-4 text-[#111827] font-medium hover:bg-gray-50 border-l-4 border-transparent">Vật tư - Thiết bị</a>
-                <div className="p-6 flex flex-col gap-3 bg-gray-50 border-t border-[#E5E7EB]">
-                    <div className="w-full py-2.5 border border-[#E5E7EB] bg-white text-[#111827] font-medium rounded-full flex items-center justify-center gap-2">
-                        <i className="ph ph-user text-[18px]"></i> {user?.email || 'User'}
-                    </div>
-                    <div className="w-full">
-                        <LogoutButton setUser={setUser} />
-                    </div>
-                </div>
-            </div>
-        )}
-      </header>
-
-      {/* 2. HERO BANNER */}
-      <section className="relative w-full h-[460px] flex items-center overflow-hidden bg-[#0F1E3D] shrink-0">
-          <div className="absolute inset-0 z-0">
-              <img src="https://images.unsplash.com/photo-1541888086225-f6740f9e04f0?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80" alt="Construction crane at sunset" className="w-full h-full object-cover object-center" />
-              <div className="absolute inset-0 bg-gradient-to-r from-[#0F1E3D] via-[rgba(15,30,61,0.8)] to-transparent"></div>
-          </div>
-
-          <div className="relative z-10 max-w-[1280px] w-full mx-auto px-6">
-              <div className="max-w-[600px] mb-9">
-                  <h2 className="text-white text-[42px] font-bold leading-[1.25] mb-5 tracking-tight">
-                      Tìm kiếm, kết nối và triển khai<br/>các dự án xây dựng
-                  </h2>
-                  <p className="text-[#E5EAF5] text-[15.5px] leading-[1.6] max-w-[560px]">
-                      Nền tảng giúp các nhà thầu, chủ đầu tư và đối tác trong ngành xây dựng dễ dàng tìm kiếm dự án, trao đổi, hợp tác và phát triển bền vững.
-                  </p>
-              </div>
-
-              {/* SEARCH BAR */}
-              <div className="bg-white rounded-[12px] max-w-[800px] p-[8px] flex flex-col md:flex-row items-stretch relative z-20" style={{ boxShadow: '0 10px 30px rgba(0, 0, 0, 0.15)' }}>
-                  {/* Search Input */}
-                  <div className="flex-1 flex items-center px-4 py-2.5">
-                      <i className="ph ph-magnifying-glass text-gray-400 text-[20px] mr-3"></i>
-                      <input type="text" placeholder="Tìm kiếm dự án, nhà thầu, vật tư..." className="w-full bg-transparent border-none outline-none text-[#111827] placeholder-gray-400 text-[14.5px] font-medium" />
-                  </div>
-                  
-                  {/* Divider */}
-                  <div className="hidden md:block w-px bg-gray-200 my-2"></div>
-                  
-                  {/* Location Dropdown */}
-                  <div className="relative w-full md:w-[200px]">
-                      <button 
-                          className="w-full h-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition-colors rounded-lg group"
-                          onClick={(e) => toggleDropdown(e, 'location')}
-                      >
-                          <div className="flex items-center text-[#6B7280]">
-                              <i className="ph ph-map-pin text-[20px] mr-2 group-hover:text-[#1D4ED8] transition-colors"></i>
-                              <span className="text-[14.5px] font-medium text-[#111827] truncate">{locationLabel}</span>
-                          </div>
-                          <i className="ph ph-caret-down text-gray-400 text-[14px]"></i>
-                      </button>
-                      {openDropdown === 'location' && (
-                          <div className="absolute top-[calc(100%+8px)] left-0 w-full bg-white rounded-[10px] shadow-lg border border-[#E5E7EB] py-1.5 z-50">
-                              {['Tất cả địa điểm', 'Hà Nội', 'TP. Hồ Chí Minh', 'Đà Nẵng'].map(loc => (
-                                  <a key={loc} href="#" onClick={(e) => { e.preventDefault(); setLocationLabel(loc); setOpenDropdown(null); }} className="block px-4 py-2 text-[14px] hover:bg-blue-50 text-[#111827] hover:text-[#1D4ED8]">{loc}</a>
-                              ))}
-                          </div>
-                      )}
-                  </div>
-
-                  {/* Divider */}
-                  <div className="hidden md:block w-px bg-gray-200 my-2"></div>
-
-                  {/* Project Type Dropdown */}
-                  <div className="relative w-full md:w-[210px]">
-                      <button 
-                          className="w-full h-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition-colors rounded-lg group"
-                          onClick={(e) => toggleDropdown(e, 'type')}
-                      >
-                          <div className="flex items-center text-[#6B7280]">
-                              <i className="ph ph-calendar-blank text-[20px] mr-2 group-hover:text-[#1D4ED8] transition-colors"></i>
-                              <span className="text-[14.5px] font-medium text-[#111827] truncate">{typeLabel}</span>
-                          </div>
-                          <i className="ph ph-caret-down text-gray-400 text-[14px]"></i>
-                      </button>
-                      {openDropdown === 'type' && (
-                          <div className="absolute top-[calc(100%+8px)] left-0 w-full bg-white rounded-[10px] shadow-lg border border-[#E5E7EB] py-1.5 z-50">
-                              {['Tất cả loại dự án', 'Dân dụng', 'Công nghiệp', 'Giao thông'].map(t => (
-                                  <a key={t} href="#" onClick={(e) => { e.preventDefault(); setTypeLabel(t); setOpenDropdown(null); }} className="block px-4 py-2 text-[14px] hover:bg-blue-50 text-[#111827] hover:text-[#1D4ED8]">{t}</a>
-                              ))}
-                          </div>
-                      )}
-                  </div>
-
-                  <button className="bg-[#1D4ED8] text-white font-medium text-[15px] px-[28px] py-[10px] rounded-[10px] hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-sm shrink-0 md:ml-1 mt-2 md:mt-0">
-                      <i className="ph ph-magnifying-glass text-[18px]"></i>
-                      Tìm kiếm
-                  </button>
-              </div>
-          </div>
-      </section>
-
-      {/* 3. FEATURE STRIP */}
-      <section className="bg-white border-b border-[#E5E7EB] min-h-[90px] flex items-center relative z-10 shadow-sm shrink-0">
-          <div className="max-w-[1280px] w-full mx-auto px-6 py-6 lg:py-0">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 divide-y md:divide-y-0 md:divide-x divide-gray-200">
-                  {[
-                      { icon: 'files', title: 'Dự án công trình', sub: 'Đầy đủ thông tin, minh bạch', px: 'px-2 lg:px-4 lg:pl-0' },
-                      { icon: 'users', title: 'Nhà thầu uy tín', sub: 'Chất lượng – Kinh nghiệm', px: 'px-2 lg:px-6' },
-                      { icon: 'handshake', title: 'Hợp tác dễ dàng', sub: 'Kết nối nhanh chóng', px: 'px-2 lg:px-6' },
-                      { icon: 'shield-check', title: 'Đảm bảo an toàn', sub: 'Minh bạch – Bảo mật', px: 'px-2 lg:px-6' },
-                      { icon: 'gear', title: 'Vật tư - Thiết bị', sub: 'Chất lượng, giá tốt', px: 'px-2 lg:px-6' },
-                      { icon: 'headphones', title: 'Hỗ trợ 24/7', sub: 'Luôn đồng hành', px: 'px-2 lg:px-4 lg:pr-0' }
-                  ].map((f, i) => (
-                      <div key={i} className={`flex items-center gap-[14px] py-4 lg:py-[22px] ${f.px}`}>
-                          <div className="w-[44px] h-[44px] rounded-[10px] bg-[#E8EEFB] text-[#1D4ED8] flex items-center justify-center shrink-0">
-                              <i className={`ph ph-${f.icon} text-[24px]`}></i>
-                          </div>
-                          <div>
-                              <h3 className="text-[14px] font-bold text-[#111827] leading-tight mb-1">{f.title}</h3>
-                              <p className="text-[12px] text-[#6B7280] leading-tight">{f.sub}</p>
-                          </div>
-                      </div>
-                  ))}
-              </div>
-          </div>
-      </section>
-
-      {/* 4. MAIN CONTENT */}
-      <main className="py-[48px] bg-transparent flex-grow">
-          <div className="max-w-[1280px] w-full mx-auto px-6 flex flex-col lg:flex-row gap-[24px]">
-              
-              {/* LEFT COLUMN */}
-              <div className="lg:w-[70%]">
-                  <div className="flex justify-between items-end mb-[20px]">
-                      <div className="flex items-center gap-[10px]">
-                          <div className="w-[32px] h-[32px] rounded-[8px] bg-blue-50 text-[#1D4ED8] flex items-center justify-center shrink-0">
-                              <i className="ph ph-buildings text-[18px]"></i>
-                          </div>
-                          <h2 className="text-[20px] font-bold text-[#111827]">Dự án nổi bật</h2>
-                      </div>
-                      <a href="#" className="text-[#1D4ED8] font-medium hover:text-blue-800 transition-colors text-[14px] flex items-center group">
-                          Xem tất cả <i className="ph ph-arrow-right ml-1 group-hover:translate-x-1 transition-transform"></i>
-                      </a>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-[24px]">
-                      {[
-                          { img: '1541888086225-f6740f9e04f0', status: 'Đang thi công', statusColor: '#16A34A', title: 'Cầu vượt sông Hồng', loc: 'Hà Nội', start: '01/2024', end: '12/2026' },
-                          { img: '1503387762-592deb58ef4e', status: 'Chuẩn bị đầu tư', statusColor: '#3B82F6', title: 'Khu đô thị Vinhomes Green City', loc: 'TP. Hồ Chí Minh', start: '06/2025', end: '12/2030' },
-                          { img: '1581094794329-c8112a89af12', status: 'Đang đấu thầu', statusColor: '#F59E0B', title: 'Nhà máy sản xuất linh kiện điện tử', loc: 'Bắc Ninh', start: '08/2025', end: '12/2027' }
-                      ].map((p, i) => (
-                          <div key={i} className="bg-white rounded-[12px] border border-[#E5E7EB] overflow-hidden hover:border-gray-300 transition-all group flex flex-col cursor-pointer" style={{ boxShadow: '0 4px 10px rgba(0, 0, 0, 0.06)' }} onClick={() => navigate('/projects')}>
-                              <div className="relative h-[170px] w-full overflow-hidden bg-gray-100 shrink-0">
-                                  <img src={`https://images.unsplash.com/photo-${p.img}?w=600&q=80`} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                                  <div className="absolute top-[12px] left-[12px] px-[12px] py-[4px] text-white text-[11px] font-bold rounded-full shadow-sm" style={{ backgroundColor: p.statusColor }}>
-                                      {p.status}
-                                  </div>
-                              </div>
-                              <div className="p-[16px] flex flex-col flex-grow">
-                                  <h3 className="font-bold text-[#111827] text-[16px] leading-[1.3] mb-[16px] group-hover:text-[#1D4ED8] transition-colors" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                                      {p.title}
-                                  </h3>
-                                  <div className="flex flex-col gap-[10px] mt-auto mb-[20px]">
-                                      <div className="flex items-start gap-2 text-[13px] text-[#6B7280]">
-                                          <i className="ph ph-map-pin text-[16px] shrink-0 mt-[2px]"></i>
-                                          <span className="leading-tight">{p.loc}</span>
-                                      </div>
-                                      <div className="flex items-start gap-2 text-[13px] text-[#6B7280]">
-                                          <i className="ph ph-calendar-blank text-[16px] shrink-0 mt-[2px]"></i>
-                                          <span className="leading-tight">Khởi công: {p.start}</span>
-                                      </div>
-                                      <div className="flex items-start gap-2 text-[13px] text-[#6B7280]">
-                                          <i className="ph ph-calendar-check text-[16px] shrink-0 mt-[2px]"></i>
-                                          <span className="leading-tight">Dự kiến hoàn thành: {p.end}</span>
-                                      </div>
-                                  </div>
-                                  <button onClick={(e) => { e.stopPropagation(); navigate('/projects'); }} className="mt-auto w-full py-[8px] border border-[#1D4ED8] text-[#1D4ED8] font-semibold text-[13px] rounded-[6px] text-center hover:bg-blue-50 transition-colors flex justify-center items-center gap-[6px]">
-                                      Xem chi tiết <i className="ph ph-arrow-right font-bold"></i>
-                                  </button>
-                              </div>
-                          </div>
-                      ))}
-                  </div>
-              </div>
-
-              {/* RIGHT COLUMN */}
-              <div className="lg:w-[30%] flex flex-col gap-[24px]">
-                  
-                  {/* CTA Card */}
-                  <div className="relative bg-gradient-to-br from-[#1D4ED8] to-[#1E3A8A] rounded-[14px] overflow-hidden p-[24px] group" style={{ boxShadow: '0 4px 10px rgba(0, 0, 0, 0.06)' }}>
-                      <div className="absolute inset-y-0 right-0 w-[55%] opacity-40 mix-blend-overlay">
-                          <img src="https://images.unsplash.com/photo-1504307651254-35680f356f27?w=400&q=80" alt="Construction worker" className="w-full h-full object-cover" style={{ maskImage: 'linear-gradient(to right, transparent 0%, black 100%)', WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 100%)' }} />
-                      </div>
-                      
-                      <div className="relative z-10 w-[70%]">
-                          <h3 className="text-white text-[18px] font-bold mb-[8px]">Bạn là nhà thầu?</h3>
-                          <p className="text-white/90 text-[13.5px] leading-relaxed mb-[20px]">
-                              Khám phá các tính năng quản lý dự án dành riêng cho bạn.
-                          </p>
-                          <button onClick={() => navigate('/projects')} className="inline-flex px-[16px] py-[8px] bg-white text-[#1D4ED8] font-semibold text-[13px] rounded-full shadow-sm hover:bg-gray-100 transition-colors items-center gap-[6px]">
-                              Quản lý ngay <i className="ph ph-arrow-right font-bold"></i>
-                          </button>
-                      </div>
-                  </div>
-
-                  {/* News Card */}
-                  <div className="border border-[#E5E7EB] rounded-[14px] bg-white p-[16px]" style={{ boxShadow: '0 4px 10px rgba(0, 0, 0, 0.06)' }}>
-                      <div className="flex justify-between items-center mb-[16px]">
-                          <h3 className="font-bold text-[#111827] text-[16px] flex items-center gap-2">
-                              <i className="ph ph-newspaper text-[20px] text-[#1D4ED8]"></i> Tin tức mới nhất
-                          </h3>
-                          <a href="#" className="text-[#1D4ED8] text-[13px] font-medium hover:underline flex items-center group">
-                              Xem tất cả <i className="ph ph-arrow-right ml-1 group-hover:translate-x-1 transition-transform"></i>
-                          </a>
-                      </div>
-                      
-                      <div className="flex flex-col divide-y divide-gray-100">
-                          {[
-                              { img: '1541888086225-f6740f9e04f0', title: 'Ngành xây dựng Việt Nam tiếp tục tăng trưởng trong năm 2025', date: '15/08/2025' },
-                              { img: '1503387762-592deb58ef4e', title: 'Những xu hướng công nghệ mới trong thi công công trình', date: '10/08/2025' },
-                              { img: '1581094794329-c8112a89af12', title: 'Hội thảo kết nối nhà thầu và chủ đầu tư năm 2025', date: '05/08/2025' }
-                          ].map((n, i) => (
-                              <a key={i} href="#" className="flex gap-[12px] py-[12px] group hover:bg-gray-50 -mx-2 px-2 rounded-lg transition-colors">
-                                  <img src={`https://images.unsplash.com/photo-${n.img}?w=100&q=80`} alt="News" className="w-[56px] h-[56px] rounded-[8px] object-cover shrink-0" />
-                                  <div className="flex flex-col justify-center">
-                                      <h4 className="font-bold text-[#111827] text-[13px] leading-[1.4] group-hover:text-[#1D4ED8] transition-colors mb-[4px]" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                                          {n.title}
-                                      </h4>
-                                      <span className="text-[12px] text-[#6B7280]">
-                                          {n.date}
-                                      </span>
-                                  </div>
-                              </a>
-                          ))}
-                      </div>
-                  </div>
-              </div>
-          </div>
-      </main>
-
-      {/* 5. FOOTER */}
-      <footer className="bg-[#0F1E3D] py-[48px] shrink-0 mt-auto">
-          <div className="max-w-[1280px] w-full mx-auto px-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-y-10 lg:gap-[30px]">
-              
-              {/* Col 1 */}
-              <div className="lg:col-span-2 pr-4">
-                  <div className="flex items-center gap-[12px] mb-[20px]">
-                      <div className="w-[42px] h-[42px] rounded-[10px] flex items-center justify-center shrink-0 border border-white/20">
-                          <i className="ph ph-buildings text-white text-[28px]"></i>
-                      </div>
-                      <div>
-                          <h2 className="text-[15px] font-bold text-white leading-[1.2] tracking-tight uppercase">NỀN TẢNG THI CÔNG<br/>CÔNG TRÌNH</h2>
-                      </div>
-                  </div>
-                  <p className="text-[13px] text-[#AEB9CC] leading-relaxed">
-                      © 2025 Nền tảng thi công công trình. Tất cả quyền được bảo lưu.
-                  </p>
-              </div>
-
-              {/* Col 2 */}
-              <div>
-                  <h4 className="text-white font-bold mb-[16px] text-[14px]">Về chúng tôi</h4>
-                  <ul className="flex flex-col gap-[12px]">
-                      <li><a href="#" className="text-[13px] text-[#AEB9CC] hover:text-white transition-colors">Giới thiệu</a></li>
-                      <li><a href="#" className="text-[13px] text-[#AEB9CC] hover:text-white transition-colors">Điều khoản sử dụng</a></li>
-                      <li><a href="#" className="text-[13px] text-[#AEB9CC] hover:text-white transition-colors">Chính sách bảo mật</a></li>
-                  </ul>
-              </div>
-
-              {/* Col 3 */}
-              <div>
-                  <h4 className="text-white font-bold mb-[16px] text-[14px]">Hỗ trợ</h4>
-                  <ul className="flex flex-col gap-[12px]">
-                      <li><a href="#" className="text-[13px] text-[#AEB9CC] hover:text-white transition-colors">Hướng dẫn sử dụng</a></li>
-                      <li><a href="#" className="text-[13px] text-[#AEB9CC] hover:text-white transition-colors">Câu hỏi thường gặp</a></li>
-                      <li><a href="#" className="text-[13px] text-[#AEB9CC] hover:text-white transition-colors">Liên hệ</a></li>
-                  </ul>
-              </div>
-
-              {/* Col 4 & 5 */}
-              <div className="flex flex-col gap-[32px]">
-                  <div>
-                      <h4 className="text-white font-bold mb-[16px] text-[14px]">Kết nối với chúng tôi</h4>
-                      <div className="flex gap-[12px]">
-                          <a href="#" className="w-[36px] h-[36px] rounded-full bg-[#1e325c] hover:bg-[#1D4ED8] flex items-center justify-center text-white transition-colors">
-                              <i className="ph ph-facebook-logo text-[18px]"></i>
-                          </a>
-                          <a href="#" className="w-[36px] h-[36px] rounded-full bg-[#1e325c] hover:bg-[#1D4ED8] flex items-center justify-center text-white transition-colors">
-                              <i className="ph ph-youtube-logo text-[18px]"></i>
-                          </a>
-                          <a href="#" className="w-[36px] h-[36px] rounded-full bg-[#1e325c] hover:bg-[#1D4ED8] flex items-center justify-center text-white transition-colors">
-                              <i className="ph ph-linkedin-logo text-[18px]"></i>
-                          </a>
-                          <a href="#" className="w-[36px] h-[36px] rounded-full bg-[#1e325c] hover:bg-[#1D4ED8] flex items-center justify-center text-white transition-colors">
-                              <i className="ph ph-chat-circle-dots text-[18px]"></i>
-                          </a>
-                      </div>
-                  </div>
-                  <div>
-                      <h4 className="text-white font-bold mb-[8px] text-[14px]">Đăng ký nhận tin</h4>
-                      <p className="text-[13px] text-[#AEB9CC] mb-[12px]">Nhận thông tin dự án mới nhất qua email</p>
-                      <div className="flex h-[40px]">
-                          <input type="email" placeholder="Nhập email của bạn" className="bg-white text-[#111827] border-none outline-none px-[12px] text-[13px] rounded-l-[4px] w-full placeholder-gray-400 focus:ring-2 focus:ring-[#1D4ED8]" />
-                          <button className="bg-[#1D4ED8] hover:bg-blue-600 text-white px-[16px] text-[13px] font-semibold rounded-r-[4px] transition-colors shrink-0">
-                              Đăng ký
-                          </button>
-                      </div>
-                  </div>
-              </div>
-          </div>
-      </footer>
-    </div>
-  );
+const toneChip = {
+  danger: "bg-danger-soft text-danger-foreground border-danger/25",
+  warning: "bg-warning-soft text-warning-foreground border-warning/30",
+  success: "bg-success-soft text-success-foreground border-success/25",
+  info: "bg-info-soft text-info-foreground border-info/25",
 };
 
-export default LandingPage;
+const toneIcon = {
+  danger: "bg-danger-soft text-danger",
+  warning: "bg-warning-soft text-warning",
+  success: "bg-success-soft text-success",
+  info: "bg-info-soft text-info",
+};
+
+export default function LandingPage({ user, setUser }) {
+  return (
+
+        <main className="grid flex-1 gap-5 p-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+          {/* Left column */}
+          <div className="flex min-w-0 flex-col gap-5">
+            {/* Hero */}
+            <section className="hero-surface relative overflow-hidden rounded-2xl border border-border">
+              <img
+                src={heroImage}
+                alt="Công trường thi công với cẩu tháp"
+                width={1280}
+                height={640}
+                className="absolute right-0 top-0 hidden h-[58%] w-[38%] rounded-tr-2xl object-cover md:block"
+                style={{
+                  maskImage: "linear-gradient(90deg, transparent, #000 35%)",
+                  WebkitMaskImage: "linear-gradient(90deg, transparent, #000 35%)",
+                }}
+              />
+              <div className="relative p-7">
+                <p className="text-lg font-semibold text-info">Xin chào, {user?.name || 'Hương Lan'} 👋</p>
+                <h1 className="mt-1 text-4xl font-bold tracking-tight">Tổng quan dự án</h1>
+                <p className="mt-2 max-w-md text-sm text-muted-foreground">
+                  Theo dõi tiến độ, nghiệm thu và tình hình thi công công trình một cách nhanh chóng
+                  và chính xác.
+                </p>
+
+                <div className="card-surface mt-6 grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4">
+                  {summary.map((item) => (
+                    <div key={item.label} className="flex items-center gap-3">
+                      <div className="flex size-11 items-center justify-center rounded-xl bg-info-soft text-info">
+                        <item.icon className="size-5" />
+                      </div>
+                      <div className="min-w-0">
+                        {item.strong ? (
+                          <>
+                            <p className="truncate text-sm font-semibold">{item.label}</p>
+                            <p className="truncate text-xs text-muted-foreground">{item.sub}</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-xs text-muted-foreground">{item.label}</p>
+                            <p className="whitespace-nowrap text-sm font-semibold">{item.value}</p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            {/* KPI cards */}
+            <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+              <article className="card-surface p-5">
+                <div className="flex items-start gap-3 [&>div]:min-w-0">
+                  <div className="flex size-11 items-center justify-center rounded-xl bg-info-soft text-info">
+                    <CalendarDays className="size-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-info-foreground">Tiến độ thực tế</p>
+                    <p className="whitespace-nowrap text-2xl font-bold">68%</p>
+                  </div>
+                </div>
+                <p className="mt-4 text-xs text-muted-foreground">
+                  ↘ Kế hoạch 72% · <span className="text-danger-foreground">Chênh −4%</span>
+                </p>
+                <div className="mt-3 h-2 rounded-full bg-muted">
+                  <div className="h-2 w-[68%] rounded-full bg-info" />
+                </div>
+              </article>
+
+              <article className="card-surface bg-danger-soft/60 p-5">
+                <div className="flex items-start gap-3 [&>div]:min-w-0">
+                  <div className="flex size-11 items-center justify-center rounded-xl bg-danger-soft text-danger">
+                    <CalendarDays className="size-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-danger-foreground">Dự kiến hoàn thành</p>
+                    <p className="whitespace-nowrap text-xl font-bold">18/12/2026</p>
+                  </div>
+                </div>
+                <p className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-danger/25 bg-card px-2.5 py-1.5 text-xs text-danger-foreground">
+                  <AlertCircle className="size-3.5" /> Trễ 9 ngày so với kế hoạch gốc
+                </p>
+              </article>
+
+              <article className="card-surface bg-success-soft/50 p-5">
+                <div className="flex items-start gap-3 [&>div]:min-w-0">
+                  <div className="flex size-11 items-center justify-center rounded-xl bg-success text-primary-foreground">
+                    <UsersRound className="size-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-success-foreground">
+                      Công việc đường găng
+                    </p>
+                    <p className="whitespace-nowrap text-2xl font-bold">6 việc</p>
+                  </div>
+                </div>
+                <p className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-warning/30 bg-card px-2.5 py-1.5 text-xs text-warning-foreground">
+                  <AlertCircle className="size-3.5" /> Ưu tiên điều phối nhân lực
+                </p>
+              </article>
+
+              <article className="card-surface bg-warning-soft/50 p-5">
+                <div className="flex items-start gap-3 [&>div]:min-w-0">
+                  <div className="flex size-11 items-center justify-center rounded-xl bg-warning text-primary-foreground">
+                    <ClipboardList className="size-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-warning-foreground">
+                      Nghiệm thu chờ duyệt
+                    </p>
+                    <p className="whitespace-nowrap text-2xl font-bold">5 phiếu</p>
+                  </div>
+                </div>
+                <p className="mt-4 text-xs text-muted-foreground">
+                  2 phiếu quá 24h · chờ thanh toán
+                </p>
+                <p className="text-xl font-bold">1,24 tỷ</p>
+              </article>
+            </section>
+
+            {/* Task table */}
+            <section className="card-surface p-5">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-lg bg-info-soft text-info">
+                  <ClipboardList className="size-5" />
+                </div>
+                <h2 className="text-base font-semibold">
+                  Công việc ưu tiên hôm nay (xếp theo ảnh hưởng đường găng)
+                </h2>
+                <button className="ml-auto inline-flex items-center gap-1 text-sm font-medium text-info">
+                  Xem tất cả <ChevronRight className="size-4" />
+                </button>
+              </div>
+
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full min-w-[720px] text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-muted-foreground">
+                      <th className="px-3 py-3 font-medium">Công việc</th>
+                      <th className="px-3 py-3 font-medium">Đội phụ trách</th>
+                      <th className="px-3 py-3 font-medium">Tiến độ</th>
+                      <th className="px-3 py-3 font-medium">Thời hạn</th>
+                      <th className="px-3 py-3 font-medium">Trạng thái</th>
+                      <th className="px-3 py-3 font-medium">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tasks.map((t) => (
+                      <tr key={t.code} className="border-b border-border/70 last:border-0">
+                        <td className="px-3 py-4">
+                          <span className="flex items-center gap-3 font-medium">
+                            <span
+                              className={[
+                                "h-6 w-1.5 rounded-full",
+                                t.tone === "danger" ? "bg-danger" : "bg-success",
+                              ].join(" ")}
+                            />
+                            {t.code}
+                          </span>
+                        </td>
+                        <td className="px-3 py-4 text-muted-foreground">{t.team}</td>
+                        <td className="px-3 py-4">{t.progress}</td>
+                        <td className="px-3 py-4">{t.due}</td>
+                        <td className="px-3 py-4">
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold ${toneChip[t.tone]}`}
+                          >
+                            ◆ {t.status}
+                          </span>
+                        </td>
+                        <td className="px-3 py-4">
+                          <button className="rounded-lg border border-info/30 px-3 py-1.5 text-xs font-medium text-info transition-colors hover:bg-info-soft">
+                            Cập nhật
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            {/* Footer strip */}
+            <section className="card-surface grid gap-5 p-5 md:grid-cols-3">
+              {[
+                { icon: ShieldCheck, title: "An toàn lao động", sub: "Tối ưu và an toàn" },
+                { icon: Zap, title: "Vận hành ổn định", sub: "Luôn sẵn sàng" },
+                { icon: HeartHandshake, title: "Đồng hành cùng bạn", sub: "Trên mọi công trình" },
+              ].map((item) => (
+                <div key={item.title} className="flex items-center gap-3">
+                  <div className="flex size-11 items-center justify-center rounded-xl bg-info-soft text-info">
+                    <item.icon className="size-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">{item.title}</p>
+                    <p className="text-xs text-muted-foreground">{item.sub}</p>
+                  </div>
+                </div>
+              ))}
+            </section>
+          </div>
+
+          {/* Right column */}
+          <div className="flex flex-col gap-5">
+            <section className="card-surface p-5">
+              <div className="flex items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-lg bg-info-soft text-info">
+                  <CalendarDays className="size-5" />
+                </div>
+                <h2 className="text-base font-semibold">Công việc hôm nay</h2>
+                <button className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-info">
+                  Xem tất cả <ChevronRight className="size-3.5" />
+                </button>
+              </div>
+              <ul className="mt-4 divide-y divide-border">
+                {todayWork.map((w) => (
+                  <li key={w.title} className="flex items-center gap-3 py-3.5">
+                    <span className={`size-2.5 shrink-0 rounded-full ${w.dot}`} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{w.title}</p>
+                      <p className="truncate text-xs text-muted-foreground">{w.sub}</p>
+                    </div>
+                    <span className="text-xs text-muted-foreground">{w.time}</span>
+                    <ChevronRight className="size-4 text-muted-foreground" />
+                  </li>
+                ))}
+              </ul>
+            </section>
+
+            <section className="card-surface p-5">
+              <div className="flex items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-lg bg-info-soft text-info">
+                  <AlertTriangle className="size-5" />
+                </div>
+                <h2 className="text-base font-semibold">Cảnh báo & rủi ro</h2>
+                <button className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-info">
+                  Xem tất cả <ChevronRight className="size-3.5" />
+                </button>
+              </div>
+              <ul className="mt-4 divide-y divide-border">
+                {risks.map((r) => (
+                  <li key={r.title} className="flex items-center gap-3 py-3.5">
+                    <span
+                      className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${toneIcon[r.tone]}`}
+                    >
+                      <r.icon className="size-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{r.title}</p>
+                      <p className="truncate text-xs text-muted-foreground">{r.sub}</p>
+                    </div>
+                    <ChevronRight className="size-4 text-muted-foreground" />
+                  </li>
+                ))}
+              </ul>
+            </section>
+
+            <section className="card-surface p-5">
+              <div className="flex items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-lg bg-info-soft text-info">
+                  <Wallet className="size-5" />
+                </div>
+                <h2 className="text-base font-semibold">Dự toán và thực chi lũy kế</h2>
+                <button className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-info">
+                  Xem chi tiết <ChevronRight className="size-3.5" />
+                </button>
+              </div>
+              <div className="mt-5 space-y-4">
+                <div>
+                  <p className="text-sm font-medium">Dự toán: 100%</p>
+                  <div className="mt-2 h-2.5 rounded-full bg-muted">
+                    <div className="h-2.5 w-full rounded-full bg-info" />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Thực chi: 81%</p>
+                  <div className="mt-2 h-2.5 rounded-full bg-muted">
+                    <div className="h-2.5 w-[81%] rounded-full bg-info" />
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </main>
+  );
+}

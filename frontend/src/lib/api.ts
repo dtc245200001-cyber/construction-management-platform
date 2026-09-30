@@ -10,8 +10,14 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Chuyển hướng về trang đăng nhập nếu 401
-      window.location.href = '/login';
+      // Tránh lặp vô hạn nếu đang ở trang login hoặc request gọi từ /auth/me
+      if (
+        window.location.pathname !== '/login' && 
+        error.config.url !== '/auth/me' && 
+        error.config.url !== '/api/auth/me'
+      ) {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

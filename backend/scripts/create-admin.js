@@ -23,7 +23,7 @@ async function createAdmin() {
 
   try {
     const roleRes = await pool.query(
-      `SELECT id FROM roles WHERE code = 'admin'`
+      `SELECT id FROM roles WHERE name = 'ban_quan_ly'`
     );
     if (roleRes.rows.length === 0) {
       console.error("Admin role not found in database.");

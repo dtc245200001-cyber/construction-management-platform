@@ -11,6 +11,8 @@ import MainLayout from './layouts/MainLayout';
 import LoginPage from './pages/LoginPage';
 import ProjectsPage from './pages/ProjectsPage';
 import LandingPage from './pages/LandingPage';
+import WBSPage from './pages/WBSPage';
+import DashboardLayout from './layouts/DashboardLayout';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -43,20 +45,26 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route element={<AuthLayout />}>
-          <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginPage setUser={setUser} />} />
+          <Route path="/login" element={user ? <Navigate to="/projects" replace /> : <LoginPage setUser={setUser} />} />
         </Route>
         
-        {/* Full screen dashboard layout */}
-        <Route path="/dashboard" element={user ? <LandingPage user={user} setUser={setUser} /> : <Navigate to="/login" replace />} />
+        
+        {/* Project Selection (Full screen) */}
+        <Route path="/projects" element={user ? <ProjectsPage user={user} setUser={setUser} /> : <Navigate to="/login" replace />} />
+
+        {/* Dashboard Layout (With Sidebar) */}
+        <Route element={user ? <DashboardLayout user={user} setUser={setUser} /> : <Navigate to="/login" replace />}>
+          <Route path="/dashboard" element={<LandingPage user={user} setUser={setUser} />} />
+          <Route path="/wbs" element={<WBSPage user={user} />} />
+        </Route>
 
         {/* Existing MainLayout for other pages */}
         <Route element={<MainLayout user={user} setUser={setUser} />}>
-          <Route path="/projects" element={<ProjectsPage />} />
-          {/* Support future dynamic routes like /projects/:id here or in ProjectsPage */}
+          {/* Add other pages here if needed */}
         </Route>
         
         {/* Default route */}
-        <Route path="*" element={<Navigate to={user ? "/dashboard" : "/login"} replace />} />
+        <Route path="*" element={<Navigate to={user ? "/projects" : "/login"} replace />} />
       </Routes>
     </BrowserRouter>
   );

@@ -45,7 +45,9 @@ const LoginPage = ({ setUser }) => {
       navigate('/projects');
     } catch (error) {
       console.error("LOGIN ERROR:", error);
-      if (error.response?.status === 423) {
+      if (error.response?.status === 429) {
+        setMessage(error.response.data.message || "Tài khoản bị tạm khóa 15 phút do nhập sai quá nhiều lần. Vui lòng thử lại sau.");
+      } else if (error.response?.status === 423) {
         setMessage(error.response.data.message || "Tài khoản đang bị khóa tạm thời. Vui lòng thử lại sau.");
       } else if (error.response?.status === 401) {
         setMessage("Email hoặc mật khẩu không đúng");
