@@ -2,3 +2,7 @@ node_modules/
 .env
 npm-debug.log*
 coverage/
+backend/.env
+*.log
+*_output.txt
+dist/
