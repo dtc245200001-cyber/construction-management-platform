@@ -81,14 +81,16 @@ jobs:
         run: npm run migrate:up
 
       - name: Test
-        run: npm test -- --runInBand
+        run: npm test -- --runInBand --forceExit
 
       - name: Smoke Test
         run: |
           npm run start &
+          SERVER_PID=$!
           sleep 5
           curl -f http://localhost:3000/ready
           curl -f http://localhost:3000/health
+          kill $SERVER_PID
 
   frontend:
     name: Frontend CI (Node.js)
