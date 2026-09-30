@@ -109,7 +109,6 @@ describe("projectAccess middleware (1.9)", () => {
       const res = await request(app).get("/test/1");
       expect(res.status).toBe(200);
     });
-    });
   });
 
   describe("createProjectRouter", () => {

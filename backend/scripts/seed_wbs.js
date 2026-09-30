@@ -92,7 +92,7 @@ async function seedWBS() {
     await client.query("DELETE FROM work_items WHERE project_id = $1", [projectId]);
     
     // Insert function
-    async function insertNode(node, parentId = null) {
+    const insertNode = async (node, parentId = null) => {
       const res = await client.query(
         "INSERT INTO work_items (project_id, parent_id, name) VALUES ($1, $2, $3) RETURNING id",
         [projectId, parentId, node.name]
@@ -104,7 +104,7 @@ async function seedWBS() {
           await insertNode(child, newId);
         }
       }
-    }
+    };
     
     console.log("Đang chèn dữ liệu WBS mẫu...");
     for (const root of wbsData) {
