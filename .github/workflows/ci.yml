@@ -59,6 +59,12 @@ jobs:
       - name: Test
         run: npm test -- --runInBand
 
+      - name: Smoke Test
+        run: |
+          npm run start &
+          sleep 5
+          curl -f http://localhost:3000/api/auth/me || true
+
   # =========================================================================
   # Frontend CI
   # =========================================================================
@@ -82,7 +88,7 @@ jobs:
       - name: Build
         run: npm run build
       - name: Test
-        run: echo "No tests for frontend yet"
+        run: npm test
 
   # =========================================================================
   # T-03: Build Docker image và push lên GitHub Container Registry (ghcr.io)
