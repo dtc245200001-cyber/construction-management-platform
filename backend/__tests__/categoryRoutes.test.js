@@ -14,6 +14,8 @@ jest.mock("../middleware/auth", () => (req, res, next) => next());
 jest.mock("../middleware/projectAccess", () => ({
   checkProjectAccess: (req, res, next) => next(),
   requireProjectRoles: () => (req, res, next) => next(),
+  // fix(T-test): defaultDeny phải được mock để router.use() không nhận undefined
+  defaultDeny: (req, res, next) => next(),
 }));
 
 const categoryRoutes = require("../routes/categoryRoutes");

@@ -279,7 +279,11 @@ router.delete(
     const taskCount = await countTasksInSubtree(db, id);
     
     if (taskCount > 0) {
-      const item = await db.query(`SELECT name FROM work_items WHERE id = $1`, [id]);
+      // fix(S-03): lọc theo project_id để không rò rỉ tên hạng mục của dự án khác
+      const item = await db.query(
+        `SELECT name FROM work_items WHERE id = $1 AND project_id = $2`,
+        [id, projectId]
+      );
       const itemName = item.rows[0] ? item.rows[0].name : "Hạng mục";
       return res.status(409).json({ message: `Không thể xóa hạng mục "${itemName}" vì đang có ${taskCount} công việc bên trong.` });
     }

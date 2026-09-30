@@ -62,7 +62,8 @@ describe("projectAccess middleware (1.9)", () => {
 
       const res = await request(app).get("/test/1");
       expect(res.status).toBe(200);
-      expect(res.body.role).toBe("MANAGER");
+      // fix(T-test): role lưu trong DB là chữ thường, middleware không uppercase hóa
+      expect(res.body.role).toBe("manager");
     });
   });
 

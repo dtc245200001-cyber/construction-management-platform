@@ -1,33 +1,34 @@
+// fix(T-test): test phải import module thực, không được cài lại thuật toán trong test
 import { describe, it, expect } from 'vitest'
+import { buildTree } from './buildTree.js'
 
-describe('Tree Logic', () => {
+describe('buildTree utility', () => {
   it('should build a nested tree from flat data', () => {
     const data = [
       { id: 1, name: 'Root', parent_id: null },
       { id: 2, name: 'Child 1', parent_id: 1 },
       { id: 3, name: 'Child 2', parent_id: 1 },
       { id: 4, name: 'Grandchild', parent_id: 2 }
-    ];
-    
-    const map = {};
-    const roots = [];
-    data.forEach(item => {
-      map[item.id] = { ...item, children: [] };
-    });
-    data.forEach(item => {
-      if (item.parent_id) {
-        if (map[item.parent_id]) {
-          map[item.parent_id].children.push(map[item.id]);
-          map[item.parent_id].hasChildren = true;
-        }
-      } else {
-        roots.push(map[item.id]);
-      }
-    });
+    ]
 
-    expect(roots.length).toBe(1);
-    expect(roots[0].children.length).toBe(2);
-    expect(roots[0].children[0].children.length).toBe(1);
-    expect(roots[0].children[0].children[0].name).toBe('Grandchild');
+    const roots = buildTree(data)
+
+    expect(roots.length).toBe(1)
+    expect(roots[0].children.length).toBe(2)
+    expect(roots[0].children[0].children.length).toBe(1)
+    expect(roots[0].children[0].children[0].name).toBe('Grandchild')
+  })
+
+  it('should handle empty list', () => {
+    expect(buildTree([])).toEqual([])
+  })
+
+  it('should handle multiple roots', () => {
+    const data = [
+      { id: 1, name: 'A', parent_id: null },
+      { id: 2, name: 'B', parent_id: null },
+    ]
+    const roots = buildTree(data)
+    expect(roots.length).toBe(2)
   })
 })
