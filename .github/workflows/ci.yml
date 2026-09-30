@@ -50,6 +50,7 @@ jobs:
     env:
       DATABASE_URL: postgres://postgres:postgres123@localhost:5433/construction_db_test
       SESSION_SECRET: ci-test-secret
+      ALLOW_PUBLIC_REGISTER: 'true'
 
     defaults:
       run:
