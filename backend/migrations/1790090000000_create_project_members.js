@@ -1,5 +1,4 @@
 exports.up = (pgm) => {
-  // Tạo bảng nối người dùng với dự án
   pgm.createTable('project_members', {
     id: 'id',
     project_id: { type: 'integer', notNull: true, references: '"projects"', onDelete: 'CASCADE' },

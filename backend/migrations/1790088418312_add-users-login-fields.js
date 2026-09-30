@@ -1,3 +1,10 @@
+// Bổ sung các trường phục vụ đăng nhập vào bảng users đã được tạo ở
+// migration 1790086000000_add-users-and-roles.js.
+//
+// Migration cũ từng gọi createTable('users') lần thứ hai, khiến toàn bộ
+// migration thất bại trên database mới vì bảng users đã tồn tại. T-08 chạy
+// migration trên database sạch trong CI nên cần migration này có thể chạy
+// liên tục từ đầu.
 module.exports = {
   shorthands: undefined,
 
@@ -23,6 +30,8 @@ module.exports = {
       },
     });
 
+    // Tương thích với dữ liệu cũ: nếu password đang lưu hash thì chuyển
+    // sang password_hash trước khi đặt ràng buộc NOT NULL.
     pgm.sql(`
       UPDATE users
       SET password_hash = password
