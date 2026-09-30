@@ -1,4 +1,4 @@
-﻿// routes/authRoutes.js - Xác thực người dùng
+// routes/authRoutes.js - Xác thực người dùng
 // Đăng ký, đăng nhập, đăng xuất, kiểm tra session.
 
 "use strict";
@@ -11,6 +11,14 @@ const logger = require("../utils/logger");
 const asyncHandler = require("../utils/asyncHandler");
 
 const router = express.Router();
+
+router.use((req, res, next) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  res.setHeader("Surrogate-Control", "no-store");
+  next();
+});
 
 // ============================================================
 // DUMMY HASH
@@ -34,6 +42,12 @@ let DUMMY_HASH = null;
 router.post(
   "/register",
   asyncHandler(async (req, res) => {
+    if (process.env.ALLOW_PUBLIC_REGISTER !== "true") {
+      return res.status(403).json({
+        message: "Đăng ký công khai đang bị vô hiệu hóa.",
+      });
+    }
+
     const { name, email, password, confirmPassword } = req.body;
 
     // Kiểm tra nhập đầy đủ
@@ -99,7 +113,7 @@ router.post(
 
     // Lấy role mặc định
     const roleResult = await pool.query(
-      "SELECT id FROM roles WHERE name = 'ban_quan_ly'"
+      "SELECT id FROM roles WHERE name = 'doi_truong'"
     );
 
     if (roleResult.rows.length === 0) {
@@ -150,6 +164,7 @@ router.post(
     const result = await pool.query(
       `SELECT
          id,
+         name,
          email,
          password_hash,
          failed_login_attempts,
@@ -188,8 +203,7 @@ router.post(
         `UPDATE users
          SET
            failed_login_attempts = 0,
-           locked_until = NULL,
-           updated_at = NOW()
+           locked_until = NULL
          WHERE id = $1`,
         [user.id]
       );
@@ -250,8 +264,7 @@ router.post(
           await pool.query(
             `UPDATE users
              SET
-               password_hash = $1,
-               updated_at = NOW()
+               password_hash = $1
              WHERE id = $2`,
             [newHash, user.id]
           );
@@ -296,6 +309,7 @@ router.post(
         const lockedUserResult = await client.query(
           `SELECT
              id,
+             name,
              email,
              password_hash,
              failed_login_attempts,
@@ -326,8 +340,7 @@ router.post(
             `UPDATE users
              SET
                failed_login_attempts = 0,
-               locked_until = NULL,
-               updated_at = NOW()
+               locked_until = NULL
              WHERE id = $1`,
             [user.id]
           );
@@ -353,29 +366,30 @@ router.post(
         const newFailedAttempts =
           Number(currentUser.failed_login_attempts || 0) + 1;
 
-        // Đủ 10 lần -> khóa
-        const shouldLock = newFailedAttempts >= 10;
+        // Đủ ngưỡng khóa -> khóa
+        const maxFailures = parseInt(process.env.MAX_LOGIN_FAILURES, 10) || 5;
+        const lockTimeMinutes = parseInt(process.env.LOCK_TIME_MINUTES, 10) || 15;
+        const shouldLock = newFailedAttempts >= maxFailures;
 
         let updateResult;
 
         if (shouldLock) {
+          const lockTime = new Date(Date.now() + lockTimeMinutes * 60000);
           updateResult = await client.query(
             `UPDATE users
              SET
                failed_login_attempts = $1,
-               locked_until = NOW() + INTERVAL '15 minutes',
-               updated_at = NOW()
+               locked_until = $3
              WHERE id = $2
              RETURNING failed_login_attempts, locked_until`,
-            [newFailedAttempts, user.id]
+            [newFailedAttempts, user.id, lockTime]
           );
         } else {
           updateResult = await client.query(
             `UPDATE users
              SET
                failed_login_attempts = $1,
-               locked_until = NULL,
-               updated_at = NOW()
+               locked_until = NULL
              WHERE id = $2
              RETURNING failed_login_attempts, locked_until`,
             [newFailedAttempts, user.id]
@@ -386,20 +400,14 @@ router.post(
 
         const updatedUser = updateResult.rows[0];
 
-        // Nếu vừa đạt 10 lần -> trả 423
+        // Nếu vừa đạt ngưỡng -> khóa nhưng vẫn trả 401 (S-02)
         if (updatedUser && updatedUser.locked_until) {
           logger.warn(
             { userId: user.id },
-            "Tài khoản bị khóa sau 10 lần đăng nhập sai"
+            "Tài khoản bị khóa sau khi vượt ngưỡng đăng nhập sai"
           );
-
-          return res.status(423).json({
-            message:
-              "Tài khoản đã bị khóa tạm thời. Vui lòng thử lại sau.",
-          });
         }
 
-        // Chưa đủ 10 lần
         return res.status(401).json({
           message: "Email hoặc mật khẩu không đúng",
         });
@@ -428,8 +436,7 @@ router.post(
       `UPDATE users
        SET
          failed_login_attempts = 0,
-         locked_until = NULL,
-         updated_at = NOW()
+         locked_until = NULL
        WHERE id = $1`,
       [user.id]
     );
@@ -473,6 +480,7 @@ router.post(
 
     req.session.user = {
       id: user.id,
+      name: user.name,
       email: user.email,
       role: roleName,
     };
@@ -485,6 +493,7 @@ router.post(
       message: "Đăng nhập thành công",
       user: {
         id: user.id,
+        name: user.name,
         email: user.email,
         role: roleName,
       },

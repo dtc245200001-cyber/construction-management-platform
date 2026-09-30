@@ -7,21 +7,22 @@
 
 "use strict";
 
-const express = require("express");
+
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
-const { checkProjectAccess, requireProjectRoles } = require("../middleware/projectAccess");
+const { checkProjectAccess, allow, createProjectRouter } = require("../middleware/projectAccess");
 const asyncHandler = require("../utils/asyncHandler");
 const { parsePositiveInt, normalizeName } = require("../utils/validators");
+const { ROLES } = require("../utils/constants");
 
-const router = express.Router();
+const router = createProjectRouter();
 
 // ─── GET /:projectId — Lấy danh sách hạng mục theo parentId ─────────────────
 router.get(
   "/:projectId",
   requireAuth,
   checkProjectAccess,
-  requireProjectRoles(["OWNER", "MANAGER", "MEMBER"]),
+  allow(Object.values(ROLES)),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) {
@@ -65,7 +66,7 @@ router.get(
   "/:projectId/tree/all",
   requireAuth,
   checkProjectAccess,
-  requireProjectRoles(["OWNER", "MANAGER", "MEMBER"]),
+  allow(Object.values(ROLES)),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) {
@@ -89,7 +90,7 @@ router.post(
   "/:projectId",
   requireAuth,
   checkProjectAccess,
-  requireProjectRoles(["OWNER", "MANAGER"]),
+  allow([ROLES.BAN_QUAN_LY]),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) {
@@ -155,7 +156,7 @@ router.put(
   "/:projectId/:id",
   requireAuth,
   checkProjectAccess,
-  requireProjectRoles(["OWNER", "MANAGER"]),
+  allow([ROLES.BAN_QUAN_LY]),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     const id = parsePositiveInt(req.params.id);
@@ -183,12 +184,12 @@ router.put(
   })
 );
 
-// ─── DELETE /:projectId/:id — Xóa hạng mục ───────────────────────────────────
-router.delete(
-  "/:projectId/:id",
+// ─── PATCH /:projectId/:id/move — Đổi hạng mục cha ───────────────────────────
+router.patch(
+  "/:projectId/:id/move",
   requireAuth,
   checkProjectAccess,
-  requireProjectRoles(["OWNER", "MANAGER"]),
+  allow([ROLES.BAN_QUAN_LY]),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     const id = parsePositiveInt(req.params.id);
@@ -196,17 +197,123 @@ router.delete(
     if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });
     if (!id) return res.status(400).json({ message: "id không hợp lệ" });
 
-    const result = await db.query(
-      `DELETE FROM work_items WHERE id = $1 AND project_id = $2 RETURNING id`,
-      [id, projectId]
-    );
+    const parentIdRaw = req.body.parent_id;
+    let parentId = null;
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: "Không tìm thấy hạng mục" });
+    if (parentIdRaw != null && parentIdRaw !== "") {
+      parentId = parsePositiveInt(parentIdRaw);
+      if (!parentId) {
+        return res.status(400).json({ message: "parent_id không hợp lệ" });
+      }
     }
 
-    return res.json({ success: true });
+    const { getDescendantIds } = require("../queries/workItemTree");
+    const client = await db.connect();
+    
+    try {
+      await client.query("BEGIN");
+      
+      // Lock toàn bộ thao tác di chuyển của project để chống deadlock/vòng lặp (T-10)
+      await client.query("SELECT pg_advisory_xact_lock($1)", [projectId]);
+
+      const currentItem = await client.query(
+        `SELECT id, name FROM work_items WHERE id = $1 AND project_id = $2 FOR UPDATE`,
+        [id, projectId]
+      );
+      if (currentItem.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Không tìm thấy hạng mục" });
+      }
+
+      if (parentId === id) {
+        await client.query("ROLLBACK");
+        return res.status(422).json({ message: `Không thể chọn hạng mục "${currentItem.rows[0].name}" làm cha của chính nó` });
+      }
+
+      if (parentId) {
+        const parentCheck = await client.query(
+          `SELECT id, name FROM work_items WHERE id = $1 AND project_id = $2 FOR UPDATE`,
+          [parentId, projectId]
+        );
+        if (parentCheck.rows.length === 0) {
+          await client.query("ROLLBACK");
+          return res.status(400).json({ message: "Hạng mục cha không thuộc dự án này" });
+        }
+
+        const descendants = await getDescendantIds(client, id, projectId);
+        if (descendants.includes(parentId)) {
+          await client.query("ROLLBACK");
+          const parentName = parentCheck.rows[0].name;
+          return res.status(422).json({ 
+            message: `Không thể chuyển vào hạng mục "${parentName}" vì nó là hậu duệ của hạng mục hiện tại` 
+          });
+        }
+      }
+
+      const result = await client.query(
+        `UPDATE work_items SET parent_id = $1, updated_at = NOW() WHERE id = $2 AND project_id = $3 RETURNING id, name, parent_id`,
+        [parentId, id, projectId]
+      );
+
+      await client.query("COMMIT");
+      return res.json(result.rows[0]);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
   })
 );
+
+// ─── DELETE /:projectId/:id — Xóa hạng mục ───────────────────────────────────
+router.delete(
+  "/:projectId/:id",
+  requireAuth,
+  checkProjectAccess,
+  allow([ROLES.BAN_QUAN_LY]),
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+    const id = parsePositiveInt(req.params.id);
+
+    if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });
+    if (!id) return res.status(400).json({ message: "id không hợp lệ" });
+
+    const { countTasksInSubtree } = require("../queries/workItemTree");
+    const taskCount = await countTasksInSubtree(db, id, projectId);
+    
+    if (taskCount > 0) {
+      // fix(S-03): lọc theo project_id để không rò rỉ tên hạng mục của dự án khác
+      const item = await db.query(
+        `SELECT name FROM work_items WHERE id = $1 AND project_id = $2`,
+        [id, projectId]
+      );
+      const itemName = item.rows[0] ? item.rows[0].name : "Hạng mục";
+      return res.status(409).json({ message: `Không thể xóa hạng mục "${itemName}" vì đang có ${taskCount} công việc bên trong.` });
+    }
+
+    try {
+      const result = await db.query(
+        `DELETE FROM work_items WHERE id = $1 AND project_id = $2 RETURNING id`,
+        [id, projectId]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ message: "Không tìm thấy hạng mục" });
+      }
+
+      return res.json({ success: true });
+    } catch (err) {
+      if (err.code === "23503") {
+        const item = await db.query(`SELECT name FROM work_items WHERE id = $1`, [id]);
+        const itemName = item.rows[0] ? item.rows[0].name : "Hạng mục";
+        return res.status(409).json({ message: `Không thể xóa hạng mục "${itemName}" vì đang chứa các hạng mục con.` });
+      }
+      throw err;
+    }
+  })
+);
+
+// Fallback default deny replaced by createProjectRouter
 
 module.exports = router;

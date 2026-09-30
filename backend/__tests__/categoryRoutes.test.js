@@ -11,10 +11,16 @@ jest.mock("../config/db", () => ({
 
 // Mock middlewares
 jest.mock("../middleware/auth", () => (req, res, next) => next());
-jest.mock("../middleware/projectAccess", () => ({
-  checkProjectAccess: (req, res, next) => next(),
-  requireProjectRoles: () => (req, res, next) => next(),
-}));
+jest.mock("../middleware/projectAccess", () => {
+  const express = require("express");
+  return {
+    checkProjectAccess: (req, res, next) => next(),
+    requireProjectRoles: () => (req, res, next) => next(),
+    allow: () => (req, res, next) => next(),
+    createProjectRouter: () => express.Router(),
+    defaultDeny: (req, res, next) => next(),
+  };
+});
 
 const categoryRoutes = require("../routes/categoryRoutes");
 const { errorHandler } = require("../middleware/errorHandler");

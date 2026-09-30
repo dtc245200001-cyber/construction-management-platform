@@ -1,20 +1,13 @@
-// middleware/projectAccess.js — Kiểm tra quyền truy cập dự án (RBAC).
-//
-// checkProjectAccess: xác nhận user là thành viên của dự án, gắn req.projectRole.
-// requireProjectRoles: kiểm tra vai trò cụ thể; không truyền role → default deny (S-03).
-//
-// Mọi lần từ chối (403) đều ghi nhật ký có cấu trúc theo NFR S-03.
-
 "use strict";
 
+const express = require("express");
 const pool = require("../config/db");
 const logger = require("../utils/logger");
 const asyncHandler = require("../utils/asyncHandler");
 
 // Middleware xác thực thành viên thuộc dự án
 const checkProjectAccess = asyncHandler(async (req, res, next) => {
-  const projectId = req.params.projectId || req.body.projectId;
-  // Chỉ dùng req.user.id (được gán bởi middleware/auth.js từ session)
+  const projectId = req.params.projectId;
   const userId = req.user.id;
 
   const { parsePositiveInt } = require("../utils/validators");
@@ -30,7 +23,6 @@ const checkProjectAccess = asyncHandler(async (req, res, next) => {
   );
 
   if (result.rows.length === 0) {
-    // Ghi nhật ký 403 có cấu trúc (NFR S-03) — không log body
     logger.warn({
       userId,
       projectId,
@@ -43,16 +35,14 @@ const checkProjectAccess = asyncHandler(async (req, res, next) => {
     return res.status(403).json({ error: "Bạn không có quyền truy cập dự án này" });
   }
 
-  // Chuẩn hóa role về chữ hoa (OWNER, MANAGER, MEMBER)
-  req.projectRole = String(result.rows[0].role).toUpperCase();
+  req.projectRole = String(result.rows[0].role);
   return next();
 });
 
-// Middleware kiểm tra vai trò cụ thể trong dự án
-const requireProjectRoles = (allowedRoles = []) => {
-  return (req, res, next) => {
-    // Không truyền role nào → default deny (S-03)
-    if (!allowedRoles || allowedRoles.length === 0) {
+// Wrapper kiểm tra quyền
+const allow = (roles = []) => {
+  const mw = (req, res, next) => {
+    if (!roles || roles.length === 0) {
       logger.warn({
         userId: req.user && req.user.id,
         projectId: req.params.projectId,
@@ -66,7 +56,7 @@ const requireProjectRoles = (allowedRoles = []) => {
     }
 
     const currentRole = req.projectRole;
-    const normalizedAllowedRoles = allowedRoles.map((r) => String(r).toUpperCase());
+    const normalizedAllowedRoles = roles.map((r) => String(r));
 
     if (!currentRole || !normalizedAllowedRoles.includes(currentRole)) {
       logger.warn({
@@ -83,11 +73,66 @@ const requireProjectRoles = (allowedRoles = []) => {
       return res.status(403).json({ error: "Vai trò của bạn không đủ quyền hạn" });
     }
 
+    res.locals.roleChecked = true;
     return next();
   };
+  
+  // Gắn cờ để createProjectRouter nhận biết route này có check quyền
+  mw.allowedRoles = roles;
+  return mw;
 };
 
+// Trình trợ giúp tạo Router dự án mặc định từ chối
+const createProjectRouter = () => {
+  const router = express.Router({ mergeParams: true });
+  
+  const methods = ['get', 'post', 'put', 'patch', 'delete'];
+  methods.forEach(method => {
+    const original = router[method].bind(router);
+    
+    router[method] = (path, ...handlers) => {
+      // Tìm xem có middleware allow() nào không
+      const hasRoleCheck = handlers.some(h => h && h.allowedRoles);
+      
+      if (!hasRoleCheck) {
+        // Gắn middleware default deny vào đầu chuỗi xử lý
+        const defaultDeny = (req, res, next) => {
+          // Bỏ qua nếu route không chứa projectId (ví dụ: GET /api/projects)
+          if (!req.params.projectId) {
+            return next();
+          }
+
+          logger.warn({
+            userId: req.user && req.user.id,
+            projectId: req.params.projectId,
+            method: req.method,
+            path: req.path,
+            reason: "DEFAULT_DENY",
+            ip: req.ip,
+          }, "Truy cập bị từ chối: route không sử dụng wrapper allow()");
+          
+          if (process.env.NODE_ENV !== 'production') {
+            throw new Error(`Route chưa khai báo quyền truy cập: ${method.toUpperCase()} ${path}`);
+          }
+          
+          return res.status(403).json({ error: "Chưa phân quyền cho endpoint này" });
+        };
+        
+        // Đặt defaultDeny lên đầu
+        handlers.unshift(defaultDeny);
+      }
+      
+      return original(path, ...handlers);
+    };
+  });
+  
+  return router;
+};
+
+// Vẫn xuất requireProjectRoles để tương thích ngược nếu cần, trỏ về allow
 module.exports = {
   checkProjectAccess,
-  requireProjectRoles,
+  requireProjectRoles: allow,
+  allow,
+  createProjectRouter,
 };

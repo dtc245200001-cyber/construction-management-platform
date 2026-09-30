@@ -2,3 +2,24 @@ node_modules/
 .env
 npm-debug.log*
 coverage/
+backend/.env
+*.log
+*_output.txt
+dist/
+
+# Thu muc cong cu AI
+.agents/
+.claude/
+.cursor/
+.devin/
+.lovable/
+
+# File rac
+*.jfif
+job_log.txt
+fix.js
+fix_data_binding.js
+
+# File office tam
+~$*.docx
+~$*.xlsx

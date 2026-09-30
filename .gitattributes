@@ -1,0 +1,14 @@
+# chore(S-01): thống nhất line endings — bắt buộc LF trên mọi platform
+# Ngăn Windows tự đổi sang CRLF khi commit (gây lỗi lint eslint no-mixed-EOL)
+* text=auto eol=lf
+
+# Các file binary — không đổi line ending
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.jfif binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.xlsx binary
+*.docx binary

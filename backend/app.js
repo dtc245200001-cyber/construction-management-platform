@@ -47,10 +47,10 @@ const allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5173")
 // ─── RATE LIMIT ───────────────────────────────────────────────────────────────
 const loginLimiter = rateLimit({
   windowMs: Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: Number(process.env.LOGIN_RATE_LIMIT_MAX) || 20,
+  max: Number(process.env.LOGIN_RATE_LIMIT_MAX) || (process.env.NODE_ENV === 'test' ? 100 : 5),
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: "Quá nhiều lần thử đăng nhập. Vui lòng thử lại sau." },
+  message: { message: "Tài khoản bị tạm khóa 15 phút do nhập sai quá nhiều lần. Vui lòng thử lại sau." },
 });
 
 const registerLimiter = rateLimit({

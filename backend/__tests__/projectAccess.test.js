@@ -11,7 +11,7 @@ jest.mock("../utils/logger", () => ({
   warn: (...args) => mockLoggerWarn(...args),
 }));
 
-const { checkProjectAccess, requireProjectRoles } = require("../middleware/projectAccess");
+const { checkProjectAccess, requireProjectRoles, allow, createProjectRouter } = require("../middleware/projectAccess");
 
 describe("projectAccess middleware (1.9)", () => {
   let app;
@@ -55,21 +55,22 @@ describe("projectAccess middleware (1.9)", () => {
     });
 
     test("di tiep va gan req.projectRole khi la thanh vien", async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [{ role: "manager" }] });
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] });
       app.get("/test/:projectId", checkProjectAccess, (req, res) => {
         res.json({ role: req.projectRole });
       });
 
       const res = await request(app).get("/test/1");
       expect(res.status).toBe(200);
-      expect(res.body.role).toBe("MANAGER");
+      // fix(T-test): role lưu trong DB là chữ thường, middleware không uppercase hóa
+      expect(res.body.role).toBe("ban_quan_ly");
     });
   });
 
   describe("requireProjectRoles", () => {
     test("tra 403 va ghi log mac dinh tu choi (default deny) neu khong truyen role", async () => {
       app.get("/test/:projectId", (req, res, next) => {
-        req.projectRole = "OWNER";
+        req.projectRole = "chu_dau_tu";
         next();
       }, requireProjectRoles(), (req, res) => res.sendStatus(200));
 
@@ -85,14 +86,14 @@ describe("projectAccess middleware (1.9)", () => {
       app.get("/test/:projectId", (req, res, next) => {
         req.projectRole = "MEMBER";
         next();
-      }, requireProjectRoles(["OWNER"]), (req, res) => res.sendStatus(200));
+      }, requireProjectRoles(["chu_dau_tu"]), (req, res) => res.sendStatus(200));
 
       const res = await request(app).get("/test/1");
       expect(res.status).toBe(403);
       expect(mockLoggerWarn).toHaveBeenCalledWith(
         expect.objectContaining({
           currentRole: "MEMBER",
-          allowedRoles: ["OWNER"],
+          allowedRoles: ["chu_dau_tu"],
           reason: "ROLE_NOT_ALLOWED"
         }),
         "Truy cập bị từ chối: vai trò không đủ quyền"
@@ -101,12 +102,39 @@ describe("projectAccess middleware (1.9)", () => {
 
     test("di tiep neu role thuoc allowed", async () => {
       app.get("/test/:projectId", (req, res, next) => {
-        req.projectRole = "OWNER";
+        req.projectRole = "chu_dau_tu";
         next();
-      }, requireProjectRoles(["MANAGER", "OWNER"]), (req, res) => res.sendStatus(200));
+      }, requireProjectRoles(["ban_quan_ly", "chu_dau_tu"]), (req, res) => res.sendStatus(200));
 
       const res = await request(app).get("/test/1");
       expect(res.status).toBe(200);
+    });
+  });
+
+  describe("createProjectRouter", () => {
+    test("tra 403 truoc khi handler chay neu route khong su dung allow wrapper", async () => {
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "production";
+      
+      const projectRouter = createProjectRouter();
+      
+      const mockHandler = jest.fn((req, res) => res.sendStatus(200));
+      
+      projectRouter.get("/:projectId/no-allow", mockHandler);
+      
+      app.use("/api/projects", projectRouter);
+
+      const res = await request(app).get("/api/projects/1/no-allow");
+      
+      process.env.NODE_ENV = originalEnv;
+      
+      expect(res.status).toBe(403);
+      expect(mockHandler).not.toHaveBeenCalled();
+      
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: "DEFAULT_DENY" }),
+        expect.stringContaining("route không sử dụng wrapper allow()")
+      );
     });
   });
 });

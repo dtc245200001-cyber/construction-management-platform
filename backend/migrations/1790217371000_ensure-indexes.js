@@ -14,7 +14,7 @@ module.exports = {
     pgm.sql(`-- Index roles(name) already exists as roles_name_key`);
     pgm.sql(`-- Index users(LOWER(email)) already exists as users_email_lower_idx`);
   },
-  down: (pgm) => {
+  down: (_pgm) => {
     // Không làm gì vì không tạo index mới
   }
 };

@@ -96,7 +96,7 @@ describe("T-08: bảng projects/work_items dạng cây", () => {
   });
 
   it("lấy đúng cây con (gồm chính nó) của một hạng mục ở giữa cây", async () => {
-    const subtree = await getWorkItemSubtree(pool, ids.child1);
+    const subtree = await getWorkItemSubtree(pool, ids.child1, projectId);
     const names = subtree.map((row) => row.name).sort();
 
     expect(names).toEqual(["child1", "grandchild1", "grandchild2"]);
@@ -106,18 +106,18 @@ describe("T-08: bảng projects/work_items dạng cây", () => {
   });
 
   it("includeRoot: false thì chỉ trả về hậu duệ, không gồm chính hạng mục gốc", async () => {
-    const descendantIds = await getDescendantIds(pool, ids.child1);
+    const descendantIds = await getDescendantIds(pool, ids.child1, projectId);
     expect(descendantIds.sort()).toEqual([ids.grandchild1, ids.grandchild2].sort());
     expect(descendantIds).not.toContain(ids.child1);
   });
 
   it("hạng mục lá (không có con) thì cây con chỉ có chính nó", async () => {
-    const subtree = await getWorkItemSubtree(pool, ids.grandchild1);
+    const subtree = await getWorkItemSubtree(pool, ids.grandchild1, projectId);
     expect(subtree.map((row) => row.id)).toEqual([ids.grandchild1]);
   });
 
   it("lấy từ gốc thì trả về toàn bộ cây, sắp theo độ sâu", async () => {
-    const subtree = await getWorkItemSubtree(pool, ids.root);
+    const subtree = await getWorkItemSubtree(pool, ids.root, projectId);
     expect(subtree).toHaveLength(5);
     expect(subtree[0].id).toBe(ids.root);
     expect(subtree[0].depth).toBe(0);

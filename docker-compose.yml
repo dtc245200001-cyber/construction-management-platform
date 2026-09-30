@@ -3,36 +3,45 @@ services:
     image: postgres:16
     container_name: construction_postgres
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?missing}
+      POSTGRES_USER: ${POSTGRES_USER:?missing}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?missing}
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?missing} -d ${POSTGRES_DB:?missing}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   backend:
     build: ./backend
     container_name: construction_backend
     environment:
-      PORT: ${PORT}
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
-      DB_NAME: ${DB_NAME}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DATABASE_URL: ${DATABASE_URL}
+      PORT: ${PORT:-3000}
+      DATABASE_URL: ${DATABASE_URL:?missing}
+      SESSION_SECRET: ${SESSION_SECRET:?missing}
     ports:
       - "3000:3000"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: construction_pgadmin
+    profiles:
+      - dev
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@admin.com
-      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@admin.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:?missing}
     ports:
       - "5050:80"
     volumes:

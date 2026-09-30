@@ -134,9 +134,11 @@ describe("Auth Integration Tests", () => {
       expect(res2.body.message).toBe("Email hoặc mật khẩu không đúng");
     });
 
-    it("B3. Sai 10 lần -> tài khoản bị khóa và trả 423", async () => {
-      // Gửi sai lần lượt 10 lần
-      for (let i = 0; i < 10; i++) {
+    it("B3. Sai 5 lần -> tài khoản bị khóa và trả 423", async () => {
+      // fix(S-02): MAX_LOGIN_FAILURES mặc định = 5 (theo spec AC3), không phải 10
+      const MAX_FAILURES = 5;
+      // Gửi sai 5 lần, tất cả đều phải trả về 401 (S-02)
+      for (let i = 0; i < MAX_FAILURES; i++) {
         const res = await request(app)
           .post("/api/auth/login")
           .send({
@@ -144,23 +146,24 @@ describe("Auth Integration Tests", () => {
             password: "wrong",
           });
 
-        // 9 lần đầu trả 401
-        if (i < 9) {
-          expect(res.status).toBe(401);
-        }
-
-        // Lần thứ 10 tài khoản bị khóa -> 423
-        if (i === 9) {
-          expect(res.status).toBe(423);
-        }
+        expect(res.status).toBe(401);
       }
+
+      // Lần thứ 6 (kể cả có truyền đúng pass hay sai) -> 423
+      const res6 = await request(app)
+        .post("/api/auth/login")
+        .send({
+          email: "test@example.com",
+          password: "wrong",
+        });
+      expect(res6.status).toBe(423);
 
       // Kiểm tra tài khoản đã bị khóa trong database
       const { rows } = await pool.query(
         "SELECT failed_login_attempts, locked_until FROM users WHERE email='test@example.com'"
       );
 
-      expect(rows[0].failed_login_attempts).toBe(10);
+      expect(rows[0].failed_login_attempts).toBe(MAX_FAILURES);
       expect(rows[0].locked_until).not.toBeNull();
 
       // Đưa thời gian khóa về quá khứ để giả lập hết thời gian khóa
