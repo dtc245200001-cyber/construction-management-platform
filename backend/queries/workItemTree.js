@@ -59,8 +59,27 @@ async function getDescendantIds(db, workItemId) {
   return rows.map((row) => row.id);
 }
 
+async function countTasksInSubtree(db, workItemId) {
+  // Check if 'tasks' table exists
+  const tableCheck = await db.query(`
+    SELECT to_regclass('tasks') IS NOT NULL AS "exists"
+  `);
+  if (!tableCheck.rows[0].exists) {
+    return 0; // Sprint 1: tasks table doesn't exist yet
+  }
+
+  const ids = [workItemId, ...(await getDescendantIds(db, workItemId))];
+  
+  const result = await db.query(
+    `SELECT COUNT(*) FROM tasks WHERE work_item_id = ANY($1::int[])`,
+    [ids]
+  );
+  return parseInt(result.rows[0].count, 10);
+}
+
 module.exports = {
   SUBTREE_SQL,
   getWorkItemSubtree,
   getDescendantIds,
+  countTasksInSubtree,
 };
