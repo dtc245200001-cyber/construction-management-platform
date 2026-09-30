@@ -1,84 +1,49 @@
 /**
- * Các công thức tính toán thời điểm bắt đầu sớm nhất (Early Start - ES) của công việc sau (successor)
- * dựa trên ràng buộc từ công việc trước (predecessor).
+ * Scheduling / CPM helpers for S-08/S-09.
+ * T-18/T-19: dependency formulas + forward pass
+ * T-20/T-21: backward pass + float/critical flag
  */
 
-/**
- * Ràng buộc Finish-to-Start (FS): Việc sau chỉ được BẮT ĐẦU khi việc trước KẾT THÚC.
- * ES_sau >= EF_trước + lag
- */
 function calculateFS(predecessorEF, lag = 0) {
   return predecessorEF + lag;
 }
 
-/**
- * Ràng buộc Start-to-Start (SS): Việc sau chỉ được BẮT ĐẦU khi việc trước BẮT ĐẦU.
- * ES_sau >= ES_trước + lag
- */
 function calculateSS(predecessorES, lag = 0) {
   return predecessorES + lag;
 }
 
-/**
- * Ràng buộc Finish-to-Finish (FF): Việc sau chỉ được KẾT THÚC khi việc trước KẾT THÚC.
- * EF_sau >= EF_trước + lag
- * Mà EF_sau = ES_sau + duration_sau => ES_sau >= EF_trước + lag - duration_sau
- */
 function calculateFF(predecessorEF, lag = 0, successorDuration) {
   return predecessorEF + lag - successorDuration;
 }
 
-/**
- * Ràng buộc Start-to-Finish (SF): Việc sau chỉ được KẾT THÚC khi việc trước BẮT ĐẦU.
- * EF_sau >= ES_trước + lag
- * Mà EF_sau = ES_sau + duration_sau => ES_sau >= ES_trước + lag - duration_sau
- */
 function calculateSF(predecessorES, lag = 0, successorDuration) {
   return predecessorES + lag - successorDuration;
 }
 
-/**
- * Hàm duyệt xuôi để tính ES và EF cho toàn bộ mạng công việc.
- * 
- * @param {Array} tasks - Mảng các công việc [{ id, duration }, ...]
- * @param {Array} dependencies - Mảng các quan hệ [{ from, to, type, lag }, ...]
- * @param {Array} topologicalOrder - Mảng ID công việc đã được sắp xếp topo [id1, id2, ...]
- * @param {number} projectStart - Mốc bắt đầu chuẩn hóa của dự án (ví dụ: ngày 0)
- * @returns {Object} - Kết quả duyệt xuôi { [id]: { ES, EF } }
- */
 function forwardPass(tasks, dependencies, topologicalOrder, projectStart = 0) {
-  // Chuẩn bị dictionary cho tasks để tra cứu nhanh duration
   const taskDict = {};
   tasks.forEach((t) => {
     taskDict[t.id] = t;
   });
 
-  // Chuẩn bị nhóm dependencies theo `to` (successor)
-  // predecessorMap[toId] = [ { from, type, lag }, ... ]
   const predecessorMap = {};
   dependencies.forEach((dep) => {
-    if (!predecessorMap[dep.to]) {
-      predecessorMap[dep.to] = [];
-    }
+    if (!predecessorMap[dep.to]) predecessorMap[dep.to] = [];
     predecessorMap[dep.to].push(dep);
   });
 
   const results = {};
 
-  // Duyệt qua từng công việc theo thứ tự topo
   for (const taskId of topologicalOrder) {
     const task = taskDict[taskId];
     if (!task) continue;
 
     const duration = task.duration;
-    let ES = projectStart; // Mặc định là ngày bắt đầu dự án nếu không có predecessor
-
+    let ES = projectStart;
     const preds = predecessorMap[taskId] || [];
 
     for (const pred of preds) {
       const predResult = results[pred.from];
-      // Bỏ qua nếu predecessor chưa được tính toán (trong trường hợp dữ liệu lỗi,
-      // nhưng với thứ tự topo chuẩn thì predResult luôn luôn có).
       if (!predResult) continue;
 
       const lag = pred.lag || 0;
@@ -98,20 +63,124 @@ function forwardPass(tasks, dependencies, topologicalOrder, projectStart = 0) {
           possibleES = calculateSF(predResult.ES, lag, duration);
           break;
         default:
-          // Mặc định coi như FS nếu type không xác định hợp lệ (tuỳ business logic, 
-          // ở đây ta lấy fallback an toàn)
           possibleES = calculateFS(predResult.EF, lag);
       }
 
-      // Ràng buộc sớm nhất (ES) phải thoả mãn TẤT CẢ predecessor, nên lấy MAX
-      if (possibleES > ES) {
-        ES = possibleES;
-      }
+      if (possibleES > ES) ES = possibleES;
     }
 
     const EF = ES + duration;
     results[taskId] = { ES, EF };
   }
+
+  return results;
+}
+
+/**
+ * Backward pass for FS/SS/FF/SF relationships.
+ * Starts from the project finish obtained from the forward pass.
+ */
+function backwardPass(tasks, dependencies, topologicalOrder, earlyResults) {
+  const taskDict = {};
+  tasks.forEach((t) => {
+    taskDict[t.id] = t;
+  });
+
+  const successorMap = {};
+  dependencies.forEach((dep) => {
+    if (!successorMap[dep.from]) successorMap[dep.from] = [];
+    successorMap[dep.from].push(dep);
+  });
+
+  const projectFinish = Math.max(
+    ...Object.values(earlyResults).map((result) => result.EF)
+  );
+
+  const results = {};
+
+  for (const taskId of [...topologicalOrder].reverse()) {
+    const task = taskDict[taskId];
+    if (!task) continue;
+
+    const successors = successorMap[taskId] || [];
+    let LF = projectFinish;
+
+    if (successors.length > 0) {
+      const candidateLFs = successors.map((dep) => {
+        const successor = results[dep.to];
+        if (!successor) return projectFinish;
+
+        const lag = dep.lag || 0;
+
+        switch (dep.type) {
+          case 'FS':
+            // EF_pred <= ES_succ - lag
+            return successor.LS - lag;
+          case 'SS':
+            // ES_pred <= ES_succ - lag
+            return successor.LS - lag + task.duration;
+          case 'FF':
+            // EF_pred <= EF_succ - lag
+            return successor.LF - lag;
+          case 'SF':
+            // ES_pred <= EF_succ - lag
+            return successor.LF - lag + task.duration;
+          default:
+            return successor.LS - lag;
+        }
+      });
+
+      LF = Math.min(...candidateLFs);
+    }
+
+    results[taskId] = {
+      LS: LF - task.duration,
+      LF,
+    };
+  }
+
+  return results;
+}
+
+function calculateSchedule(
+  tasks,
+  dependencies,
+  topologicalOrder,
+  projectStart = 0
+) {
+  const early = forwardPass(
+    tasks,
+    dependencies,
+    topologicalOrder,
+    projectStart
+  );
+
+  const late = backwardPass(
+    tasks,
+    dependencies,
+    topologicalOrder,
+    early
+  );
+
+  const results = {};
+
+  tasks.forEach((task) => {
+    const id = task.id;
+    const ES = early[id].ES;
+    const EF = early[id].EF;
+    const LS = late[id].LS;
+    const LF = late[id].LF;
+    const totalFloat = LS - ES;
+
+    results[id] = {
+      ES,
+      EF,
+      LS,
+      LF,
+      float: totalFloat,
+      critical: totalFloat === 0,
+    };
+  });
 
   return results;
 }
@@ -122,4 +191,6 @@ module.exports = {
   calculateFF,
   calculateSF,
   forwardPass,
+  backwardPass,
+  calculateSchedule,
 };
