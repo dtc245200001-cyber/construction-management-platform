@@ -14,7 +14,7 @@ describe("Projects Integration Tests", () => {
       "INSERT INTO roles (name) VALUES ('chu_dau_tu'), ('ban_quan_ly') RETURNING id, name"
     );
     const roleChuDauTu = roles.find(r => r.name === 'chu_dau_tu').id;
-    const roleBanQuanLy = roles.find(r => r.name === 'ban_quan_ly').id;
+    const _roleBanQuanLy = roles.find(r => r.name === 'ban_quan_ly').id; // chưa dùng, giữ để tham chiếu
 
     // Register Users
     await request(app).post("/api/auth/register").send({ name: "Manager", email: "manager@test.com", password: "Password123", confirmPassword: "Password123" });
