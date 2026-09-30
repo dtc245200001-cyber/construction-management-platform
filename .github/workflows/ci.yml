@@ -24,6 +24,8 @@ jobs:
           fetch-depth: 0
       - name: Secret Scan
         uses: zricethezav/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   backend:
     name: Backend CI (Node.js)
