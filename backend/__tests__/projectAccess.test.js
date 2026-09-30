@@ -113,6 +113,9 @@ describe("projectAccess middleware (1.9)", () => {
 
   describe("createProjectRouter", () => {
     test("tra 403 truoc khi handler chay neu route khong su dung allow wrapper", async () => {
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "production";
+      
       const projectRouter = createProjectRouter();
       
       const mockHandler = jest.fn((req, res) => res.sendStatus(200));
@@ -122,6 +125,8 @@ describe("projectAccess middleware (1.9)", () => {
       app.use("/api/projects", projectRouter);
 
       const res = await request(app).get("/api/projects/1/no-allow");
+      
+      process.env.NODE_ENV = originalEnv;
       
       expect(res.status).toBe(403);
       expect(mockHandler).not.toHaveBeenCalled();

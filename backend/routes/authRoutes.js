@@ -203,8 +203,7 @@ router.post(
         `UPDATE users
          SET
            failed_login_attempts = 0,
-           locked_until = NULL,
-           updated_at = NOW()
+           locked_until = NULL
          WHERE id = $1`,
         [user.id]
       );
@@ -265,8 +264,7 @@ router.post(
           await pool.query(
             `UPDATE users
              SET
-               password_hash = $1,
-               updated_at = NOW()
+               password_hash = $1
              WHERE id = $2`,
             [newHash, user.id]
           );
@@ -342,8 +340,7 @@ router.post(
             `UPDATE users
              SET
                failed_login_attempts = 0,
-               locked_until = NULL,
-               updated_at = NOW()
+               locked_until = NULL
              WHERE id = $1`,
             [user.id]
           );
@@ -382,8 +379,7 @@ router.post(
             `UPDATE users
              SET
                failed_login_attempts = $1,
-               locked_until = $3,
-               updated_at = NOW()
+               locked_until = $3
              WHERE id = $2
              RETURNING failed_login_attempts, locked_until`,
             [newFailedAttempts, user.id, lockTime]
@@ -393,8 +389,7 @@ router.post(
             `UPDATE users
              SET
                failed_login_attempts = $1,
-               locked_until = NULL,
-               updated_at = NOW()
+               locked_until = NULL
              WHERE id = $2
              RETURNING failed_login_attempts, locked_until`,
             [newFailedAttempts, user.id]
@@ -441,8 +436,7 @@ router.post(
       `UPDATE users
        SET
          failed_login_attempts = 0,
-         locked_until = NULL,
-         updated_at = NOW()
+         locked_until = NULL
        WHERE id = $1`,
       [user.id]
     );

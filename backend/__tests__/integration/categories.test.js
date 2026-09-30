@@ -11,7 +11,7 @@ describe("Categories & Projects Integration Tests", () => {
 
     // Insert Roles
     const { rows: roles } = await pool.query(
-      "INSERT INTO roles (name) VALUES ('chu_dau_tu'), ('ban_quan_ly') RETURNING id, name"
+      "INSERT INTO roles (name) VALUES ('chu_dau_tu'), ('ban_quan_ly'), ('doi_truong') RETURNING id, name"
     );
     const roleId = roles[0].id;
 
@@ -32,7 +32,7 @@ describe("Categories & Projects Integration Tests", () => {
 
     // Project Members: A -> P1, B -> P2
     await pool.query(
-      "INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, 'MEMBER'), ($3, $4, 'MEMBER')",
+      "INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, 'ban_quan_ly'), ($3, $4, 'ban_quan_ly')",
       [p1, uA, p2, uB]
     );
 
@@ -53,7 +53,7 @@ describe("Categories & Projects Integration Tests", () => {
 
     // Insert Roles
     const { rows: roles } = await pool.query(
-      "INSERT INTO roles (name) VALUES ('chu_dau_tu'), ('ban_quan_ly') RETURNING id, name"
+      "INSERT INTO roles (name) VALUES ('chu_dau_tu'), ('ban_quan_ly'), ('doi_truong') RETURNING id, name"
     );
     const roleId = roles[0].id;
 
