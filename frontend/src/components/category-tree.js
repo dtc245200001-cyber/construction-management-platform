@@ -1,31 +1,35 @@
 /**
  * Thành phần giao diện Cây Hạng Mục (T-09)
  * - Hiển thị cây mở rộng/thu gọn (mặc định thu gọn từ tầng 3).
- * - Thêm, sửa, xoá tại chỗ.
+ * - Thêm, sửa, xoá tại chỗ, đổi cha.
  * - Chỉ chịu trách nhiệm về UI. Dữ liệu sẽ được cung cấp từ backend (T-08) khi sẵn sàng.
  */
 
 export class CategoryTree {
   /**
    * @param {HTMLElement} container - Nơi render cây
-   * @param {Object} options - Các callback để tương tác với backend (T-08)
+   * @param {Object} options - Các callback để tương tác với backend
    */
   constructor(container, options = {}) {
     this.container = container;
     this.container.classList.add('tree-container');
     
-    // Callbacks provided by the integration layer (T-08 dependency)
+    // Callbacks
     this.onAdd = options.onAdd || (async () => {});
     this.onUpdate = options.onUpdate || (async () => {});
     this.onDelete = options.onDelete || (async () => {});
-    this.onFetchChildren = options.onFetchChildren || (async () => []);
+    this.onMove = options.onMove || (async () => {});
+    this.onFetchTree = options.onFetchTree || (async () => ({ roots: [], rawData: [] }));
+
+    this.rawData = [];
   }
 
-  // Khởi tạo cây bằng cách lấy danh sách root items
+  // Khởi tạo cây bằng cách lấy toàn bộ data và render roots
   async init() {
     this.container.innerHTML = '';
-    const rootItems = await this.onFetchChildren(null);
-    rootItems.forEach(item => {
+    const { roots, rawData } = await this.onFetchTree();
+    this.rawData = rawData;
+    roots.forEach(item => {
       this.container.appendChild(this.createNode(item, 1));
     });
   }
@@ -43,11 +47,11 @@ export class CategoryTree {
     indent.style.width = `${(level - 1) * 24}px`;
     indent.className = 'tree-indent';
 
-    const hasChildren = item.hasChildren !== false; // Backend flag
+    const hasChildren = item.children && item.children.length > 0;
     
     // NFR: Mặc định thu gọn từ tầng 3 trở xuống (cấp 1, 2 mở; cấp 3 đóng)
     let isExpanded = level < 3;
-    let isChildrenLoaded = false;
+    let isChildrenRendered = false;
     
     const toggle = document.createElement('div');
     toggle.className = `tree-toggle ${hasChildren ? (isExpanded ? 'expanded' : '') : 'empty'}`;
@@ -78,6 +82,15 @@ export class CategoryTree {
         <line x1="5" y1="12" x2="19" y2="12"></line>
       </svg>
     `;
+
+    const moveBtn = document.createElement('button');
+    moveBtn.className = 'tree-action-btn';
+    moveBtn.title = 'Đổi hạng mục cha';
+    moveBtn.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M5 9l4-4 4 4M9 5v14"></path>
+      </svg>
+    `;
     
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'tree-action-btn delete';
@@ -90,6 +103,7 @@ export class CategoryTree {
     `;
 
     actions.appendChild(addBtn);
+    actions.appendChild(moveBtn);
     actions.appendChild(deleteBtn);
 
     content.appendChild(indent);
@@ -103,29 +117,30 @@ export class CategoryTree {
     node.appendChild(content);
     node.appendChild(childrenContainer);
 
-    // Tính năng: Mở rộng/Thu gọn
-    const loadChildren = async () => {
-      if (isChildrenLoaded) return;
+    // Tính năng: Mở rộng/Thu gọn in-memory
+    const renderChildren = () => {
+      if (isChildrenRendered) return;
       childrenContainer.innerHTML = '';
-      const children = await this.onFetchChildren(item.id);
-      children.forEach(child => {
-        childrenContainer.appendChild(this.createNode(child, level + 1));
-      });
-      isChildrenLoaded = true;
+      if (item.children) {
+        item.children.forEach(child => {
+          childrenContainer.appendChild(this.createNode(child, level + 1));
+        });
+      }
+      isChildrenRendered = true;
     };
 
     if (isExpanded && hasChildren) {
-      loadChildren();
+      renderChildren();
     }
 
-    toggle.addEventListener('click', async (e) => {
+    toggle.addEventListener('click', (e) => {
       e.stopPropagation();
       if (!hasChildren) return;
       isExpanded = !isExpanded;
       toggle.className = `tree-toggle ${isExpanded ? 'expanded' : ''}`;
       childrenContainer.className = `tree-children ${isExpanded ? 'expanded' : ''}`;
       if (isExpanded) {
-        await loadChildren();
+        renderChildren();
       }
     });
 
@@ -161,6 +176,60 @@ export class CategoryTree {
       });
     });
 
+    // Tính năng: Đổi hạng mục cha (Move)
+    moveBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      
+      // Tạo danh sách dropdown chọn cha
+      const select = document.createElement('select');
+      select.className = 'tree-input';
+      
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = '-- Chọn hạng mục cha (Root) --';
+      select.appendChild(defaultOption);
+
+      this.rawData.forEach(c => {
+        if (c.id !== item.id) { // Cơ bản loại chính nó
+          const opt = document.createElement('option');
+          opt.value = c.id;
+          opt.textContent = c.name;
+          if (item.parent_id === c.id) {
+            opt.selected = true;
+          }
+          select.appendChild(opt);
+        }
+      });
+
+      labelContainer.innerHTML = '';
+      labelContainer.appendChild(select);
+      select.focus();
+
+      const saveMove = async () => {
+        const newParentId = select.value ? parseInt(select.value, 10) : null;
+        if (newParentId !== item.parent_id) {
+          const success = await this.onMove(item.id, newParentId);
+          if (success) {
+            // Re-fetch entire tree and re-render on success
+            this.init();
+            return;
+          }
+        }
+        // If fail or unchanged, revert UI
+        labelContainer.innerHTML = '';
+        labelContainer.appendChild(label);
+      };
+
+      select.addEventListener('blur', saveMove);
+      select.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') saveMove();
+        if (e.key === 'Escape') {
+          labelContainer.innerHTML = '';
+          labelContainer.appendChild(label);
+        }
+      });
+    });
+
     // Tính năng: Thêm hạng mục con tại chỗ
     addBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -169,7 +238,7 @@ export class CategoryTree {
         isExpanded = true;
         toggle.className = `tree-toggle expanded`;
         childrenContainer.className = `tree-children expanded`;
-        await loadChildren();
+        renderChildren();
       }
       
       const inputContainer = document.createElement('div');
@@ -197,6 +266,17 @@ export class CategoryTree {
         if (name) {
           const newItem = await this.onAdd(item.id, { name });
           if (newItem) {
+            if (!item.children) item.children = [];
+            item.children.push(newItem);
+            
+            // Re-render empty state to arrow
+            toggle.className = `tree-toggle expanded`;
+            toggle.innerHTML = `
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            `;
+
             const newNode = this.createNode(newItem, level + 1);
             childrenContainer.insertBefore(newNode, inputContainer);
           }
@@ -214,7 +294,6 @@ export class CategoryTree {
     // Tính năng: Xoá hạng mục tại chỗ
     deleteBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      // Delegate kiểm tra logic (ví dụ: T-10) cho backend. UI chỉ gọi onDelete.
       const success = await this.onDelete(item.id);
       if (success) {
         node.remove();
