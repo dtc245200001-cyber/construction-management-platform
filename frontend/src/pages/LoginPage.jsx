@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../lib/api';
 import {
   FolderCheck,
@@ -30,8 +30,19 @@ const LoginPage = ({ setUser }) => {
   const [isRegister, setIsRegister] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+  const [token, setToken] = useState("");
   
   const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const urlToken = searchParams.get('token');
+    if (urlToken) {
+      setToken(urlToken);
+      setIsRegister(true); // Tự động mở tab Đăng ký nếu có thư mời
+    }
+  }, [location]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -82,7 +93,7 @@ const LoginPage = ({ setUser }) => {
     setLoading(true);
 
     try {
-      await api.post('/auth/register', { name, email, password, confirmPassword });
+      await api.post('/auth/register', { name, email, password, confirmPassword, token });
       setIsRegister(false);
       setName("");
       setPassword("");
@@ -251,6 +262,12 @@ const LoginPage = ({ setUser }) => {
                 <form className={`nl-form-pane ${isRegister ? 'nl-active' : ''}`} onSubmit={handleRegister}>
                   <h3 className="nl-form-title">Tạo tài khoản</h3>
                   <p className="nl-form-desc">Đăng ký tài khoản để bắt đầu quản lý công trình của bạn.</p>
+
+                  {token && (
+                    <div className="nl-alert-success" style={{ marginBottom: '16px' }}>
+                      Bạn đang đăng ký thông qua thư mời bảo mật.
+                    </div>
+                  )}
 
                   <div className="nl-input-group">
                     <div className="nl-input-icon"><Users /></div>

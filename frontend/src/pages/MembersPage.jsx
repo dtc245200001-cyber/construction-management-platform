@@ -13,6 +13,7 @@ const roleLabels = {
 
 export default function MembersPage({ user }) {
   const [members, setMembers] = useState([]);
+  const [invitations, setInvitations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -28,6 +29,7 @@ export default function MembersPage({ user }) {
       setLoading(true);
       const res = await api.get(`/projects/${currentProjectId}/members`);
       setMembers(res.data.members || []);
+      setInvitations(res.data.invitations || []);
     } catch (err) {
       setError(err.response?.data?.message || "Không thể tải danh sách thành viên");
     } finally {
@@ -109,7 +111,7 @@ export default function MembersPage({ user }) {
               />
             </div>
             <div className="text-sm font-medium text-site-baseline px-4 border-l border-site-border">
-              Tổng cộng: <span className="text-site-dark">{members.length}</span> người
+              Tổng cộng: <span className="text-site-dark">{members.length + invitations.length}</span> người
             </div>
           </div>
           <div className="overflow-x-auto">
@@ -186,7 +188,36 @@ export default function MembersPage({ user }) {
                     </tr>
                   );
                 })}
-                {members.length === 0 && (
+                {invitations.map((inv) => (
+                  <tr key={`inv-${inv.id}`} className="hover:bg-site-bg/30 transition-colors opacity-75 border-l-4 border-site-alert">
+                    <td className="px-6 py-4 pl-5">
+                      <div className="flex items-center gap-3">
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-full font-bold bg-site-alert/10 text-site-alert">
+                          <Mail className="size-4" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-site-dark italic">Chưa đăng ký</p>
+                          <p className="text-xs text-site-baseline flex items-center gap-1 mt-0.5">
+                            <Mail className="size-3" /> {inv.email}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1.5 font-medium text-site-dark">
+                        <Shield className="size-4 text-site-baseline" /> 
+                        {roleLabels[inv.role] || inv.role}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-site-alert/10 text-site-alert">
+                        <span className="size-1.5 rounded-full bg-current"></span>
+                        Đã gửi thư mời
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {members.length === 0 && invitations.length === 0 && (
                   <tr>
                     <td colSpan="3" className="px-6 py-12 text-center text-site-baseline">
                       Chưa có thành viên nào trong dự án này.
@@ -226,7 +257,7 @@ export default function MembersPage({ user }) {
                     placeholder="VD: nv.a@cong-truong-360.vn" 
                   />
                 </div>
-                <p className="text-xs text-site-baseline mt-1.5">Lưu ý: Người dùng cần phải có tài khoản trên hệ thống trước.</p>
+                <p className="text-xs text-site-baseline mt-1.5">Nếu người dùng chưa có tài khoản, hệ thống sẽ gửi một đường dẫn đăng ký kèm thư mời.</p>
               </div>
               
               <div>

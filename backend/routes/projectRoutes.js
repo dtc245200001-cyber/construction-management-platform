@@ -29,17 +29,15 @@ router.get(
     }
   }
 );
+const requireSystemAdmin = require("../middleware/systemAdmin");
+const { createAuditMiddleware } = require("../utils/auditLogger");
 
 // POST /api/projects - Tạo dự án mới
 router.post(
   "/",
-  requireAuth,
+  requireSystemAdmin,
+  createAuditMiddleware('CREATE_PROJECT', 'projects'),
   async (req, res, next) => {
-    // Chỉ ban_quan_ly mới được tạo dự án
-    if (req.session.user.role !== ROLES.BAN_QUAN_LY) {
-      return res.status(403).json({ message: "Chỉ Ban quản lý mới được quyền tạo dự án" });
-    }
-
     const { name, code, location, start_date, sprint_length_weeks } = req.body;
     
     if (!name || name.length > 255) {
@@ -163,8 +161,16 @@ router.get(
         [req.params.projectId]
       );
 
+      const invResult = await db.query(
+        `SELECT id, email, project_role as role, token, created_at
+         FROM invitations
+         WHERE project_id = $1 AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP`,
+        [req.params.projectId]
+      );
+
       return res.json({
         members: result.rows,
+        invitations: invResult.rows
       });
     } catch (error) {
       next(error);
@@ -178,6 +184,7 @@ router.post(
   requireAuth,
   checkProjectAccess,
   allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU]),
+  createAuditMiddleware('ADD_PROJECT_MEMBER', 'project_members'),
   async (req, res, next) => {
     const { email, role } = req.body;
     
@@ -192,9 +199,24 @@ router.post(
     try {
       // 1. Tìm user theo email
       const userResult = await db.query("SELECT id, name FROM users WHERE email = $1", [email]);
+      
       if (userResult.rows.length === 0) {
-        return res.status(404).json({ message: "Không tìm thấy người dùng với email này" });
+        // User does not exist in the system. Create an invitation instead.
+        const crypto = require('crypto');
+        const token = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+        
+        await db.query(
+          `INSERT INTO invitations (email, token, invited_by, expires_at, project_id, project_role) 
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [email, token, req.session.user.id, expiresAt, req.params.projectId, role]
+        );
+        
+        console.log(`[EMAIL MOCK] Gửi thư mời tham gia dự án đến ${email}. Link: http://localhost:5173/register?token=${token}`);
+        
+        return res.status(201).json({ message: "Người dùng chưa có tài khoản. Đã gửi thư mời tham gia hệ thống và dự án." });
       }
+      
       const userId = userResult.rows[0].id;
 
       // 2. Kiểm tra xem user đã trong dự án chưa

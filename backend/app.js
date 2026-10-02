@@ -142,6 +142,9 @@ app.use("/api/auth", authRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/projects", projectRoutes);
 
+const adminRoutes = require("./routes/adminRoutes");
+app.use("/api/admin", adminRoutes);
+
 // ─── ERROR HANDLERS ───────────────────────────────────────────────────────────
 app.use(notFoundHandler);
 app.use(errorHandler);

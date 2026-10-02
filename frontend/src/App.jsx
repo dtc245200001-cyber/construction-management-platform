@@ -14,6 +14,7 @@ import ProjectsPage from './pages/ProjectsPage';
 import LandingPage from './pages/LandingPage';
 import WBSPage from './pages/WBSPage';
 import MembersPage from './pages/MembersPage';
+import AdminPage from './pages/AdminPage';
 import DashboardLayout from './layouts/DashboardLayout';
 
 function App() {
@@ -55,6 +56,9 @@ function App() {
 
         {/* Project Selection (Full screen) */}
         <Route path="/projects" element={user ? <ProjectsPage user={user} setUser={setUser} /> : <Navigate to="/login" replace />} />
+
+        {/* Admin Dashboard */}
+        <Route path="/admin" element={user ? <AdminPage user={user} /> : <Navigate to="/login" replace />} />
 
         {/* Dashboard Layout (With Sidebar) */}
         <Route element={user ? <DashboardLayout user={user} setUser={setUser} /> : <Navigate to="/login" replace />}>
