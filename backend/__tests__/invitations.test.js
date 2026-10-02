@@ -1,3 +1,9 @@
+// PHẢI load .env.test TRƯỚC KHI require bất kỳ module nào
+// vì config/db.js đọc DATABASE_URL ngay khi được require()
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env.test'), override: true });
+process.env.DATABASE_URL = 'postgres://postgres:postgres123@localhost:5433/construction_db_test';
+
 const request = require('supertest');
 const app = require('../app');
 const db = require('../config/db');
@@ -28,21 +34,33 @@ describe('Invitations (E4)', () => {
   let testUserId;
 
   beforeAll(async () => {
-    // Clear data
-    await db.query("DELETE FROM email_logs");
-    await db.query("DELETE FROM project_members");
-    await db.query("DELETE FROM invitations");
-    await db.query("DELETE FROM projects");
-    await db.query("DELETE FROM users");
-    
-    // Create admin user (id=1 for mock)
-    const res = await db.query(
-      "INSERT INTO users (id, email, password_hash, name, role_id, is_system_admin) VALUES (1, 'admin@e4.com', 'h', 'Admin', 1, true) ON CONFLICT (id) DO NOTHING"
+    // Debug: kiểm tra DB đang dùng
+    const dbInfo = await db.query("SELECT current_database()");
+    console.log('[TEST] DB đang dùng:', dbInfo.rows[0].current_database);
+
+    // TRUNCATE xóa sạch toàn bộ + reset sequence + cascade foreign key
+    // trong một lệnh atomic - không bị lỗi duplicate key giữa các lần test
+    await db.query(
+      "TRUNCATE TABLE email_logs, project_members, invitations, projects, users RESTART IDENTITY CASCADE"
+    );
+
+    // Create admin user với id=1 (mock auth dùng id này)
+    // Dùng UPSERT để không bị duplicate key nếu beforeAll chạy nhiều lần
+    await db.query(
+      `INSERT INTO users (id, email, password_hash, name, role_id, is_system_admin) 
+       VALUES (1, 'admin@e4.com', 'h', 'Admin', 1, true)
+       ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email`
     );
     
-    // Create an existing normal user
+    // Đặt sequence tiếp từ 2 để tránh conflict khi INSERT user không có id
+    await db.query("SELECT setval('users_id_seq', 1, true)");
+    
+    // Create an existing normal user (sequence sẽ sinh ra id=2)
     const res2 = await db.query(
-      "INSERT INTO users (email, password_hash, name, role_id) VALUES ('exist@e4.com', 'h', 'Exist', 1) RETURNING id"
+      `INSERT INTO users (email, password_hash, name, role_id) 
+       VALUES ('exist@e4.com', 'h', 'Exist', 1)
+       ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name
+       RETURNING id`
     );
     testUserId = res2.rows[0].id;
 
