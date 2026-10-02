@@ -105,8 +105,14 @@ router.get('/projects/:id', async (req, res, next) => {
   }
 });
 
+// Cấu hình rate limit động từ app.js
+let newsletterLimiter = (req, res, next) => next();
+function setNewsletterLimiter(limiter) {
+  newsletterLimiter = limiter;
+}
+
 // POST /api/public/newsletter - Đăng ký nhận tin
-router.post('/newsletter', async (req, res, next) => {
+router.post('/newsletter', (req, res, next) => newsletterLimiter(req, res, next), async (req, res, next) => {
   try {
     const { email } = req.body;
     if (!email || !email.includes('@')) {
@@ -131,4 +137,4 @@ router.post('/newsletter', async (req, res, next) => {
   }
 });
 
-module.exports = { router, removeAccents };
+module.exports = { router, removeAccents, setNewsletterLimiter };

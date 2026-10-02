@@ -61,6 +61,22 @@ const registerLimiter = rateLimit({
   message: { message: "Quá nhiều lần thử đăng ký. Vui lòng thử lại sau." },
 });
 
+const publicApiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 phút
+  max: 150, // Tối đa 150 request / 15 phút mỗi IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Quá nhiều yêu cầu, vui lòng thử lại sau." },
+});
+
+const newsletterLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 phút
+  max: 5, // Tối đa 5 lần đăng ký email / 15 phút mỗi IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Bạn đã đăng ký quá nhiều lần. Vui lòng thử lại sau." },
+});
+
 // ─── APP ──────────────────────────────────────────────────────────────────────
 const app = express();
 
@@ -143,10 +159,13 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/projects", projectRoutes);
 
 const adminRoutes = require("./routes/adminRoutes");
-const { router: publicRoutes } = require("./routes/publicRoutes");
+const { router: publicRoutes, setNewsletterLimiter } = require("./routes/publicRoutes");
+
+// Truyền limiter vào router
+setNewsletterLimiter(newsletterLimiter);
 
 app.use("/api/admin", adminRoutes);
-app.use("/api/public", publicRoutes);
+app.use("/api/public", publicApiLimiter, publicRoutes);
 
 // ─── ERROR HANDLERS ───────────────────────────────────────────────────────────
 app.use(notFoundHandler);
