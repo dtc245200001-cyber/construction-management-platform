@@ -143,7 +143,10 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/projects", projectRoutes);
 
 const adminRoutes = require("./routes/adminRoutes");
+const { router: publicRoutes } = require("./routes/publicRoutes");
+
 app.use("/api/admin", adminRoutes);
+app.use("/api/public", publicRoutes);
 
 // ─── ERROR HANDLERS ───────────────────────────────────────────────────────────
 app.use(notFoundHandler);

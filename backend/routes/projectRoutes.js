@@ -32,13 +32,24 @@ router.get(
 const requireSystemAdmin = require("../middleware/systemAdmin");
 const { createAuditMiddleware } = require("../utils/auditLogger");
 
+// Hàm hỗ trợ loại bỏ dấu tiếng Việt (có thể tách ra utils sau)
+function removeAccents(str) {
+  if (!str) return '';
+  return str.normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/đ/g, 'd').replace(/Đ/g, 'D');
+}
+
 // POST /api/projects - Tạo dự án mới
 router.post(
   "/",
   requireSystemAdmin,
   createAuditMiddleware('CREATE_PROJECT', 'projects'),
   async (req, res, next) => {
-    const { name, code, location, start_date, sprint_length_weeks } = req.body;
+    const { 
+      name, code, location, start_date, sprint_length_weeks,
+      province, project_type, stage, description, cover_image_url, expected_completion_date, is_public
+    } = req.body;
     
     if (!name || name.length > 255) {
       return res.status(400).json({ message: "Tên dự án là bắt buộc và không quá 255 ký tự" });
@@ -46,6 +57,8 @@ router.post(
     if (!code) {
       return res.status(400).json({ message: "Mã dự án là bắt buộc" });
     }
+
+    const normalized_search_text = removeAccents(`${name} ${province || ''} ${project_type || ''}`).toLowerCase();
 
     const client = await db.connect();
     try {
@@ -59,9 +72,15 @@ router.post(
       }
       
       const projectResult = await client.query(
-        `INSERT INTO projects (name, code, location, start_date, sprint_length_weeks, status, actual_progress, planned_progress) 
-         VALUES ($1, $2, $3, $4, $5, 'Chuẩn bị', 0, 0) RETURNING *`,
-        [name, code, location || null, start_date || null, sprint_length_weeks || 1]
+        `INSERT INTO projects (
+          name, code, location, start_date, sprint_length_weeks, status, actual_progress, planned_progress,
+          province, project_type, stage, description, cover_image_url, expected_completion_date, is_public, normalized_search_text
+        ) 
+         VALUES ($1, $2, $3, $4, $5, 'Chuẩn bị', 0, 0, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+        [
+          name, code, location || null, start_date || null, sprint_length_weeks || 1,
+          province || null, project_type || null, stage || null, description || null, cover_image_url || null, expected_completion_date || null, is_public || false, normalized_search_text
+        ]
       );
       const newProject = projectResult.rows[0];
 
@@ -82,6 +101,60 @@ router.post(
       next(error);
     } finally {
       client.release();
+    }
+  }
+);
+
+// PUT /api/projects/:projectId - Cập nhật dự án
+router.put(
+  "/:projectId",
+  requireSystemAdmin,
+  createAuditMiddleware('UPDATE_PROJECT', 'projects'),
+  async (req, res, next) => {
+    const { 
+      name, code, location, start_date, sprint_length_weeks, status,
+      province, project_type, stage, description, cover_image_url, expected_completion_date, is_public
+    } = req.body;
+    
+    if (!name || name.length > 255) {
+      return res.status(400).json({ message: "Tên dự án là bắt buộc và không quá 255 ký tự" });
+    }
+    if (!code) {
+      return res.status(400).json({ message: "Mã dự án là bắt buộc" });
+    }
+
+    const normalized_search_text = removeAccents(`${name} ${province || ''} ${project_type || ''}`).toLowerCase();
+
+    try {
+      // Check unique code (excluding current project)
+      const exist = await db.query("SELECT id FROM projects WHERE code = $1 AND id != $2", [code, req.params.projectId]);
+      if (exist.rows.length > 0) {
+        return res.status(400).json({ message: "Mã dự án đã tồn tại" });
+      }
+
+      const result = await db.query(
+        `UPDATE projects SET 
+          name = $1, code = $2, location = $3, start_date = $4, sprint_length_weeks = $5, status = $6,
+          province = $7, project_type = $8, stage = $9, description = $10, cover_image_url = $11, expected_completion_date = $12, is_public = $13, normalized_search_text = $14,
+          updated_at = CURRENT_TIMESTAMP
+         WHERE id = $15 RETURNING *`,
+        [
+          name, code, location || null, start_date || null, sprint_length_weeks || 1, status || 'Chuẩn bị',
+          province || null, project_type || null, stage || null, description || null, cover_image_url || null, expected_completion_date || null, is_public || false, normalized_search_text,
+          req.params.projectId
+        ]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ message: "Không tìm thấy dự án" });
+      }
+
+      return res.json({
+        message: "Cập nhật dự án thành công",
+        project: result.rows[0]
+      });
+    } catch (error) {
+      next(error);
     }
   }
 );
