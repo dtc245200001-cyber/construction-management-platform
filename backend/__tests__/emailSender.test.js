@@ -1,6 +1,6 @@
 const { createEmailLog, processEmailLogs } = require('../lib/emailSender');
 const db = require('../config/db');
-const { sendEmail, memoryInbox } = require('../lib/mailer');
+const { sendEmail } = require('../lib/mailer');
 
 // Mock mailer
 jest.mock('../lib/mailer', () => ({

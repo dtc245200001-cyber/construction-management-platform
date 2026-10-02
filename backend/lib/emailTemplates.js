@@ -26,7 +26,6 @@ function cleanHeaderString(unsafe) {
  */
 function renderProjectInvite({ inviterName, projectName, role, token, isNewUser, baseUrl }) {
   const safeProject = cleanHeaderString(projectName);
-  const safeRole = cleanHeaderString(role);
   
   const subject = `Lời mời tham gia dự án: ${safeProject}`;
 

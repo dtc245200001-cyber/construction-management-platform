@@ -1,6 +1,7 @@
 
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
+const logger = require('../utils/logger');
 const { checkProjectAccess, allow, createProjectRouter } = require('../middleware/projectAccess');
 const { ROLES } = require('../utils/constants');
 const { createEmailLog, processEmailLogs } = require('../lib/emailSender');

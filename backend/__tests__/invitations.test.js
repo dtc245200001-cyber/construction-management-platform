@@ -31,7 +31,7 @@ jest.mock('../middleware/auth', () => (req, res, next) => {
 
 describe('Invitations (E4)', () => {
   let projectId;
-  let testUserId;
+  let _testUserId;
 
   beforeAll(async () => {
     // Debug: kiểm tra DB đang dùng
@@ -62,7 +62,7 @@ describe('Invitations (E4)', () => {
        ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name
        RETURNING id`
     );
-    testUserId = res2.rows[0].id;
+    _testUserId = res2.rows[0].id;
 
     // Create a project
     const pRes = await db.query(
