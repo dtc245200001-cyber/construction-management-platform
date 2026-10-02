@@ -85,4 +85,24 @@ router.get('/projects', async (req, res, next) => {
   }
 });
 
+// GET /api/public/projects/:id - Chi tiết dự án công khai
+router.get('/projects/:id', async (req, res, next) => {
+  try {
+    const result = await db.query(
+      `SELECT id, name, code, location, province, project_type, stage, description, cover_image_url, start_date, expected_completion_date, status, updated_at
+       FROM projects
+       WHERE id = $1 AND is_public = true`,
+      [req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Không tìm thấy dự án hoặc dự án không được công khai" });
+    }
+
+    return res.json({ project: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = { router, removeAccents };

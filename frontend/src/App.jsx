@@ -13,6 +13,7 @@ import PublicLayout from './layouts/PublicLayout';
 import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
 import PublicProjectsPage from './pages/PublicProjectsPage';
+import PublicProjectDetailPage from './pages/PublicProjectDetailPage';
 import ProjectsPage from './pages/ProjectsPage';
 import LandingPage from './pages/LandingPage';
 import WBSPage from './pages/WBSPage';
@@ -59,6 +60,7 @@ function App() {
         <Route element={<PublicLayout user={user} setUser={setUser} />}>
           <Route path="/" element={<HomePage user={user} />} />
           <Route path="/du-an" element={<PublicProjectsPage />} />
+          <Route path="/du-an/:id" element={<PublicProjectDetailPage user={user} />} />
           <Route path="/nha-thau" element={<ComingSoonPage title="Trang danh bạ nhà thầu" />} />
           <Route path="/vat-tu" element={<ComingSoonPage title="Trang vật tư thiết bị" />} />
           <Route path="/tin-tuc" element={<ComingSoonPage title="Trang tin tức" />} />
