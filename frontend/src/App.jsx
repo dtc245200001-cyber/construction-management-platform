@@ -21,6 +21,7 @@ import MembersPage from './pages/MembersPage';
 import AdminPage from './pages/AdminPage';
 import NotFoundPage from './pages/NotFoundPage';
 import ComingSoonPage from './pages/ComingSoonPage';
+import InvitationAcceptPage from './pages/InvitationAcceptPage';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -56,6 +57,8 @@ function App() {
           <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage setUser={setUser} />} />
         </Route>
         
+        <Route path="/invitations/:token/accept" element={<InvitationAcceptPage />} />
+
         {/* Public Routes with Header & Footer */}
         <Route element={<PublicLayout user={user} setUser={setUser} />}>
           <Route path="/" element={<HomePage user={user} />} />
