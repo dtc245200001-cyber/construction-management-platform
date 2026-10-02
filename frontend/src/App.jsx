@@ -6,6 +6,8 @@ import './App.css';
 // Layouts
 import AuthLayout from './layouts/AuthLayout';
 import MainLayout from './layouts/MainLayout';
+import DashboardLayout from './layouts/DashboardLayout';
+import PublicLayout from './layouts/PublicLayout';
 
 // Pages
 import LoginPage from './pages/LoginPage';
@@ -15,7 +17,8 @@ import LandingPage from './pages/LandingPage';
 import WBSPage from './pages/WBSPage';
 import MembersPage from './pages/MembersPage';
 import AdminPage from './pages/AdminPage';
-import DashboardLayout from './layouts/DashboardLayout';
+import NotFoundPage from './pages/NotFoundPage';
+import ComingSoonPage from './pages/ComingSoonPage';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -51,8 +54,21 @@ function App() {
           <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage setUser={setUser} />} />
         </Route>
         
-        {/* Public / Protected Home Page */}
-        <Route path="/" element={<HomePage user={user} setUser={setUser} />} />
+        {/* Public Routes with Header & Footer */}
+        <Route element={<PublicLayout user={user} setUser={setUser} />}>
+          <Route path="/" element={<HomePage user={user} />} />
+          <Route path="/du-an" element={<ComingSoonPage title="Trang tìm kiếm dự án" />} />
+          <Route path="/nha-thau" element={<ComingSoonPage title="Trang danh bạ nhà thầu" />} />
+          <Route path="/vat-tu" element={<ComingSoonPage title="Trang vật tư thiết bị" />} />
+          <Route path="/tin-tuc" element={<ComingSoonPage title="Trang tin tức" />} />
+          <Route path="/lien-he" element={<ComingSoonPage title="Trang liên hệ" />} />
+          <Route path="/gioi-thieu" element={<ComingSoonPage title="Trang giới thiệu" />} />
+          <Route path="/dieu-khoan" element={<ComingSoonPage title="Trang điều khoản sử dụng" />} />
+          <Route path="/bao-mat" element={<ComingSoonPage title="Trang chính sách bảo mật" />} />
+          <Route path="/huong-dan" element={<ComingSoonPage title="Trang hướng dẫn sử dụng" />} />
+          <Route path="/faq" element={<ComingSoonPage title="Câu hỏi thường gặp" />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
 
         {/* Project Selection (Full screen) */}
         <Route path="/projects" element={user ? <ProjectsPage user={user} setUser={setUser} /> : <Navigate to="/login" replace />} />
@@ -67,13 +83,6 @@ function App() {
           <Route path="/members" element={<MembersPage user={user} />} />
         </Route>
 
-        {/* Existing MainLayout for other pages */}
-        <Route element={<MainLayout user={user} setUser={setUser} />}>
-          {/* Add other pages here if needed */}
-        </Route>
-        
-        {/* Default route */}
-        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
