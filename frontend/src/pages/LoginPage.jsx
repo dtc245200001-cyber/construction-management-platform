@@ -242,7 +242,7 @@ const LoginPage = ({ setUser }) => {
                   </div>
 
                   <button type="submit" className="nl-submit-btn" disabled={loading}>
-                    {loading ? "Đang đăng nhập..." : "Đang đăng nhập"}
+                    {loading ? "Đang đăng nhập..." : "Đăng nhập"}
                     {!loading && <ArrowRight />}
                   </button>
 
