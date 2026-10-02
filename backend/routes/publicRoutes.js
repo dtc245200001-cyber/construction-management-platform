@@ -105,4 +105,30 @@ router.get('/projects/:id', async (req, res, next) => {
   }
 });
 
+// POST /api/public/newsletter - Đăng ký nhận tin
+router.post('/newsletter', async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ message: "Email không hợp lệ" });
+    }
+
+    try {
+      await db.query(
+        "INSERT INTO newsletters (email) VALUES ($1)",
+        [email.toLowerCase()]
+      );
+    } catch (err) {
+      // Bỏ qua lỗi duplicate email (23505) để tránh email enumeration
+      if (err.code !== '23505') {
+        throw err;
+      }
+    }
+
+    return res.json({ message: "Đăng ký nhận tin thành công!" });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = { router, removeAccents };

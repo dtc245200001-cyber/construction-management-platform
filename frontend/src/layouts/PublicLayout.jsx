@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate, Link } from "react-router-dom";
 import { Menu, Search, UserRound, X, FolderKanban, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Check } from "lucide-react";
+import api from "../lib/api";
 
 export function Logo({ light = false }) {
   return <Link to="/" className={`brand ${light ? "brand-light" : ""}`} aria-label="Nền tảng thi công công trình - Trang chủ">
@@ -21,6 +22,8 @@ export default function PublicLayout({ user, setUser }) {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [email, setEmail] = useState("");
   const [subscribed, setSubscribed] = useState(false);
+  const [subscribeLoading, setSubscribeLoading] = useState(false);
+  const [subscribeMessage, setSubscribeMessage] = useState("");
 
   const handleLogout = async () => {
     try {
@@ -29,6 +32,25 @@ export default function PublicLayout({ user, setUser }) {
       navigate('/login', { replace: true });
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleSubscribe = async (e) => {
+    e.preventDefault();
+    if (!email.trim() || subscribeLoading) return;
+    
+    setSubscribeLoading(true);
+    setSubscribeMessage("");
+    try {
+      const res = await api.post('/public/newsletter', { email: email.trim() });
+      setSubscribeMessage(res.data.message || "Đăng ký nhận tin thành công!");
+      setSubscribed(true);
+      setEmail("");
+    } catch (error) {
+      setSubscribeMessage(error.response?.data?.message || "Đã có lỗi xảy ra, vui lòng thử lại.");
+      setSubscribed(false);
+    } finally {
+      setSubscribeLoading(false);
     }
   };
 
@@ -116,14 +138,14 @@ export default function PublicLayout({ user, setUser }) {
               <a href="#" aria-label="Zalo" target="_blank" rel="noopener noreferrer">Zalo</a>
             </div>
           </div>
-          <form className="footer-subscribe" onSubmit={e => {e.preventDefault(); if(email.trim()) setSubscribed(true)}}>
+          <form className="footer-subscribe" onSubmit={handleSubscribe}>
             <strong>Đăng ký nhận tin</strong>
             <span>Nhận thông tin dự án mới nhất qua email</span>
             <div>
-              <input type="email" aria-label="Email nhận tin" placeholder="Nhập email của bạn" value={email} onChange={e => {setEmail(e.target.value); setSubscribed(false)}} required/>
-              <Button type="submit" size="sm">Đăng ký</Button>
+              <input type="email" aria-label="Email nhận tin" placeholder="Nhập email của bạn" value={email} onChange={e => {setEmail(e.target.value); setSubscribed(false); setSubscribeMessage("")}} required disabled={subscribeLoading}/>
+              <Button type="submit" size="sm" disabled={subscribeLoading}>{subscribeLoading ? "..." : "Đăng ký"}</Button>
             </div>
-            {subscribed && <small className="subscribe-note"><Check size={13}/> Đã ghi nhận email của bạn trong bản xem thử.</small>}
+            {subscribeMessage && <small className={`subscribe-note ${subscribed ? "text-green-300" : "text-red-300"}`}>{subscribed && <Check size={13}/>} {subscribeMessage}</small>}
           </form>
         </div>
       </footer>
