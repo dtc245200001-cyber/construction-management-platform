@@ -1,0 +1,120 @@
+const request = require('supertest');
+const app = require('../app');
+const db = require('../config/db');
+const crypto = require('crypto');
+const { createEmailLog, processEmailLogs } = require('../lib/emailSender');
+
+jest.mock('../lib/emailSender', () => ({
+  createEmailLog: jest.fn().mockResolvedValue(1),
+  processEmailLogs: jest.fn().mockResolvedValue()
+}));
+
+// Mock requireSystemAdmin
+jest.mock('../middleware/systemAdmin', () => (req, res, next) => {
+  req.user = { id: 1, is_system_admin: true };
+  next();
+});
+
+// Need to mock auth middleware if it's applied globally to admin routes
+jest.mock('../middleware/auth', () => (req, res, next) => {
+  req.user = { id: 1, is_system_admin: true };
+  next();
+});
+
+describe('Invitations (E4)', () => {
+  let projectId;
+  let testUserId;
+
+  beforeAll(async () => {
+    // Clear data
+    await db.query("DELETE FROM email_logs");
+    await db.query("DELETE FROM project_members");
+    await db.query("DELETE FROM invitations");
+    await db.query("DELETE FROM projects");
+    await db.query("DELETE FROM users");
+    
+    // Create admin user (id=1 for mock)
+    const res = await db.query(
+      "INSERT INTO users (id, email, password_hash, name, role_id, is_system_admin) VALUES (1, 'admin@e4.com', 'h', 'Admin', 1, true) ON CONFLICT (id) DO NOTHING"
+    );
+    
+    // Create an existing normal user
+    const res2 = await db.query(
+      "INSERT INTO users (email, password_hash, name, role_id) VALUES ('exist@e4.com', 'h', 'Exist', 1) RETURNING id"
+    );
+    testUserId = res2.rows[0].id;
+
+    // Create a project
+    const pRes = await db.query(
+      "INSERT INTO projects (name, start_date) VALUES ('Test Project E4', CURRENT_DATE) RETURNING id"
+    );
+    projectId = pRes.rows[0].id;
+  });
+
+  afterAll(async () => {
+    await db.end();
+  });
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+  });
+
+  describe('POST /api/admin/invitations', () => {
+    it('Tạo thư mời, băm token, gọi outbox và không trả về token gốc', async () => {
+      const res = await request(app)
+        .post('/api/admin/invitations')
+        .send({ email: 'newuser@e4.com', projectId, role: 'chi_huy_truong' });
+      
+      expect(res.status).toBe(201);
+      expect(res.body.token).toBeUndefined(); // Không được trả token trong response
+      
+      // DB check
+      const invCheck = await db.query("SELECT * FROM invitations WHERE email = 'newuser@e4.com'");
+      expect(invCheck.rows.length).toBe(1);
+      expect(invCheck.rows[0].token_hash).toBeDefined();
+      expect(invCheck.rows[0].token).toBeUndefined(); // Không có cột token
+
+      // E3 calls check
+      expect(createEmailLog).toHaveBeenCalled();
+      expect(processEmailLogs).toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /api/public/invitations/:token', () => {
+    it('Trả về lỗi chung chung nếu token sai hoặc hết hạn', async () => {
+      const res = await request(app).get('/api/public/invitations/wrongtoken');
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe('Mã thư mời không hợp lệ hoặc đã hết hạn');
+    });
+
+    it('Trả về thông tin userExists = false nếu email chưa đăng ký', async () => {
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      const hash = crypto.createHash('sha256').update(rawToken).digest('hex');
+      
+      await db.query(
+        "INSERT INTO invitations (email, token_hash, invited_by, project_id, project_role, expires_at) VALUES ('new2@e4.com', $1, 1, $2, 'chi_huy_truong', CURRENT_TIMESTAMP + interval '1 day')",
+        [hash, projectId]
+      );
+
+      const res = await request(app).get(`/api/public/invitations/${rawToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.email).toBe('new2@e4.com');
+      expect(res.body.userExists).toBe(false);
+    });
+
+    it('Trả về thông tin userExists = true nếu email đã đăng ký', async () => {
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      const hash = crypto.createHash('sha256').update(rawToken).digest('hex');
+      
+      await db.query(
+        "INSERT INTO invitations (email, token_hash, invited_by, project_id, project_role, expires_at) VALUES ('exist@e4.com', $1, 1, $2, 'chi_huy_truong', CURRENT_TIMESTAMP + interval '1 day')",
+        [hash, projectId]
+      );
+
+      const res = await request(app).get(`/api/public/invitations/${rawToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.email).toBe('exist@e4.com');
+      expect(res.body.userExists).toBe(true);
+    });
+  });
+});

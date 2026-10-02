@@ -3,6 +3,8 @@ const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
 const { checkProjectAccess, allow, createProjectRouter } = require('../middleware/projectAccess');
 const { ROLES } = require('../utils/constants');
+const { createEmailLog, processEmailLogs } = require('../lib/emailSender');
+const emailTemplates = require('../lib/emailTemplates');
 
 const router = createProjectRouter();
 
@@ -235,7 +237,7 @@ router.get(
       );
 
       const invResult = await db.query(
-        `SELECT id, email, project_role as role, token, created_at
+        `SELECT id, email, project_role as role, created_at
          FROM invitations
          WHERE project_id = $1 AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP`,
         [req.params.projectId]
@@ -277,15 +279,36 @@ router.post(
         // User does not exist in the system. Create an invitation instead.
         const crypto = require('crypto');
         const token = crypto.randomBytes(32).toString('hex');
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
         
-        await db.query(
-          `INSERT INTO invitations (email, token, invited_by, expires_at, project_id, project_role) 
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [email, token, req.session.user.id, expiresAt, req.params.projectId, role]
-        );
-        
-        console.log(`[EMAIL MOCK] Gửi thư mời tham gia dự án đến ${email}. Link: http://localhost:5173/register?token=${token}`);
+        const client = await db.connect();
+        try {
+          await client.query("BEGIN");
+          const invRes = await client.query(
+            `INSERT INTO invitations (email, token_hash, invited_by, expires_at, project_id, project_role) 
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+            [email, tokenHash, req.session.user.id, expiresAt, req.params.projectId, role]
+          );
+          
+          await createEmailLog(client, invRes.rows[0].id, email);
+          await client.query("COMMIT");
+
+          // Bất đồng bộ gửi email
+          const baseUrl = process.env.APP_BASE_URL || 'http://localhost:5173';
+          const emailData = emailTemplates.renderProjectInvite({ inviterName: req.session.user.name || 'Người quản lý', projectName: 'Dự án', role, token, isNewUser: true, baseUrl });
+          processEmailLogs({
+            id: invRes.rows[0].id,
+            email,
+            ...emailData
+          }).catch(e => console.error(e));
+
+        } catch (err) {
+          await client.query("ROLLBACK");
+          throw err;
+        } finally {
+          client.release();
+        }
         
         return res.status(201).json({ message: "Người dùng chưa có tài khoản. Đã gửi thư mời tham gia hệ thống và dự án." });
       }

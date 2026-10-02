@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
+const crypto = require('crypto');
 
 // Xóa dấu tiếng Việt
 function removeAccents(str) {
@@ -107,8 +108,14 @@ router.get('/projects/:id', async (req, res, next) => {
 
 // Cấu hình rate limit động từ app.js
 let newsletterLimiter = (req, res, next) => next();
+let invitationLimiter = (req, res, next) => next();
+
 function setNewsletterLimiter(limiter) {
   newsletterLimiter = limiter;
+}
+
+function setInvitationLimiter(limiter) {
+  invitationLimiter = limiter;
 }
 
 // POST /api/public/newsletter - Đăng ký nhận tin
@@ -137,4 +144,99 @@ router.post('/newsletter', (req, res, next) => newsletterLimiter(req, res, next)
   }
 });
 
-module.exports = { router, removeAccents, setNewsletterLimiter };
+// GET /api/public/invitations/:token - Kiểm tra token mời
+router.get('/invitations/:token', (req, res, next) => invitationLimiter(req, res, next), async (req, res, next) => {
+  try {
+    const { token } = req.params;
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    const invRes = await db.query(
+      'SELECT id, email, project_id, project_role FROM invitations WHERE token_hash = $1 AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP',
+      [tokenHash]
+    );
+
+    if (invRes.rows.length === 0) {
+      return res.status(400).json({ message: 'Mã thư mời không hợp lệ hoặc đã hết hạn' });
+    }
+
+    const invitation = invRes.rows[0];
+    
+    // Kiểm tra xem user có tồn tại không
+    const userRes = await db.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [invitation.email]);
+    const userExists = userRes.rows.length > 0;
+
+    return res.json({
+      email: invitation.email,
+      projectId: invitation.project_id,
+      projectRole: invitation.project_role,
+      userExists
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/public/invitations/:token/accept - Chấp nhận lời mời (cho user đã có tài khoản)
+router.post('/invitations/:token/accept', (req, res, next) => invitationLimiter(req, res, next), async (req, res, next) => {
+  try {
+    const { token } = req.params;
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      
+      const invRes = await client.query(
+        'SELECT id, email, project_id, project_role FROM invitations WHERE token_hash = $1 AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP FOR UPDATE',
+        [tokenHash]
+      );
+
+      if (invRes.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ message: 'Mã thư mời không hợp lệ hoặc đã hết hạn' });
+      }
+
+      const invitation = invRes.rows[0];
+      
+      // Kiểm tra user
+      const userRes = await client.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [invitation.email]);
+      if (userRes.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ message: 'Người dùng chưa có tài khoản, vui lòng đăng ký' });
+      }
+
+      const userId = userRes.rows[0].id;
+
+      // Cập nhật thư mời
+      await client.query('UPDATE invitations SET used_at = CURRENT_TIMESTAMP WHERE id = $1', [invitation.id]);
+
+      // Thêm vào project nếu có
+      if (invitation.project_id && invitation.project_role) {
+        // Lấy role_id thực tế từ roles table
+        const roleRes = await client.query('SELECT id FROM roles WHERE name = $1', [invitation.project_role]);
+        const roleId = roleRes.rows.length > 0 ? roleRes.rows[0].id : 3; // Fallback
+
+        // Check if already in project
+        const memberCheck = await client.query('SELECT id FROM project_members WHERE project_id = $1 AND user_id = $2', [invitation.project_id, userId]);
+        if (memberCheck.rows.length === 0) {
+          await client.query(
+            'INSERT INTO project_members (project_id, user_id, role_id) VALUES ($1, $2, $3)',
+            [invitation.project_id, userId, roleId]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+      return res.json({ message: 'Chấp nhận lời mời thành công' });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    next(error);
+  }
+});
+
+module.exports = { router, removeAccents, setNewsletterLimiter, setInvitationLimiter };

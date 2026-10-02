@@ -77,6 +77,14 @@ const newsletterLimiter = rateLimit({
   message: { message: "Bạn đã đăng ký quá nhiều lần. Vui lòng thử lại sau." },
 });
 
+const invitationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 phút
+  max: 10, // Tối đa 10 lần kiểm tra/chấp nhận token / 15 phút mỗi IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Bạn đã thử quá nhiều lần. Vui lòng thử lại sau." },
+});
+
 // ─── APP ──────────────────────────────────────────────────────────────────────
 const app = express();
 
@@ -159,10 +167,11 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/projects", projectRoutes);
 
 const adminRoutes = require("./routes/adminRoutes");
-const { router: publicRoutes, setNewsletterLimiter } = require("./routes/publicRoutes");
+const { router: publicRoutes, setNewsletterLimiter, setInvitationLimiter } = require("./routes/publicRoutes");
 
 // Truyền limiter vào router
 setNewsletterLimiter(newsletterLimiter);
+setInvitationLimiter(invitationLimiter);
 
 app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicApiLimiter, publicRoutes);

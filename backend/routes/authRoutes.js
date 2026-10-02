@@ -6,6 +6,7 @@
 const express = require("express");
 const bcrypt = require("bcrypt");
 const argon2 = require("argon2");
+const crypto = require("crypto");
 const pool = require("../config/db");
 const logger = require("../utils/logger");
 const asyncHandler = require("../utils/asyncHandler");
@@ -64,9 +65,10 @@ router.post(
     // Xác thực token nếu có
     let invitation = null;
     if (token) {
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
       const invRes = await pool.query(
-        'SELECT id, email, project_id, project_role FROM invitations WHERE token = $1 AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP',
-        [token]
+        'SELECT id, email, project_id, project_role FROM invitations WHERE token_hash = $1 AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP',
+        [tokenHash]
       );
       if (invRes.rows.length === 0) {
         return res.status(400).json({ message: 'Mã thư mời không hợp lệ hoặc đã hết hạn' });
