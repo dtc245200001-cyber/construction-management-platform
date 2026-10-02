@@ -1,0 +1,239 @@
+{
+  "metadata": {
+    "source": "K-01",
+    "calculatedBy": "Học",
+    "calculatedDate": "2026-09-30",
+    "method": "Tính tay CPM độc lập với code được kiểm thử",
+    "note": "Mạng mẫu 10 công việc. T-23 chịu trách nhiệm bổ sung các mạng chuyên kiểm đủ 4 loại quan hệ và lag âm."
+  },
+  "projectStart": 0,
+  "tasks": [
+    {
+      "id": "A",
+      "duration": 3
+    },
+    {
+      "id": "B",
+      "duration": 4
+    },
+    {
+      "id": "C",
+      "duration": 2
+    },
+    {
+      "id": "D",
+      "duration": 5
+    },
+    {
+      "id": "E",
+      "duration": 3
+    },
+    {
+      "id": "F",
+      "duration": 4
+    },
+    {
+      "id": "G",
+      "duration": 2
+    },
+    {
+      "id": "H",
+      "duration": 3
+    },
+    {
+      "id": "I",
+      "duration": 2
+    },
+    {
+      "id": "J",
+      "duration": 1
+    }
+  ],
+  "dependencies": [
+    {
+      "from": "A",
+      "to": "B",
+      "type": "FS",
+      "lag": 0
+    },
+    {
+      "from": "A",
+      "to": "C",
+      "type": "FS",
+      "lag": 0
+    },
+    {
+      "from": "B",
+      "to": "D",
+      "type": "FS",
+      "lag": 0
+    },
+    {
+      "from": "B",
+      "to": "E",
+      "type": "FS",
+      "lag": 0
+    },
+    {
+      "from": "C",
+      "to": "F",
+      "type": "FS",
+      "lag": 0
+    },
+    {
+      "from": "D",
+      "to": "G",
+      "type": "FS",
+      "lag": 0
+    },
+    {
+      "from": "E",
+      "to": "G",
+      "type": "FS",
+      "lag": 0
+    },
+    {
+      "from": "E",
+      "to": "H",
+      "type": "FS",
+      "lag": 0
+    },
+    {
+      "from": "F",
+      "to": "H",
+      "type": "FS",
+      "lag": 0
+    },
+    {
+      "from": "G",
+      "to": "I",
+      "type": "FS",
+      "lag": 0
+    },
+    {
+      "from": "H",
+      "to": "I",
+      "type": "FS",
+      "lag": 0
+    },
+    {
+      "from": "I",
+      "to": "J",
+      "type": "FS",
+      "lag": 0
+    }
+  ],
+  "topologicalOrder": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "H",
+    "I",
+    "J"
+  ],
+  "expected": [
+    {
+      "id": "A",
+      "ES": 0,
+      "EF": 3,
+      "LS": 0,
+      "LF": 3,
+      "float": 0,
+      "critical": true
+    },
+    {
+      "id": "B",
+      "ES": 3,
+      "EF": 7,
+      "LS": 3,
+      "LF": 7,
+      "float": 0,
+      "critical": true
+    },
+    {
+      "id": "C",
+      "ES": 3,
+      "EF": 5,
+      "LS": 5,
+      "LF": 7,
+      "float": 2,
+      "critical": false
+    },
+    {
+      "id": "D",
+      "ES": 7,
+      "EF": 12,
+      "LS": 7,
+      "LF": 12,
+      "float": 0,
+      "critical": true
+    },
+    {
+      "id": "E",
+      "ES": 7,
+      "EF": 10,
+      "LS": 8,
+      "LF": 11,
+      "float": 1,
+      "critical": false
+    },
+    {
+      "id": "F",
+      "ES": 5,
+      "EF": 9,
+      "LS": 7,
+      "LF": 11,
+      "float": 2,
+      "critical": false
+    },
+    {
+      "id": "G",
+      "ES": 12,
+      "EF": 14,
+      "LS": 12,
+      "LF": 14,
+      "float": 0,
+      "critical": true
+    },
+    {
+      "id": "H",
+      "ES": 10,
+      "EF": 13,
+      "LS": 11,
+      "LF": 14,
+      "float": 1,
+      "critical": false
+    },
+    {
+      "id": "I",
+      "ES": 14,
+      "EF": 16,
+      "LS": 14,
+      "LF": 16,
+      "float": 0,
+      "critical": true
+    },
+    {
+      "id": "J",
+      "ES": 16,
+      "EF": 17,
+      "LS": 16,
+      "LF": 17,
+      "float": 0,
+      "critical": true
+    }
+  ],
+  "projectFinish": 17,
+  "criticalPath": [
+    "A",
+    "B",
+    "D",
+    "G",
+    "I",
+    "J"
+  ]
+}

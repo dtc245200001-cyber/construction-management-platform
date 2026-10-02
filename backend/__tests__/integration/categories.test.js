@@ -172,14 +172,16 @@ describe("Categories & Projects Integration Tests", () => {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS tasks (
           id SERIAL PRIMARY KEY,
-          work_item_id INT NOT NULL REFERENCES work_items(id) ON DELETE RESTRICT
+          work_item_id INT NOT NULL REFERENCES work_items(id) ON DELETE RESTRICT,
+          name VARCHAR(255),
+          duration_days INT
         )
       `);
       
       const resCreate = await request(app).post(`/api/categories/${p1}`).set("Cookie", cookieA).send({ name: "Task Category" });
       const catId = resCreate.body.id;
       
-      await pool.query(`INSERT INTO tasks (work_item_id) VALUES ($1)`, [catId]);
+      await pool.query(`INSERT INTO tasks (work_item_id, name, duration_days) VALUES ($1, 'Task test', 1)`, [catId]);
       
       const resDel = await request(app).delete(`/api/categories/${p1}/${catId}`).set("Cookie", cookieA);
       expect(resDel.status).toBe(409);
