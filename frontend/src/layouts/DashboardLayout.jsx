@@ -20,7 +20,8 @@ import {
   CalendarDays,
   Building2,
   ShieldCheck,
-  Pencil
+  Pencil,
+  Menu
 } from "lucide-react";
 
 const navItems = [
@@ -38,6 +39,7 @@ export default function DashboardLayout({ user, setUser }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // In a real app, this should come from context or API based on localStorage.getItem('currentProjectId')
   const currentProjectId = localStorage.getItem('currentProjectId') || 1; 
@@ -52,80 +54,103 @@ export default function DashboardLayout({ user, setUser }) {
     }
   };
 
+  const [currentProject, setCurrentProject] = useState(null);
+
+  React.useEffect(() => {
+    if (currentProjectId) {
+      api.get(`/projects/${currentProjectId}`)
+        .then(res => setCurrentProject(res.data.project))
+        .catch(err => console.error(err));
+    }
+  }, [currentProjectId]);
+
   const currentNav = navItems.find(item => item.path === location.pathname) || navItems[0];
 
   return (
     <div className="flex min-h-screen bg-background">
       {/* Sidebar */}
-      <aside className="sticky top-0 hidden h-screen w-[280px] shrink-0 flex-col bg-sidebar px-5 py-6 text-sidebar-foreground lg:flex">
-        <div className="flex items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground">
+      <aside className={`sticky top-0 hidden h-screen shrink-0 flex-col bg-sidebar py-6 text-sidebar-foreground lg:flex transition-all duration-300 ${isSidebarCollapsed ? 'w-[80px] items-center px-2' : 'w-[280px] px-5'}`}>
+        <div className={`flex items-center gap-3 w-full ${isSidebarCollapsed ? 'justify-center' : ''}`}>
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground">
             <ShieldCheck className="size-6" />
           </div>
-          <div>
-            <p className="text-base font-bold tracking-tight">CÔNG TRƯỜNG 360</p>
-            <p className="text-xs text-sidebar-muted">Site Operations Platform</p>
-          </div>
+          {!isSidebarCollapsed && (
+            <div className="overflow-hidden whitespace-nowrap">
+              <p className="text-[15px] font-bold tracking-tight">Construction Management</p>
+              <p className="text-[11px] text-sidebar-muted">Site Operations Platform</p>
+            </div>
+          )}
         </div>
 
-        <div className="mt-6 rounded-xl bg-sidebar-accent p-4">
-          <div className="flex items-start gap-3 [&>div]:min-w-0">
-            <Building2 className="mt-0.5 size-5 text-sidebar-muted" />
-            <div className="min-w-0">
-              <p className="text-xs text-sidebar-muted">Dự án đang làm việc</p>
-              <p className="truncate text-sm font-semibold">Tổ hợp thương mại An Phú</p>
-              <p className="mt-1 flex items-center gap-1.5 text-xs text-sidebar-muted">
-                APC-2026-01 ·
-                <span 
-                  onClick={() => navigate('/projects')}
-                  className="inline-flex items-center gap-1 underline cursor-pointer hover:text-sidebar-foreground transition-colors"
-                >
-                  <Pencil className="size-3" /> Đổi dự án
-                </span>
-              </p>
+        {!isSidebarCollapsed && (
+          <div className="mt-6 rounded-xl bg-sidebar-accent p-4 w-full">
+            <div className="flex items-start gap-3 [&>div]:min-w-0">
+              <Building2 className="mt-0.5 size-5 shrink-0 text-sidebar-muted" />
+              <div className="min-w-0">
+                <p className="text-xs text-sidebar-muted">Dự án đang làm việc</p>
+                <p className="truncate text-sm font-semibold">{currentProject ? currentProject.name : 'Đang tải...'}</p>
+                <p className="mt-1 flex items-center gap-1.5 text-xs text-sidebar-muted">
+                  {currentProject ? currentProject.code : '...'} ·
+                  <span 
+                    onClick={() => navigate('/projects')}
+                    className="inline-flex items-center gap-1 underline cursor-pointer hover:text-sidebar-foreground transition-colors shrink-0"
+                  >
+                    <Pencil className="size-3" /> Đổi dự án
+                  </span>
+                </p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-        <nav className="mt-6 flex flex-1 flex-col gap-1">
+        <nav className="mt-6 flex flex-1 flex-col gap-1 w-full">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path;
             return (
               <button
                 key={item.label}
+                title={item.label}
                 onClick={() => {
-                  if (item.path === '/dashboard' || item.path === '/wbs') {
+                  if (item.path === '/dashboard' || item.path === '/wbs' || item.path === '/members') {
                     navigate(item.path);
                   } else {
                     alert("Tính năng này sẽ được phát triển trong các Sprint tiếp theo.");
                   }
                 }}
                 className={[
-                  "flex items-center gap-3 rounded-xl px-3.5 py-3 text-left text-sm font-medium transition-colors cursor-pointer outline-none",
+                  "flex items-center gap-3 rounded-xl py-3 text-left text-sm font-medium transition-colors cursor-pointer outline-none",
+                  isSidebarCollapsed ? "justify-center px-0" : "px-3.5",
                   isActive
                     ? "bg-sidebar-primary text-sidebar-primary-foreground"
                     : "text-sidebar-foreground/85 hover:bg-sidebar-accent",
                 ].join(" ")}
               >
                 <item.icon className="size-5 shrink-0" />
-                <span className="truncate">{item.label}</span>
+                {!isSidebarCollapsed && <span className="truncate">{item.label}</span>}
               </button>
             )
           })}
         </nav>
 
-        <div className="mt-6 rounded-xl bg-sidebar-accent p-4">
-          <p className="flex items-center gap-2 text-sm">
-            <span className="size-2.5 rounded-full bg-success" />
-            Đang chờ đồng bộ 3 mục
-          </p>
-          <button className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-sidebar-border/60 px-3 py-2.5 text-sm font-medium transition-colors hover:bg-sidebar-border outline-none">
-            <RefreshCw className="size-4" /> Đồng bộ ngay
-          </button>
-        </div>
+        {!isSidebarCollapsed && (
+          <div className="mt-6 rounded-xl bg-sidebar-accent p-4 w-full">
+            <p className="flex items-center gap-2 text-sm">
+              <span className="size-2.5 shrink-0 rounded-full bg-success" />
+              Đang chờ đồng bộ 3 mục
+            </p>
+            <button className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-sidebar-border/60 px-3 py-2.5 text-sm font-medium transition-colors hover:bg-sidebar-border outline-none">
+              <RefreshCw className="size-4 shrink-0" /> Đồng bộ ngay
+            </button>
+          </div>
+        )}
 
-        <button onClick={handleLogout} className="mt-5 flex items-center gap-3 px-3 py-2 text-sm text-sidebar-foreground/85 hover:text-red-500 outline-none">
-          <Settings className="size-5" /> Đăng xuất
+        <button 
+          title="Đăng xuất"
+          onClick={handleLogout} 
+          className={`mt-5 flex items-center gap-3 py-2 text-sm text-sidebar-foreground/85 hover:text-red-500 outline-none w-full ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'}`}
+        >
+          <Settings className="size-5 shrink-0" /> 
+          {!isSidebarCollapsed && "Đăng xuất"}
         </button>
       </aside>
 
@@ -133,8 +158,14 @@ export default function DashboardLayout({ user, setUser }) {
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Topbar */}
         <header className="sticky top-0 z-10 flex flex-wrap items-center gap-4 border-b border-border bg-card px-6 py-4">
+          <button 
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+            className="p-2 -ml-2 text-muted-foreground hover:bg-accent/50 rounded-xl transition-colors outline-none cursor-pointer"
+          >
+            <Menu className="size-5 shrink-0" />
+          </button>
           <p className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            Dự án An Phú <ChevronRight className="size-4" />
+            {currentProject ? `Dự án ${currentProject.name}` : 'Đang tải...'} <ChevronRight className="size-4 shrink-0" />
             <span className="font-semibold text-foreground">{currentNav.label}</span>
           </p>
 

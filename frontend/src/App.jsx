@@ -9,9 +9,10 @@ import MainLayout from './layouts/MainLayout';
 
 // Pages
 import LoginPage from './pages/LoginPage';
-import ProjectsPage from './pages/ProjectsPage';
+import HomePage from './pages/HomePage';
 import LandingPage from './pages/LandingPage';
 import WBSPage from './pages/WBSPage';
+import MembersPage from './pages/MembersPage';
 import DashboardLayout from './layouts/DashboardLayout';
 
 function App() {
@@ -45,17 +46,17 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route element={<AuthLayout />}>
-          <Route path="/login" element={user ? <Navigate to="/projects" replace /> : <LoginPage setUser={setUser} />} />
+          <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage setUser={setUser} />} />
         </Route>
         
-        
-        {/* Project Selection (Full screen) */}
-        <Route path="/projects" element={user ? <ProjectsPage user={user} setUser={setUser} /> : <Navigate to="/login" replace />} />
+        {/* Public / Protected Home Page */}
+        <Route path="/" element={<HomePage user={user} setUser={setUser} />} />
 
         {/* Dashboard Layout (With Sidebar) */}
         <Route element={user ? <DashboardLayout user={user} setUser={setUser} /> : <Navigate to="/login" replace />}>
           <Route path="/dashboard" element={<LandingPage user={user} setUser={setUser} />} />
           <Route path="/wbs" element={<WBSPage user={user} />} />
+          <Route path="/members" element={<MembersPage user={user} />} />
         </Route>
 
         {/* Existing MainLayout for other pages */}
@@ -64,7 +65,7 @@ function App() {
         </Route>
         
         {/* Default route */}
-        <Route path="*" element={<Navigate to={user ? "/projects" : "/login"} replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

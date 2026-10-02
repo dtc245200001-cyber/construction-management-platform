@@ -74,7 +74,7 @@ router.get(
     }
 
     const result = await db.query(
-      `SELECT id, name, parent_id, code
+      `SELECT id, name, parent_id, code, type, status, start_date, end_date, progress, assigned_to
        FROM work_items
        WHERE project_id = $1
        ORDER BY id ASC`,
@@ -164,21 +164,27 @@ router.put(
     if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });
     if (!id) return res.status(400).json({ message: "id không hợp lệ" });
 
-    const name = normalizeName(req.body.name);
-    if (!name) {
-      return res.status(400).json({ message: "Tên hạng mục là bắt buộc và không được vượt quá 255 ký tự" });
-    }
-
-    const result = await db.query(
-      `UPDATE work_items SET name = $1, updated_at = NOW()
-       WHERE id = $2 AND project_id = $3
-       RETURNING id, name, parent_id`,
-      [name, id, projectId]
-    );
-
-    if (result.rows.length === 0) {
+    // Fetch existing
+    const existing = await db.query(`SELECT * FROM work_items WHERE id = $1 AND project_id = $2`, [id, projectId]);
+    if (existing.rows.length === 0) {
       return res.status(404).json({ message: "Không tìm thấy hạng mục" });
     }
+    const item = existing.rows[0];
+
+    const name = req.body.name !== undefined ? normalizeName(req.body.name) : item.name;
+    if (!name) {
+      return res.status(400).json({ message: "Tên hạng mục là bắt buộc" });
+    }
+
+    const status = req.body.status !== undefined ? req.body.status : item.status;
+    const progress = req.body.progress !== undefined ? parseInt(req.body.progress, 10) : item.progress;
+
+    const result = await db.query(
+      `UPDATE work_items SET name = $1, status = $2, progress = $3, updated_at = NOW()
+       WHERE id = $4 AND project_id = $5
+       RETURNING id, name, parent_id, status, progress`,
+      [name, status, progress, id, projectId]
+    );
 
     return res.json(result.rows[0]);
   })

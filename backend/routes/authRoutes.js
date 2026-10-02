@@ -42,12 +42,6 @@ let DUMMY_HASH = null;
 router.post(
   "/register",
   asyncHandler(async (req, res) => {
-    if (process.env.ALLOW_PUBLIC_REGISTER !== "true") {
-      return res.status(403).json({
-        message: "Đăng ký công khai đang bị vô hiệu hóa.",
-      });
-    }
-
     const { name, email, password, confirmPassword } = req.body;
 
     // Kiểm tra nhập đầy đủ
