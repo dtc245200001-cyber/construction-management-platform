@@ -98,6 +98,7 @@ function WBSPage() {
 
   useEffect(() => {
     fetchWBS();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   const toggleExpand = (id) => {

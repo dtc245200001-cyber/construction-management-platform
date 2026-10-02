@@ -41,6 +41,7 @@ export default function MembersPage({ user }) {
     if (currentProjectId) {
       fetchMembers();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProjectId]);
 
   const handleInvite = async (e) => {

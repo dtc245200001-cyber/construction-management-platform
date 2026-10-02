@@ -174,6 +174,7 @@ export default function CategoryTreeWrapper({ projectId }) {
 
   useEffect(() => {
     fetchTree();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   const toggleExpand = (id) => {
