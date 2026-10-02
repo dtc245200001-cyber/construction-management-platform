@@ -11,13 +11,15 @@ jest.mock('../lib/emailSender', () => ({
 
 // Mock requireSystemAdmin
 jest.mock('../middleware/systemAdmin', () => (req, res, next) => {
-  req.user = { id: 1, is_system_admin: true };
+  req.session.user = { id: 1, is_system_admin: true, name: 'Admin' };
+  req.user = req.session.user;
   next();
 });
 
 // Need to mock auth middleware if it's applied globally to admin routes
 jest.mock('../middleware/auth', () => (req, res, next) => {
-  req.user = { id: 1, is_system_admin: true };
+  req.session.user = { id: 1, is_system_admin: true, name: 'Admin' };
+  req.user = req.session.user;
   next();
 });
 
@@ -115,6 +117,56 @@ describe('Invitations (E4)', () => {
       expect(res.status).toBe(200);
       expect(res.body.email).toBe('exist@e4.com');
       expect(res.body.userExists).toBe(true);
+    });
+  });
+  describe('Project Invitations (E5)', () => {
+    let invIdE5;
+    
+    beforeAll(async () => {
+      // Add admin (user 1) as member to the project so they can call projectRoutes
+      await db.query(
+        "INSERT INTO project_members (project_id, user_id, role) VALUES ($1, 1, 'chi_huy_truong') ON CONFLICT DO NOTHING",
+        [projectId]
+      );
+    });
+
+    it('GET /api/projects/:projectId/members trả về invitations kèm email_status và is_expired', async () => {
+      // Create an invitation
+      const invRes = await db.query(
+        "INSERT INTO invitations (email, token_hash, invited_by, project_id, project_role, expires_at) VALUES ('e5@test.com', 'h1', 1, $1, 'chi_huy_truong', CURRENT_TIMESTAMP + interval '1 day') RETURNING id",
+        [projectId]
+      );
+      invIdE5 = invRes.rows[0].id;
+      
+      // Create an email log
+      await db.query(
+        "INSERT INTO email_logs (invitation_id, email_masked, status) VALUES ($1, 'e***@test.com', 'sent')",
+        [invIdE5]
+      );
+
+      const res = await request(app).get(`/api/projects/${projectId}/members`);
+      expect(res.status).toBe(200);
+      
+      const inv = res.body.invitations.find(i => i.id === invIdE5);
+      expect(inv).toBeDefined();
+      expect(inv.email).toBe('e5@test.com');
+      expect(inv.email_status).toBe('sent');
+      expect(inv.is_expired).toBe(false);
+    });
+
+    it('POST /api/projects/:projectId/invitations/:id/resend cập nhật token và tạo email log mới', async () => {
+      const res = await request(app).post(`/api/projects/${projectId}/invitations/${invIdE5}/resend`);
+      expect(res.status).toBe(200);
+      expect(res.body.message).toBe('Đã gửi lại thư mời thành công');
+
+      // Check DB
+      const invCheck = await db.query("SELECT token_hash, (expires_at > CURRENT_TIMESTAMP) as valid FROM invitations WHERE id = $1", [invIdE5]);
+      expect(invCheck.rows[0].token_hash).not.toBe('h1');
+      expect(invCheck.rows[0].valid).toBe(true);
+
+      // Check logs (it is mocked, so we just check if the mock was called)
+      const { createEmailLog } = require('../lib/emailSender');
+      expect(createEmailLog).toHaveBeenCalled();
     });
   });
 });

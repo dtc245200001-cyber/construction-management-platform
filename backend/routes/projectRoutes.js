@@ -237,9 +237,15 @@ router.get(
       );
 
       const invResult = await db.query(
-        `SELECT id, email, project_role as role, created_at
-         FROM invitations
-         WHERE project_id = $1 AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP`,
+        `SELECT i.id, i.email, i.project_role as role, i.created_at, e.status as email_status,
+                (i.expires_at <= CURRENT_TIMESTAMP) as is_expired
+         FROM invitations i
+         LEFT JOIN (
+           SELECT invitation_id, status, ROW_NUMBER() OVER(PARTITION BY invitation_id ORDER BY id DESC) as rn
+           FROM email_logs
+         ) e ON i.id = e.invitation_id AND e.rn = 1
+         WHERE i.project_id = $1 AND i.used_at IS NULL
+         ORDER BY i.created_at DESC`,
         [req.params.projectId]
       );
 
@@ -367,6 +373,63 @@ router.post(
       );
 
       return res.json({ message: "Đã mở khóa và reset số lần đăng nhập sai về 0" });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /api/projects/:projectId/invitations/:invId/resend
+router.post(
+  "/:projectId/invitations/:invId/resend",
+  requireAuth,
+  checkProjectAccess,
+  allow([ROLES.CHI_HUY_TRUONG, ROLES.CHU_DAU_TU, ROLES.QUAN_LY_DU_AN]),
+  async (req, res, next) => {
+    try {
+      const { projectId, invId } = req.params;
+      
+      const invCheck = await db.query(
+        'SELECT email, project_role as role FROM invitations WHERE id = $1 AND project_id = $2 AND used_at IS NULL',
+        [invId, projectId]
+      );
+
+      if (invCheck.rows.length === 0) {
+        return res.status(404).json({ message: 'Không tìm thấy thư mời hoặc thư mời đã được sử dụng' });
+      }
+
+      const { email, role } = invCheck.rows[0];
+      const crypto = require("crypto");
+      const token = crypto.randomBytes(32).toString('hex');
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+      const client = await db.connect();
+      try {
+        await client.query("BEGIN");
+        
+        await client.query(
+          "UPDATE invitations SET token_hash = $1, expires_at = CURRENT_TIMESTAMP + INTERVAL '7 days' WHERE id = $2",
+          [tokenHash, invId]
+        );
+        
+        await createEmailLog(client, invId, email);
+        await client.query("COMMIT");
+
+        const baseUrl = process.env.APP_BASE_URL || 'http://localhost:5173';
+        const emailData = emailTemplates.renderProjectInvite({ inviterName: req.session.user.name || 'Người quản lý', projectName: 'Dự án', role, token, isNewUser: true, baseUrl });
+        processEmailLogs({
+          id: invId,
+          email,
+          ...emailData
+        }).catch(err => logger.error({ err }, 'Error in async email resend'));
+
+        return res.json({ message: 'Đã gửi lại thư mời thành công' });
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
     } catch (error) {
       next(error);
     }
