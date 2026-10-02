@@ -1,8 +1,11 @@
 
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
+const logger = require('../utils/logger');
 const { checkProjectAccess, allow, createProjectRouter } = require('../middleware/projectAccess');
 const { ROLES } = require('../utils/constants');
+const { createEmailLog, processEmailLogs } = require('../lib/emailSender');
+const emailTemplates = require('../lib/emailTemplates');
 
 const router = createProjectRouter();
 
@@ -32,13 +35,24 @@ router.get(
 const requireSystemAdmin = require("../middleware/systemAdmin");
 const { createAuditMiddleware } = require("../utils/auditLogger");
 
+// Hàm hỗ trợ loại bỏ dấu tiếng Việt (có thể tách ra utils sau)
+function removeAccents(str) {
+  if (!str) return '';
+  return str.normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/đ/g, 'd').replace(/Đ/g, 'D');
+}
+
 // POST /api/projects - Tạo dự án mới
 router.post(
   "/",
   requireSystemAdmin,
   createAuditMiddleware('CREATE_PROJECT', 'projects'),
   async (req, res, next) => {
-    const { name, code, location, start_date, sprint_length_weeks } = req.body;
+    const { 
+      name, code, location, start_date, sprint_length_weeks,
+      province, project_type, stage, description, cover_image_url, expected_completion_date, is_public
+    } = req.body;
     
     if (!name || name.length > 255) {
       return res.status(400).json({ message: "Tên dự án là bắt buộc và không quá 255 ký tự" });
@@ -46,6 +60,8 @@ router.post(
     if (!code) {
       return res.status(400).json({ message: "Mã dự án là bắt buộc" });
     }
+
+    const normalized_search_text = removeAccents(`${name} ${province || ''} ${project_type || ''}`).toLowerCase();
 
     const client = await db.connect();
     try {
@@ -59,9 +75,15 @@ router.post(
       }
       
       const projectResult = await client.query(
-        `INSERT INTO projects (name, code, location, start_date, sprint_length_weeks, status, actual_progress, planned_progress) 
-         VALUES ($1, $2, $3, $4, $5, 'Chuẩn bị', 0, 0) RETURNING *`,
-        [name, code, location || null, start_date || null, sprint_length_weeks || 1]
+        `INSERT INTO projects (
+          name, code, location, start_date, sprint_length_weeks, status, actual_progress, planned_progress,
+          province, project_type, stage, description, cover_image_url, expected_completion_date, is_public, normalized_search_text
+        ) 
+         VALUES ($1, $2, $3, $4, $5, 'Chuẩn bị', 0, 0, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+        [
+          name, code, location || null, start_date || null, sprint_length_weeks || 1,
+          province || null, project_type || null, stage || null, description || null, cover_image_url || null, expected_completion_date || null, is_public || false, normalized_search_text
+        ]
       );
       const newProject = projectResult.rows[0];
 
@@ -82,6 +104,60 @@ router.post(
       next(error);
     } finally {
       client.release();
+    }
+  }
+);
+
+// PUT /api/projects/:projectId - Cập nhật dự án
+router.put(
+  "/:projectId",
+  requireSystemAdmin,
+  createAuditMiddleware('UPDATE_PROJECT', 'projects'),
+  async (req, res, next) => {
+    const { 
+      name, code, location, start_date, sprint_length_weeks, status,
+      province, project_type, stage, description, cover_image_url, expected_completion_date, is_public
+    } = req.body;
+    
+    if (!name || name.length > 255) {
+      return res.status(400).json({ message: "Tên dự án là bắt buộc và không quá 255 ký tự" });
+    }
+    if (!code) {
+      return res.status(400).json({ message: "Mã dự án là bắt buộc" });
+    }
+
+    const normalized_search_text = removeAccents(`${name} ${province || ''} ${project_type || ''}`).toLowerCase();
+
+    try {
+      // Check unique code (excluding current project)
+      const exist = await db.query("SELECT id FROM projects WHERE code = $1 AND id != $2", [code, req.params.projectId]);
+      if (exist.rows.length > 0) {
+        return res.status(400).json({ message: "Mã dự án đã tồn tại" });
+      }
+
+      const result = await db.query(
+        `UPDATE projects SET 
+          name = $1, code = $2, location = $3, start_date = $4, sprint_length_weeks = $5, status = $6,
+          province = $7, project_type = $8, stage = $9, description = $10, cover_image_url = $11, expected_completion_date = $12, is_public = $13, normalized_search_text = $14,
+          updated_at = CURRENT_TIMESTAMP
+         WHERE id = $15 RETURNING *`,
+        [
+          name, code, location || null, start_date || null, sprint_length_weeks || 1, status || 'Chuẩn bị',
+          province || null, project_type || null, stage || null, description || null, cover_image_url || null, expected_completion_date || null, is_public || false, normalized_search_text,
+          req.params.projectId
+        ]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ message: "Không tìm thấy dự án" });
+      }
+
+      return res.json({
+        message: "Cập nhật dự án thành công",
+        project: result.rows[0]
+      });
+    } catch (error) {
+      next(error);
     }
   }
 );
@@ -162,9 +238,15 @@ router.get(
       );
 
       const invResult = await db.query(
-        `SELECT id, email, project_role as role, token, created_at
-         FROM invitations
-         WHERE project_id = $1 AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP`,
+        `SELECT i.id, i.email, i.project_role as role, i.created_at, e.status as email_status,
+                (i.expires_at <= CURRENT_TIMESTAMP) as is_expired
+         FROM invitations i
+         LEFT JOIN (
+           SELECT invitation_id, status, ROW_NUMBER() OVER(PARTITION BY invitation_id ORDER BY id DESC) as rn
+           FROM email_logs
+         ) e ON i.id = e.invitation_id AND e.rn = 1
+         WHERE i.project_id = $1 AND i.used_at IS NULL
+         ORDER BY i.created_at DESC`,
         [req.params.projectId]
       );
 
@@ -204,15 +286,36 @@ router.post(
         // User does not exist in the system. Create an invitation instead.
         const crypto = require('crypto');
         const token = crypto.randomBytes(32).toString('hex');
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
         
-        await db.query(
-          `INSERT INTO invitations (email, token, invited_by, expires_at, project_id, project_role) 
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [email, token, req.session.user.id, expiresAt, req.params.projectId, role]
-        );
-        
-        console.log(`[EMAIL MOCK] Gửi thư mời tham gia dự án đến ${email}. Link: http://localhost:5173/register?token=${token}`);
+        const client = await db.connect();
+        try {
+          await client.query("BEGIN");
+          const invRes = await client.query(
+            `INSERT INTO invitations (email, token_hash, invited_by, expires_at, project_id, project_role) 
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+            [email, tokenHash, req.session.user.id, expiresAt, req.params.projectId, role]
+          );
+          
+          await createEmailLog(client, invRes.rows[0].id, email);
+          await client.query("COMMIT");
+
+          // Bất đồng bộ gửi email
+          const baseUrl = process.env.APP_BASE_URL || 'http://localhost:5173';
+          const emailData = emailTemplates.renderProjectInvite({ inviterName: req.session.user.name || 'Người quản lý', projectName: 'Dự án', role, token, isNewUser: true, baseUrl });
+          processEmailLogs({
+            id: invRes.rows[0].id,
+            email,
+            ...emailData
+          }).catch(e => console.error(e));
+
+        } catch (err) {
+          await client.query("ROLLBACK");
+          throw err;
+        } finally {
+          client.release();
+        }
         
         return res.status(201).json({ message: "Người dùng chưa có tài khoản. Đã gửi thư mời tham gia hệ thống và dự án." });
       }
@@ -271,6 +374,63 @@ router.post(
       );
 
       return res.json({ message: "Đã mở khóa và reset số lần đăng nhập sai về 0" });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /api/projects/:projectId/invitations/:invId/resend
+router.post(
+  "/:projectId/invitations/:invId/resend",
+  requireAuth,
+  checkProjectAccess,
+  allow([ROLES.CHI_HUY_TRUONG, ROLES.CHU_DAU_TU, ROLES.QUAN_LY_DU_AN]),
+  async (req, res, next) => {
+    try {
+      const { projectId, invId } = req.params;
+      
+      const invCheck = await db.query(
+        'SELECT email, project_role as role FROM invitations WHERE id = $1 AND project_id = $2 AND used_at IS NULL',
+        [invId, projectId]
+      );
+
+      if (invCheck.rows.length === 0) {
+        return res.status(404).json({ message: 'Không tìm thấy thư mời hoặc thư mời đã được sử dụng' });
+      }
+
+      const { email, role } = invCheck.rows[0];
+      const crypto = require("crypto");
+      const token = crypto.randomBytes(32).toString('hex');
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+      const client = await db.connect();
+      try {
+        await client.query("BEGIN");
+        
+        await client.query(
+          "UPDATE invitations SET token_hash = $1, expires_at = CURRENT_TIMESTAMP + INTERVAL '7 days' WHERE id = $2",
+          [tokenHash, invId]
+        );
+        
+        await createEmailLog(client, invId, email);
+        await client.query("COMMIT");
+
+        const baseUrl = process.env.APP_BASE_URL || 'http://localhost:5173';
+        const emailData = emailTemplates.renderProjectInvite({ inviterName: req.session.user.name || 'Người quản lý', projectName: 'Dự án', role, token, isNewUser: true, baseUrl });
+        processEmailLogs({
+          id: invId,
+          email,
+          ...emailData
+        }).catch(err => logger.error({ err }, 'Error in async email resend'));
+
+        return res.json({ message: 'Đã gửi lại thư mời thành công' });
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
     } catch (error) {
       next(error);
     }

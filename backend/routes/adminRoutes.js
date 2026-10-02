@@ -3,14 +3,16 @@ const crypto = require('crypto');
 const db = require('../config/db');
 const requireSystemAdmin = require('../middleware/systemAdmin');
 const { createAuditMiddleware } = require('../utils/auditLogger');
+const { createEmailLog, processEmailLogs } = require('../lib/emailSender');
+const emailTemplates = require('../lib/emailTemplates');
 
 const router = express.Router();
 
 router.use(requireSystemAdmin);
 
-// POST /api/admin/invite - System Admin invites a new user to the system
-router.post('/invite', createAuditMiddleware('CREATE_INVITATION', 'invitations'), async (req, res, next) => {
-  const { email } = req.body;
+// POST /api/admin/invitations - System Admin invites a new user to the system
+router.post('/invitations', createAuditMiddleware('CREATE_INVITATION', 'invitations'), async (req, res, next) => {
+  const { email, projectId, role } = req.body;
   if (!email) {
     return res.status(400).json({ message: 'Vui lòng cung cấp email' });
   }
@@ -34,20 +36,44 @@ router.post('/invite', createAuditMiddleware('CREATE_INVITATION', 'invitations')
     }
 
     const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
-    await client.query(
-      `INSERT INTO invitations (email, token, invited_by, expires_at) VALUES ($1, $2, $3, $4)`,
-      [email, token, req.user.id, expiresAt]
-    );
+    let invId;
+    if (projectId && role) {
+      const result = await client.query(
+        `INSERT INTO invitations (email, token_hash, invited_by, expires_at, project_id, project_role) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+        [email, tokenHash, req.user.id, expiresAt, projectId, role]
+      );
+      invId = result.rows[0].id;
+    } else {
+      const result = await client.query(
+        `INSERT INTO invitations (email, token_hash, invited_by, expires_at) VALUES ($1, $2, $3, $4) RETURNING id`,
+        [email, tokenHash, req.user.id, expiresAt]
+      );
+      invId = result.rows[0].id;
+    }
 
-    // In a real app, send an email here. For now, we just return the token.
-    console.log(`[EMAIL MOCK] Gửi thư mời đến ${email}. Link: http://localhost:5173/register?token=${token}`);
+    // Ghi log E3
+    await createEmailLog(client, invId, email);
 
     await client.query("COMMIT");
+
+    // Xử lý gửi mail bất đồng bộ sau khi commit
+    const baseUrl = process.env.APP_BASE_URL || 'http://localhost:5173';
+    const emailData = projectId 
+      ? emailTemplates.renderProjectInvite({ inviterName: 'Quản trị viên', projectName: 'Dự án (Admin tạo)', role, token, isNewUser: true, baseUrl })
+      : emailTemplates.renderProjectInvite({ inviterName: 'Quản trị viên', projectName: 'Hệ thống CPM', role: 'Thành viên', token, isNewUser: true, baseUrl });
+
+    processEmailLogs({
+      id: invId,
+      email,
+      ...emailData
+    }).catch(e => console.error("Error processing email outbox:", e));
+
     res.status(201).json({
-      message: 'Đã tạo thư mời thành công',
-      token, // Sending token in response for testing/demo purposes
+      message: 'Đã tạo thư mời thành công'
+      // Không trả token về client!
     });
   } catch (err) {
     await client.query("ROLLBACK");
@@ -134,13 +160,16 @@ router.post('/projects', createAuditMiddleware('CREATE_PROJECT', 'projects'), as
       );
     } else {
       const token = crypto.randomBytes(32).toString('hex');
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7);
 
-      await client.query(
-        "INSERT INTO invitations (email, project_id, project_role, token, expires_at) VALUES ($1, $2, $3, $4, $5)",
-        [pm_email, projectId, 'ban_quan_ly', token, expiresAt]
+      const invRes = await client.query(
+        "INSERT INTO invitations (email, project_id, project_role, token_hash, expires_at) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+        [pm_email, projectId, 'ban_quan_ly', tokenHash, expiresAt]
       );
+      await createEmailLog(client, invRes.rows[0].id, pm_email);
+      // Need to process later
     }
 
     await client.query("COMMIT");
@@ -178,13 +207,15 @@ router.post('/projects/:projectId/assign-pm', createAuditMiddleware('ASSIGN_PM_F
       }
     } else {
       const token = crypto.randomBytes(32).toString('hex');
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7);
 
-      await client.query(
-        "INSERT INTO invitations (email, project_id, project_role, token, expires_at) VALUES ($1, $2, $3, $4, $5)",
-        [pm_email, projectId, 'ban_quan_ly', token, expiresAt]
+      const invRes = await client.query(
+        "INSERT INTO invitations (email, project_id, project_role, token_hash, expires_at) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+        [pm_email, projectId, 'ban_quan_ly', tokenHash, expiresAt]
       );
+      await createEmailLog(client, invRes.rows[0].id, pm_email);
     }
     
     await client.query("COMMIT");
