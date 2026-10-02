@@ -10,6 +10,7 @@ import MainLayout from './layouts/MainLayout';
 // Pages
 import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
+import ProjectsPage from './pages/ProjectsPage';
 import LandingPage from './pages/LandingPage';
 import WBSPage from './pages/WBSPage';
 import MembersPage from './pages/MembersPage';
@@ -51,6 +52,9 @@ function App() {
         
         {/* Public / Protected Home Page */}
         <Route path="/" element={<HomePage user={user} setUser={setUser} />} />
+
+        {/* Project Selection (Full screen) */}
+        <Route path="/projects" element={user ? <ProjectsPage user={user} setUser={setUser} /> : <Navigate to="/login" replace />} />
 
         {/* Dashboard Layout (With Sidebar) */}
         <Route element={user ? <DashboardLayout user={user} setUser={setUser} /> : <Navigate to="/login" replace />}>
