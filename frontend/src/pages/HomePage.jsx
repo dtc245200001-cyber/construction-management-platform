@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, Building2, CalendarDays, ChevronDown, MapPin, Newspaper, Search, FileText, UsersRound, Handshake, ShieldPlus, Settings, Headphones, ClipboardList, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,12 +9,7 @@ import bridgeImage from "@/assets/bridge-project.jpg";
 import urbanImage from "@/assets/urban-project.jpg";
 import factoryImage from "@/assets/factory-project.jpg";
 import contractorImage from "@/assets/contractor-banner.jpg";
-
-const projects = [
-  { id: 1, name: "Cầu vượt sông Hồng", city: "Hà Nội", place: "Hà Nội", type: "Hạ tầng giao thông", start: "01/2024", finish: "12/2026", status: "Đang thi công", color: "green", image: bridgeImage, description: "Dự án cầu vượt sông Hồng kết nối các khu vực trọng điểm, góp phần phát triển hạ tầng giao thông đô thị." },
-  { id: 2, name: "Khu đô thị Vinhomes Green City", city: "TP. Hồ Chí Minh", place: "TP. Hồ Chí Minh", type: "Khu đô thị", start: "06/2025", finish: "12/2030", status: "Chuẩn bị đầu tư", color: "blue", image: urbanImage, description: "Khu đô thị hiện đại với không gian sống xanh, tiện ích đồng bộ và hệ thống hạ tầng hoàn chỉnh." },
-  { id: 3, name: "Nhà máy sản xuất linh kiện điện tử", city: "Bắc Ninh", place: "Bắc Ninh", type: "Công nghiệp", start: "08/2025", finish: "12/2027", status: "Đang đấu thầu", color: "orange", image: factoryImage, description: "Tổ hợp nhà máy sản xuất linh kiện điện tử với quy mô lớn tại khu công nghiệp Bắc Ninh." },
-];
+import api from "../lib/api";
 
 const news = [
   { title: "Ngành xây dựng Việt Nam tiếp tục tăng trưởng trong năm 2025", date: "15/08/2025", image: bridgeImage },
@@ -28,16 +23,25 @@ export default function HomePage({ user }) {
   const [location, setLocation] = useState("Tất cả địa điểm");
   const [type, setType] = useState("Tất cả loại dự án");
 
+  const [topProjects, setTopProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+
   const [selectedProject, setSelectedProject] = useState(null);
   const [selectedNews, setSelectedNews] = useState(null);
 
-  const filteredProjects = useMemo(() => {
-    return projects.filter(p => {
-      const matchesLoc = location === "Tất cả địa điểm" || p.place === location;
-      const matchesType = type === "Tất cả loại dự án" || p.type === type;
-      return matchesLoc && matchesType;
-    });
-  }, [location, type]);
+  useEffect(() => {
+    const fetchTopProjects = async () => {
+      try {
+        const res = await api.get('/public/projects?limit=3');
+        setTopProjects(res.data.projects);
+      } catch (error) {
+        console.error("Lỗi khi tải dự án", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchTopProjects();
+  }, []);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -95,26 +99,31 @@ export default function HomePage({ user }) {
             <h2><ClipboardList size={20} fill="currentColor"/> Dự án nổi bật</h2>
             <Link to="/du-an">Xem tất cả <ArrowRight size={15}/></Link>
           </div>
-          <div className="project-grid">
-            {filteredProjects.map(p => 
-              <article className="project-card" key={p.id}>
-                <div className="project-image">
-                  <img src={p.image} alt={p.name} width={1152} height={576} loading="lazy"/>
-                  <span className={`status status-${p.color}`}>{p.status}</span>
-                </div>
-                <div className="project-body">
-                  <h3><Link to={`/du-an/${p.id}`} className="hover:underline">{p.name}</Link></h3>
-                  <p><MapPin size={13} fill="currentColor"/> {p.city}</p>
-                  <p><CalendarDays size={13}/> Khởi công: {p.start}</p>
-                  <p><CalendarDays size={13}/> Dự kiến hoàn thành: {p.finish}</p>
-                  <Button variant="outline" size="sm" className="detail-button" onClick={() => navigate(`/du-an/${p.id}`)}>
-                    Xem chi tiết <ArrowRight size={14}/>
-                  </Button>
-                </div>
-              </article>
-            )}
-          </div>
-          {filteredProjects.length === 0 && <div className="empty-results">Không tìm thấy dự án phù hợp. Hãy thử bộ lọc khác.</div>}
+          {loading ? (
+            <div className="empty-results">Đang tải dự án...</div>
+          ) : topProjects.length === 0 ? (
+            <div className="empty-results">Chưa có dự án nào được công bố.</div>
+          ) : (
+            <div className="project-grid">
+              {topProjects.map(p => 
+                <article className="project-card" key={p.id}>
+                  <div className="project-image">
+                    <img src={p.cover_image_url || '/placeholder.jpg'} alt={p.name} width={1152} height={576} loading="lazy" onError={(e) => { e.target.src = 'https://placehold.co/600x400/e2e8f0/64748b?text=No+Image' }}/>
+                    <span className={`status status-blue`}>{p.stage || p.status}</span>
+                  </div>
+                  <div className="project-body">
+                    <h3><Link to={`/du-an/${p.id}`} className="hover:underline">{p.name}</Link></h3>
+                    <p><MapPin size={13} fill="currentColor"/> {p.province || p.location}</p>
+                    <p><CalendarDays size={13}/> Loại: {p.project_type || 'Chưa cập nhật'}</p>
+                    <p><CalendarDays size={13}/> Dự kiến hoàn thành: {p.expected_completion_date ? new Date(p.expected_completion_date).toLocaleDateString('vi-VN') : 'Đang cập nhật'}</p>
+                    <Button variant="outline" size="sm" className="detail-button" onClick={() => navigate(`/du-an/${p.id}`)}>
+                      Xem chi tiết <ArrowRight size={14}/>
+                    </Button>
+                  </div>
+                </article>
+              )}
+            </div>
+          )}
         </section>
 
         <aside className="sidebar-content">
