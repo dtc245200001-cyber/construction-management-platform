@@ -42,13 +42,7 @@ let DUMMY_HASH = null;
 router.post(
   "/register",
   asyncHandler(async (req, res) => {
-    if (process.env.ALLOW_PUBLIC_REGISTER !== "true") {
-      return res.status(403).json({
-        message: "Đăng ký công khai đang bị vô hiệu hóa.",
-      });
-    }
-
-    const { name, email, password, confirmPassword } = req.body;
+    const { name, email, password, confirmPassword, token } = req.body;
 
     // Kiểm tra nhập đầy đủ
     if (!name || !email || !password || !confirmPassword) {
@@ -57,8 +51,31 @@ router.post(
       });
     }
 
+    // Nếu tắt tự do đăng ký thì bắt buộc phải có token
+    if (process.env.ALLOW_PUBLIC_REGISTER !== 'true' && !token) {
+      return res.status(403).json({
+        message: "Hệ thống chỉ cho phép đăng ký qua thư mời",
+      });
+    }
+
     // Chuẩn hóa email
     const normalizedEmail = email.trim().toLowerCase();
+
+    // Xác thực token nếu có
+    let invitation = null;
+    if (token) {
+      const invRes = await pool.query(
+        'SELECT id, email, project_id, project_role FROM invitations WHERE token = $1 AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP',
+        [token]
+      );
+      if (invRes.rows.length === 0) {
+        return res.status(400).json({ message: 'Mã thư mời không hợp lệ hoặc đã hết hạn' });
+      }
+      invitation = invRes.rows[0];
+      if (invitation.email.toLowerCase() !== normalizedEmail) {
+        return res.status(400).json({ message: 'Email không khớp với thư mời' });
+      }
+    }
 
     // Kiểm tra độ dài email
     if (normalizedEmail.length > 255) {
@@ -96,47 +113,80 @@ router.post(
       });
     }
 
-    // Kiểm tra email đã tồn tại
-    const existingUser = await pool.query(
-      `SELECT id FROM users WHERE LOWER(email) = $1`,
-      [normalizedEmail]
-    );
+    const client = await pool.connect();
+    let newUser;
+    try {
+      await client.query("BEGIN");
 
-    if (existingUser.rows.length > 0) {
-      return res.status(409).json({
-        message: "Email đã được sử dụng",
-      });
+      // Kiểm tra email đã tồn tại
+      const existingUser = await client.query(
+        `SELECT id FROM users WHERE LOWER(email) = $1`,
+        [normalizedEmail]
+      );
+
+      if (existingUser.rows.length > 0) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({
+          message: "Email đã được sử dụng",
+        });
+      }
+
+      // Băm mật khẩu bằng Argon2id
+      const passwordHash = await argon2.hash(password);
+
+      // Lấy role mặc định
+      const roleResult = await client.query(
+        "SELECT id FROM roles WHERE name = 'doi_truong'"
+      );
+
+      if (roleResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(500).json({
+          message: "Lỗi hệ thống: Không tìm thấy vai trò mặc định",
+        });
+      }
+
+      const defaultRoleId = roleResult.rows[0].id;
+      const isVerified = token ? true : false; // Nếu có token thì tự động verified
+
+      // Chèn user mới
+      const result = await client.query(
+        `INSERT INTO users
+          (name, email, password_hash, role_id, is_verified)
+         VALUES
+          ($1, $2, $3, $4, $5)
+         RETURNING id, name, email, created_at`,
+        [name, normalizedEmail, passwordHash, defaultRoleId, isVerified]
+      );
+      newUser = result.rows[0];
+
+      if (invitation) {
+        // Đánh dấu token đã dùng
+        await client.query(
+          'UPDATE invitations SET used_at = CURRENT_TIMESTAMP WHERE id = $1',
+          [invitation.id]
+        );
+        
+        // Add to project if project_id exists
+        if (invitation.project_id && invitation.project_role) {
+          await client.query(
+            'INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, $3)',
+            [invitation.project_id, newUser.id, invitation.project_role]
+          );
+        }
+      }
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
     }
-
-    // Băm mật khẩu bằng Argon2id
-    const passwordHash = await argon2.hash(password);
-
-    // Lấy role mặc định
-    const roleResult = await pool.query(
-      "SELECT id FROM roles WHERE name = 'doi_truong'"
-    );
-
-    if (roleResult.rows.length === 0) {
-      return res.status(500).json({
-        message: "Lỗi hệ thống: Không tìm thấy vai trò mặc định",
-      });
-    }
-
-    const defaultRoleId = roleResult.rows[0].id;
-
-    // Chèn user mới
-    const result = await pool.query(
-      `INSERT INTO users
-        (name, email, password_hash, role_id)
-       VALUES
-        ($1, $2, $3, $4)
-       RETURNING id, name, email, created_at`,
-      [name, normalizedEmail, passwordHash, defaultRoleId]
-    );
 
     return res.status(201).json({
       message: "Đăng ký tài khoản thành công",
-      user: result.rows[0],
+      user: newUser,
     });
   })
 );
@@ -169,7 +219,8 @@ router.post(
          password_hash,
          failed_login_attempts,
          locked_until,
-         role_id
+         role_id,
+         is_system_admin
        FROM users
        WHERE LOWER(email) = $1`,
       [normalizedEmail]
@@ -314,7 +365,8 @@ router.post(
              password_hash,
              failed_login_attempts,
              locked_until,
-             role_id
+             role_id,
+             is_system_admin
            FROM users
            WHERE id = $1
            FOR UPDATE`,
@@ -483,6 +535,7 @@ router.post(
       name: user.name,
       email: user.email,
       role: roleName,
+      is_system_admin: user.is_system_admin || false,
     };
 
     // ========================================================
@@ -496,6 +549,7 @@ router.post(
         name: user.name,
         email: user.email,
         role: roleName,
+        is_system_admin: user.is_system_admin || false,
       },
     });
   })

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../lib/api';
 import {
   FolderCheck,
@@ -30,8 +30,19 @@ const LoginPage = ({ setUser }) => {
   const [isRegister, setIsRegister] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+  const [token, setToken] = useState("");
   
   const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const urlToken = searchParams.get('token');
+    if (urlToken) {
+      setToken(urlToken);
+      setIsRegister(true); // Tự động mở tab Đăng ký nếu có thư mời
+    }
+  }, [location]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -46,9 +57,9 @@ const LoginPage = ({ setUser }) => {
     } catch (error) {
       console.error("LOGIN ERROR:", error);
       if (error.response?.status === 429) {
-        setMessage(error.response.data.message || "Tài khoản bị tạm khóa 15 phút do nhập sai quá nhiều lần. Vui lòng thử lại sau.");
+        setMessage("Bạn đã thử đăng nhập quá nhiều lần liên tiếp. Vui lòng chờ vài phút rồi thử lại.");
       } else if (error.response?.status === 423) {
-        setMessage(error.response.data.message || "Tài khoản đang bị khóa tạm thời. Vui lòng thử lại sau.");
+        setMessage(error.response.data.message || "Tài khoản này đang bị khóa tạm thời do nhập sai mật khẩu 5 lần. Vui lòng thử lại sau 15 phút.");
       } else if (error.response?.status === 401) {
         setMessage("Email hoặc mật khẩu không đúng");
       } else {
@@ -82,7 +93,7 @@ const LoginPage = ({ setUser }) => {
     setLoading(true);
 
     try {
-      await api.post('/auth/register', { name, email, password, confirmPassword });
+      await api.post('/auth/register', { name, email, password, confirmPassword, token });
       setIsRegister(false);
       setName("");
       setPassword("");
@@ -251,6 +262,12 @@ const LoginPage = ({ setUser }) => {
                 <form className={`nl-form-pane ${isRegister ? 'nl-active' : ''}`} onSubmit={handleRegister}>
                   <h3 className="nl-form-title">Tạo tài khoản</h3>
                   <p className="nl-form-desc">Đăng ký tài khoản để bắt đầu quản lý công trình của bạn.</p>
+
+                  {token && (
+                    <div className="nl-alert-success" style={{ marginBottom: '16px' }}>
+                      Bạn đang đăng ký thông qua thư mời bảo mật.
+                    </div>
+                  )}
 
                   <div className="nl-input-group">
                     <div className="nl-input-icon"><Users /></div>
@@ -597,32 +614,34 @@ const LoginPage = ({ setUser }) => {
           width: 100%;
           max-width: calc(var(--u) * 420);
           display: flex;
-          height: calc(var(--u) * 56);
-          background: rgba(255,255,255,0.6);
-          border-radius: calc(var(--u) * 28);
-          padding: calc(var(--u) * 4);
-          box-sizing: border-box;
+          gap: calc(var(--u) * 12);
           margin-bottom: calc(var(--u) * 40);
           flex-shrink: 0;
         }
         .nl-tabs button {
           flex: 1;
+          height: calc(var(--u) * 48);
           border: none;
-          background: transparent;
+          background: #dbeafe; /* Màu xanh nhạt */
           font-size: max(12px, calc(var(--u) * 16));
           font-weight: 500;
-          color: #6b7a90;
+          color: #2563eb;
           cursor: pointer;
           border-radius: calc(var(--u) * 24);
           outline: none;
+          transition: all 0.3s ease;
+        }
+        .nl-tabs button:hover {
+          background: #bfdbfe; /* Đậm hơn chút khi hover */
         }
         .nl-tabs button:focus-visible {
           box-shadow: 0 0 0 2px #93c5fd;
         }
         .nl-tabs button.nl-active {
-          background: #dbeafe;
-          color: #2563eb;
+          background: #2563eb; /* Nổi bật màu đậm hơn hẳn */
+          color: white;
           font-weight: 600;
+          box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
         }
 
         .nl-form-container {

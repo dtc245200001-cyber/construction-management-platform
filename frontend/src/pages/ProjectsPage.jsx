@@ -13,7 +13,8 @@ import {
   CalendarDays,
   UsersRound,
   LayoutGrid,
-  Plus
+  Plus,
+  Shield
 } from "lucide-react";
 
 export default function ProjectsPage({ user, setUser }) {
@@ -28,7 +29,7 @@ export default function ProjectsPage({ user, setUser }) {
   const [createData, setCreateData] = useState({ name: '', code: '', location: '', start_date: '', sprint_length_weeks: 1 });
   const [createError, setCreateError] = useState('');
 
-  const isBanQuanLy = user?.role === 'ban_quan_ly';
+  const isSystemAdmin = user?.is_system_admin === true;
 
   const fetchProjects = async () => {
     try {
@@ -136,6 +137,14 @@ export default function ProjectsPage({ user, setUser }) {
             </button>
             {isUserMenuOpen && (
               <div className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-site-border bg-site-surface p-1 shadow-lg z-50">
+                {isSystemAdmin && (
+                  <button 
+                    onClick={() => navigate('/admin')}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-site-dark hover:bg-site-bg transition-colors text-left font-medium mb-1"
+                  >
+                    <Shield className="size-4 text-site-primary" /> Quản trị hệ thống
+                  </button>
+                )}
                 <button 
                   onClick={handleLogout}
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-site-critical hover:bg-site-critical/10 transition-colors text-left font-medium"
@@ -259,7 +268,7 @@ export default function ProjectsPage({ user, setUser }) {
               );
             })}
 
-            {isBanQuanLy && (
+            {isSystemAdmin && (
               <button 
                 onClick={() => setShowCreateModal(true)}
                 className="bg-site-bg rounded-2xl border-2 border-dashed border-site-border hover:border-site-primary/50 hover:bg-site-primary/5 transition-colors p-5 flex flex-col items-center justify-center min-h-[240px] gap-3 group outline-none focus-visible:ring-2 focus-visible:ring-site-primary"
@@ -274,9 +283,9 @@ export default function ProjectsPage({ user, setUser }) {
               </button>
             )}
 
-            {projects.length === 0 && !isBanQuanLy && (
+            {projects.length === 0 && !isSystemAdmin && (
               <div className="col-span-full text-center py-12">
-                <p className="text-site-baseline">Bạn chưa tham gia dự án nào, hãy liên hệ Ban quản lý để được mời.</p>
+                <p className="text-site-baseline">Bạn chưa tham gia dự án nào, hãy liên hệ Quản trị viên để được mời.</p>
               </div>
             )}
           </div>

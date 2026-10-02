@@ -17,7 +17,7 @@ function runMigration(direction) {
 
 
 describe("Projects Integration Tests", () => {
-  let cookieManager, cookieNormal;
+  let cookieAdmin, cookieManager, cookieNormal;
   
   beforeAll(async () => {
     // Ensure latest migrations are applied
@@ -34,10 +34,17 @@ describe("Projects Integration Tests", () => {
     const _roleBanQuanLy = roles.find(r => r.name === 'ban_quan_ly').id; // chưa dùng, giữ để tham chiếu
 
     // Register Users
+    await request(app).post("/api/auth/register").send({ name: "Admin", email: "admin@test.com", password: "Password123", confirmPassword: "Password123" });
     await request(app).post("/api/auth/register").send({ name: "Manager", email: "manager@test.com", password: "Password123", confirmPassword: "Password123" });
     await request(app).post("/api/auth/register").send({ name: "Normal", email: "normal@test.com", password: "Password123", confirmPassword: "Password123" });
 
+    // Set Admin to is_system_admin
+    await pool.query("UPDATE users SET is_system_admin = true WHERE email = 'admin@test.com'");
+
     // Login Users and get cookies
+    const resA = await request(app).post("/api/auth/login").send({ email: "admin@test.com", password: "Password123" });
+    cookieAdmin = resA.headers["set-cookie"];
+
     const resM = await request(app).post("/api/auth/login").send({ email: "manager@test.com", password: "Password123" });
     cookieManager = resM.headers["set-cookie"];
 
@@ -69,14 +76,14 @@ describe("Projects Integration Tests", () => {
       expect(res.status).toBe(403);
     });
 
-    it("Manager can create project", async () => {
-      const res = await request(app).post("/api/projects").set("Cookie", cookieManager).send({
-        name: "Manager Project",
-        code: "MPJ",
+    it("System Admin can create project", async () => {
+      const res = await request(app).post("/api/projects").set("Cookie", cookieAdmin).send({
+        name: "Admin Project",
+        code: "APJ",
         location: "Hanoi"
       });
       expect(res.status).toBe(201);
-      expect(res.body.project.name).toBe("Manager Project");
+      expect(res.body.project.name).toBe("Admin Project");
       
       const { rows } = await pool.query("SELECT role FROM project_members WHERE project_id = $1", [res.body.project.id]);
       expect(rows[0].role).toBe("ban_quan_ly");
@@ -93,11 +100,11 @@ describe("Projects Integration Tests", () => {
       const uRes = await pool.query("SELECT id FROM users WHERE email = 'normal@test.com'");
       await pool.query("INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, 'ban_quan_ly')", [pId, uRes.rows[0].id]);
 
-      // Manager fetches projects
-      const resM = await request(app).get("/api/projects").set("Cookie", cookieManager);
-      expect(resM.status).toBe(200);
-      expect(resM.body.projects.length).toBe(1);
-      expect(resM.body.projects[0].name).toBe("Manager Project");
+      // Admin fetches projects
+      const resA = await request(app).get("/api/projects").set("Cookie", cookieAdmin);
+      expect(resA.status).toBe(200);
+      expect(resA.body.projects.length).toBe(1);
+      expect(resA.body.projects[0].name).toBe("Admin Project");
 
       // Normal fetches projects
       const resN = await request(app).get("/api/projects").set("Cookie", cookieNormal);

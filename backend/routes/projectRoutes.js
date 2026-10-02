@@ -29,17 +29,15 @@ router.get(
     }
   }
 );
+const requireSystemAdmin = require("../middleware/systemAdmin");
+const { createAuditMiddleware } = require("../utils/auditLogger");
 
 // POST /api/projects - Tạo dự án mới
 router.post(
   "/",
-  requireAuth,
+  requireSystemAdmin,
+  createAuditMiddleware('CREATE_PROJECT', 'projects'),
   async (req, res, next) => {
-    // Chỉ ban_quan_ly mới được tạo dự án
-    if (req.session.user.role !== ROLES.BAN_QUAN_LY) {
-      return res.status(403).json({ message: "Chỉ Ban quản lý mới được quyền tạo dự án" });
-    }
-
     const { name, code, location, start_date, sprint_length_weeks } = req.body;
     
     if (!name || name.length > 255) {
@@ -144,6 +142,139 @@ router.post(
   }
 );
 
-// Fallback default deny replaced by createProjectRouter
+// GET /api/projects/:projectId/members
+router.get(
+  "/:projectId/members",
+  requireAuth,
+  checkProjectAccess,
+  allow(Object.values(ROLES)),
+  async (req, res, next) => {
+    try {
+      const result = await db.query(
+        `SELECT u.id, u.name, u.email, pm.role,
+                u.failed_login_attempts,
+                u.locked_until
+         FROM project_members pm
+         JOIN users u ON pm.user_id = u.id
+         WHERE pm.project_id = $1
+         ORDER BY pm.created_at ASC`,
+        [req.params.projectId]
+      );
+
+      const invResult = await db.query(
+        `SELECT id, email, project_role as role, token, created_at
+         FROM invitations
+         WHERE project_id = $1 AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP`,
+        [req.params.projectId]
+      );
+
+      return res.json({
+        members: result.rows,
+        invitations: invResult.rows
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /api/projects/:projectId/members
+router.post(
+  "/:projectId/members",
+  requireAuth,
+  checkProjectAccess,
+  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU]),
+  createAuditMiddleware('ADD_PROJECT_MEMBER', 'project_members'),
+  async (req, res, next) => {
+    const { email, role } = req.body;
+    
+    if (!email || !role) {
+      return res.status(400).json({ message: "Vui lòng cung cấp email và vai trò" });
+    }
+    
+    if (!Object.values(ROLES).includes(role)) {
+      return res.status(400).json({ message: "Vai trò không hợp lệ" });
+    }
+
+    try {
+      // 1. Tìm user theo email
+      const userResult = await db.query("SELECT id, name FROM users WHERE email = $1", [email]);
+      
+      if (userResult.rows.length === 0) {
+        // User does not exist in the system. Create an invitation instead.
+        const crypto = require('crypto');
+        const token = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+        
+        await db.query(
+          `INSERT INTO invitations (email, token, invited_by, expires_at, project_id, project_role) 
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [email, token, req.session.user.id, expiresAt, req.params.projectId, role]
+        );
+        
+        console.log(`[EMAIL MOCK] Gửi thư mời tham gia dự án đến ${email}. Link: http://localhost:5173/register?token=${token}`);
+        
+        return res.status(201).json({ message: "Người dùng chưa có tài khoản. Đã gửi thư mời tham gia hệ thống và dự án." });
+      }
+      
+      const userId = userResult.rows[0].id;
+
+      // 2. Kiểm tra xem user đã trong dự án chưa
+      const exist = await db.query(
+        "SELECT id FROM project_members WHERE project_id = $1 AND user_id = $2",
+        [req.params.projectId, userId]
+      );
+
+      if (exist.rows.length > 0) {
+        // Cập nhật role
+        await db.query(
+          "UPDATE project_members SET role = $1 WHERE project_id = $2 AND user_id = $3",
+          [role, req.params.projectId, userId]
+        );
+        return res.json({ message: "Đã cập nhật vai trò của thành viên" });
+      }
+
+      // 3. Thêm vào dự án
+      await db.query(
+        "INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, $3)",
+        [req.params.projectId, userId, role]
+      );
+
+      return res.status(201).json({ message: "Đã thêm thành viên vào dự án" });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /api/projects/:projectId/members/:userId/unlock - Mở khóa tài khoản thành viên
+router.post(
+  "/:projectId/members/:userId/unlock",
+  requireAuth,
+  checkProjectAccess,
+  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU]),
+  async (req, res, next) => {
+    try {
+      // Kiểm tra user có trong dự án này không
+      const member = await db.query(
+        "SELECT u.id, u.email, u.failed_login_attempts, u.locked_until FROM users u JOIN project_members pm ON u.id = pm.user_id WHERE pm.project_id = $1 AND u.id = $2",
+        [req.params.projectId, req.params.userId]
+      );
+
+      if (member.rows.length === 0) {
+        return res.status(404).json({ message: "Không tìm thấy thành viên này trong dự án" });
+      }
+
+      await db.query(
+        "UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1",
+        [req.params.userId]
+      );
+
+      return res.json({ message: "Đã mở khóa và reset số lần đăng nhập sai về 0" });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 module.exports = router;

@@ -1,4 +1,4 @@
-﻿module.exports = {
+module.exports = {
   shorthands: undefined,
 
   up: (pgm) => {
