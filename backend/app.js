@@ -19,6 +19,7 @@ const authRoutes = require("./routes/authRoutes");
 const categoryRoutes = require("./routes/categoryRoutes");
 const projectRoutes = require("./routes/projectRoutes");
 const dependencyRoutes = require("./routes/dependencyRoutes");
+const taskRoutes = require("./routes/taskRoutes");
 const { notFoundHandler, errorHandler } = require("./middleware/errorHandler");
 const logger = require("./utils/logger");
 const swaggerUi = require("swagger-ui-express");
@@ -143,7 +144,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/projects", dependencyRoutes);
-
+app.use("/api/projects", taskRoutes);
 const adminRoutes = require("./routes/adminRoutes");
 app.use("/api/admin", adminRoutes);
 
