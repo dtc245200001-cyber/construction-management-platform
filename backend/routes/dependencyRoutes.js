@@ -23,6 +23,7 @@ const {
 } = require("../utils/constants");
 
 const asyncHandler = require("../utils/asyncHandler");
+const { markProjectScheduleDirty } = require("../services/scheduleRecalculation");
 
 const router = createProjectRouter();
 
@@ -64,28 +65,28 @@ router.post(
 
     if (!projectId) {
       return res.status(400).json({
-        message: "projectId không hợp lệ",
+        message: "projectId khÃ´ng há»£p lá»‡",
       });
     }
 
     if (!predecessorId || !successorId) {
       return res.status(400).json({
         message:
-          "predecessor_id và successor_id phải hợp lệ",
+          "predecessor_id vÃ  successor_id pháº£i há»£p lá»‡",
       });
     }
 
     if (!VALID_TYPES.includes(dependencyType)) {
       return res.status(400).json({
         message:
-          "dependency_type chỉ được là FS, SS, FF hoặc SF",
+          "dependency_type chá»‰ Ä‘Æ°á»£c lÃ  FS, SS, FF hoáº·c SF",
       });
     }
 
     if (!Number.isInteger(leadLagDays)) {
       return res.status(400).json({
         message:
-          "lead_lag_days phải là số nguyên",
+          "lead_lag_days pháº£i lÃ  sá»‘ nguyÃªn",
       });
     }
 
@@ -94,19 +95,23 @@ router.post(
     try {
       await client.query("BEGIN");
 
-      // Khóa theo project để tránh 2 request đồng thời
-      // cùng tạo ra vòng.
+      // KhÃ³a theo project Ä‘á»ƒ trÃ¡nh 2 request Ä‘á»“ng thá»i
+      // cÃ¹ng táº¡o ra vÃ²ng.
       await client.query(
         "SELECT pg_advisory_xact_lock($1)",
         [projectId]
       );
 
-      // Lấy tất cả công việc của project.
+      // Láº¥y táº¥t cáº£ cÃ´ng viá»‡c cá»§a project.
       const itemsResult = await client.query(
-        `SELECT id, name
-         FROM work_items
-         WHERE project_id = $1
-         ORDER BY id`,
+        `SELECT
+           t.id,
+           t.name
+         FROM tasks t
+         JOIN work_items wi
+           ON wi.id = t.work_item_id
+         WHERE wi.project_id = $1
+         ORDER BY t.id`,
         [projectId]
       );
 
@@ -127,11 +132,11 @@ router.post(
 
         return res.status(400).json({
           message:
-            "Công việc không thuộc dự án này",
+            "CÃ´ng viá»‡c khÃ´ng thuá»™c dá»± Ã¡n nÃ y",
         });
       }
 
-      // Chặn quan hệ trùng.
+      // Cháº·n quan há»‡ trÃ¹ng.
       const duplicate = await client.query(
         `SELECT 1
          FROM dependencies
@@ -149,22 +154,28 @@ router.post(
 
         return res.status(409).json({
           message:
-            "Quan hệ công việc đã tồn tại",
+            "Quan há»‡ cÃ´ng viá»‡c Ä‘Ã£ tá»“n táº¡i",
         });
       }
 
-      // Lấy các quan hệ hiện có trong đúng project.
+      // Láº¥y cÃ¡c quan há»‡ hiá»‡n cÃ³ trong Ä‘Ãºng project.
       const depsResult = await client.query(
         `SELECT
            d.predecessor_id,
            d.successor_id
          FROM dependencies d
 
+         JOIN tasks pre_task
+           ON pre_task.id = d.predecessor_id
+
          JOIN work_items pre
-           ON pre.id = d.predecessor_id
+           ON pre.id = pre_task.work_item_id
+
+         JOIN tasks suc_task
+           ON suc_task.id = d.successor_id
 
          JOIN work_items suc
-           ON suc.id = d.successor_id
+           ON suc.id = suc_task.work_item_id
 
          WHERE pre.project_id = $1
            AND suc.project_id = $1`,
@@ -181,8 +192,8 @@ router.post(
           successorId
         );
 
-      // Nếu quan hệ mới tạo vòng:
-      // rollback ngay, tuyệt đối không INSERT.
+      // Náº¿u quan há»‡ má»›i táº¡o vÃ²ng:
+      // rollback ngay, tuyá»‡t Ä‘á»‘i khÃ´ng INSERT.
       if (cycleIds) {
         const cycle =
           buildCycleDescription(
@@ -196,7 +207,7 @@ router.post(
           code: "DEPENDENCY_CYCLE",
 
           message:
-            `Không thể tạo quan hệ vì sẽ tạo vòng phụ thuộc: ${cycle.cyclePath}`,
+            `KhÃ´ng thá»ƒ táº¡o quan há»‡ vÃ¬ sáº½ táº¡o vÃ²ng phá»¥ thuá»™c: ${cycle.cyclePath}`,
 
           cycleIds:
             cycle.cycleIds,
@@ -209,7 +220,7 @@ router.post(
         });
       }
 
-      // Không có vòng -> mới được INSERT.
+      // KhÃ´ng cÃ³ vÃ²ng -> má»›i Ä‘Æ°á»£c INSERT.
       const result = await client.query(
         `INSERT INTO dependencies (
            predecessor_id,
@@ -232,11 +243,13 @@ router.post(
         ]
       );
 
+      await markProjectScheduleDirty(projectId, client);
+
       await client.query("COMMIT");
 
       return res.status(201).json({
         message:
-          "Tạo quan hệ công việc thành công",
+          "Táº¡o quan há»‡ cÃ´ng viá»‡c thÃ nh cÃ´ng",
 
         dependency:
           result.rows[0],

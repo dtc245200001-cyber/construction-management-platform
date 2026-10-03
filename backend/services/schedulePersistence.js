@@ -25,6 +25,8 @@ function addDays(projectStart, offsetDays) {
 /**
  * Persist calculated schedule results into schedule_results.
  *
+ * After a successful calculation, needs_recalculation is set to false.
+ *
  * ES/EF/LS/LF are calculated by T-21 as day offsets.
  * They are converted to timestamps using projectStart before persistence.
  *
@@ -59,9 +61,10 @@ async function saveScheduleResults(scheduleResults, projectStart) {
           late_finish,
           total_float,
           is_critical,
-          calculated_at
+          calculated_at,
+          needs_recalculation
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, false)
         ON CONFLICT (work_item_id)
         DO UPDATE SET
           early_start = EXCLUDED.early_start,
@@ -70,7 +73,8 @@ async function saveScheduleResults(scheduleResults, projectStart) {
           late_finish = EXCLUDED.late_finish,
           total_float = EXCLUDED.total_float,
           is_critical = EXCLUDED.is_critical,
-          calculated_at = CURRENT_TIMESTAMP
+          calculated_at = CURRENT_TIMESTAMP,
+          needs_recalculation = false
         `,
         [
           Number(workItemId),

@@ -7,10 +7,11 @@ const {
 } = require("../middleware/projectAccess");
 const { ROLES } = require("../utils/constants");
 const { getScheduleResults } = require("../services/scheduleQuery");
+const { calculateAndSaveSchedule } = require("../services/scheduleCalculation");
 
 const router = createProjectRouter();
 
-// GET /api/projects - Danh sách dự án mà user tham gia
+// GET /api/projects - Danh sÃ¡ch dá»± Ã¡n mÃ  user tham gia
 router.get(
   "/",
   requireAuth,
@@ -38,7 +39,7 @@ router.get(
 const requireSystemAdmin = require("../middleware/systemAdmin");
 const { createAuditMiddleware } = require("../utils/auditLogger");
 
-// POST /api/projects - Tạo dự án mới
+// POST /api/projects - Táº¡o dá»± Ã¡n má»›i
 router.post(
   "/",
   requireSystemAdmin,
@@ -54,13 +55,13 @@ router.post(
 
     if (!name || name.length > 255) {
       return res.status(400).json({
-        message: "Tên dự án là bắt buộc và không quá 255 ký tự",
+        message: "TÃªn dá»± Ã¡n lÃ  báº¯t buá»™c vÃ  khÃ´ng quÃ¡ 255 kÃ½ tá»±",
       });
     }
 
     if (!code) {
       return res.status(400).json({
-        message: "Mã dự án là bắt buộc",
+        message: "MÃ£ dá»± Ã¡n lÃ  báº¯t buá»™c",
       });
     }
 
@@ -79,14 +80,14 @@ router.post(
         await client.query("ROLLBACK");
 
         return res.status(400).json({
-          message: "Mã dự án đã tồn tại",
+          message: "MÃ£ dá»± Ã¡n Ä‘Ã£ tá»“n táº¡i",
         });
       }
 
       const projectResult = await client.query(
         `INSERT INTO projects
          (name, code, location, start_date, sprint_length_weeks, status, actual_progress, planned_progress)
-         VALUES ($1, $2, $3, $4, $5, 'Chuẩn bị', 0, 0)
+         VALUES ($1, $2, $3, $4, $5, 'Chuáº©n bá»‹', 0, 0)
          RETURNING *`,
         [
           name,
@@ -109,7 +110,7 @@ router.post(
       await client.query("COMMIT");
 
       return res.status(201).json({
-        message: "Tạo dự án thành công",
+        message: "Táº¡o dá»± Ã¡n thÃ nh cÃ´ng",
         project: newProject,
       });
     } catch (error) {
@@ -133,7 +134,7 @@ router.get(
 
       if (!Number.isInteger(projectId) || projectId <= 0) {
         return res.status(400).json({
-          message: "projectId không hợp lệ",
+          message: "projectId khÃ´ng há»£p lá»‡",
         });
       }
 
@@ -145,7 +146,7 @@ router.get(
           req.query.critical !== "false"
         ) {
           return res.status(400).json({
-            message: "critical phải là true hoặc false",
+            message: "critical pháº£i lÃ  true hoáº·c false",
           });
         }
 
@@ -185,7 +186,7 @@ router.get(
 
       if (result.rows.length === 0) {
         return res.status(404).json({
-          message: "Không tìm thấy dự án",
+          message: "KhÃ´ng tÃ¬m tháº¥y dá»± Ã¡n",
         });
       }
 
@@ -274,18 +275,18 @@ router.post(
 
     if (!email || !role) {
       return res.status(400).json({
-        message: "Vui lòng cung cấp email và vai trò",
+        message: "Vui lÃ²ng cung cáº¥p email vÃ  vai trÃ²",
       });
     }
 
     if (!Object.values(ROLES).includes(role)) {
       return res.status(400).json({
-        message: "Vai trò không hợp lệ",
+        message: "Vai trÃ² khÃ´ng há»£p lá»‡",
       });
     }
 
     try {
-      // 1. Tìm user theo email
+      // 1. TÃ¬m user theo email
       const userResult = await db.query(
         "SELECT id, name FROM users WHERE email = $1",
         [email]
@@ -314,18 +315,18 @@ router.post(
         );
 
         console.log(
-          `[EMAIL MOCK] Gửi thư mời tham gia dự án đến ${email}. Link: http://localhost:5173/register?token=${token}`
+          `[EMAIL MOCK] Gá»­i thÆ° má»i tham gia dá»± Ã¡n Ä‘áº¿n ${email}. Link: http://localhost:5173/register?token=${token}`
         );
 
         return res.status(201).json({
           message:
-            "Người dùng chưa có tài khoản. Đã gửi thư mời tham gia hệ thống và dự án.",
+            "NgÆ°á»i dÃ¹ng chÆ°a cÃ³ tÃ i khoáº£n. ÄÃ£ gá»­i thÆ° má»i tham gia há»‡ thá»‘ng vÃ  dá»± Ã¡n.",
         });
       }
 
       const userId = userResult.rows[0].id;
 
-      // 2. Kiểm tra user đã trong dự án chưa
+      // 2. Kiá»ƒm tra user Ä‘Ã£ trong dá»± Ã¡n chÆ°a
       const exist = await db.query(
         `SELECT id
          FROM project_members
@@ -334,7 +335,7 @@ router.post(
       );
 
       if (exist.rows.length > 0) {
-        // Cập nhật role
+        // Cáº­p nháº­t role
         await db.query(
           `UPDATE project_members
            SET role = $1
@@ -343,11 +344,11 @@ router.post(
         );
 
         return res.json({
-          message: "Đã cập nhật vai trò của thành viên",
+          message: "ÄÃ£ cáº­p nháº­t vai trÃ² cá»§a thÃ nh viÃªn",
         });
       }
 
-      // 3. Thêm vào dự án
+      // 3. ThÃªm vÃ o dá»± Ã¡n
       await db.query(
         `INSERT INTO project_members
          (project_id, user_id, role)
@@ -356,7 +357,7 @@ router.post(
       );
 
       return res.status(201).json({
-        message: "Đã thêm thành viên vào dự án",
+        message: "ÄÃ£ thÃªm thÃ nh viÃªn vÃ o dá»± Ã¡n",
       });
     } catch (error) {
       next(error);
@@ -364,7 +365,7 @@ router.post(
   }
 );
 
-// POST /api/projects/:projectId/members/:userId/unlock - Mở khóa tài khoản thành viên
+// POST /api/projects/:projectId/members/:userId/unlock - Má»Ÿ khÃ³a tÃ i khoáº£n thÃ nh viÃªn
 router.post(
   "/:projectId/members/:userId/unlock",
   requireAuth,
@@ -372,7 +373,7 @@ router.post(
   allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU]),
   async (req, res, next) => {
     try {
-      // Kiểm tra user có trong dự án này không
+      // Kiá»ƒm tra user cÃ³ trong dá»± Ã¡n nÃ y khÃ´ng
       const member = await db.query(
         `SELECT u.id, u.email, u.failed_login_attempts, u.locked_until
          FROM users u
@@ -383,7 +384,7 @@ router.post(
 
       if (member.rows.length === 0) {
         return res.status(404).json({
-          message: "Không tìm thấy thành viên này trong dự án",
+          message: "KhÃ´ng tÃ¬m tháº¥y thÃ nh viÃªn nÃ y trong dá»± Ã¡n",
         });
       }
 
@@ -396,7 +397,35 @@ router.post(
       );
 
       return res.json({
-        message: "Đã mở khóa và reset số lần đăng nhập sai về 0",
+        message: "ÄÃ£ má»Ÿ khÃ³a vÃ  reset sá»‘ láº§n Ä‘Äƒng nháº­p sai vá» 0",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /api/projects/:projectId/schedule/recalculate
+router.post(
+  "/:projectId/schedule/recalculate",
+  requireAuth,
+  checkProjectAccess,
+  allow(Object.values(ROLES)),
+  async (req, res, next) => {
+    try {
+      const projectId = Number(req.params.projectId);
+
+      if (!Number.isInteger(projectId) || projectId <= 0) {
+        return res.status(400).json({
+          message: "projectId không h?p l?",
+        });
+      }
+
+      const result = await calculateAndSaveSchedule(projectId);
+
+      return res.json({
+        message: "Ðã tính và luu k?t qu? l?ch",
+        ...result,
       });
     } catch (error) {
       next(error);
