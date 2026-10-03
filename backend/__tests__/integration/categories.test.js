@@ -167,27 +167,27 @@ describe("Categories & Projects Integration Tests", () => {
       expect(hasRoot).toBe(true);
     });
 
-    it("T-09: Không xóa được hạng mục nếu chứa task", async () => {
-      // Tạo bảng tasks tạm thời
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS tasks (
-          id SERIAL PRIMARY KEY,
-          work_item_id INT NOT NULL REFERENCES work_items(id) ON DELETE RESTRICT,
-          name VARCHAR(255),
-          duration_days INT
-        )
-      `);
-      
-      const resCreate = await request(app).post(`/api/categories/${p1}`).set("Cookie", cookieA).send({ name: "Task Category" });
+       it("T-09: Không xóa được hạng mục nếu chứa task", async () => {
+      const resCreate = await request(app)
+        .post(`/api/categories/${p1}`)
+        .set("Cookie", cookieA)
+        .send({ name: "Task Category" });
       const catId = resCreate.body.id;
-      
-      await pool.query(`INSERT INTO tasks (work_item_id, name, duration_days) VALUES ($1, 'Task test', 1)`, [catId]);
-      
-      const resDel = await request(app).delete(`/api/categories/${p1}/${catId}`).set("Cookie", cookieA);
+
+      // Dùng bảng tasks thật do migration T-11 tạo, không tự tạo/xóa bảng
+      await pool.query(
+        `INSERT INTO tasks (work_item_id, name, duration_days) VALUES ($1, 'Task test', 1)`,
+        [catId]
+      );
+
+      const resDel = await request(app)
+        .delete(`/api/categories/${p1}/${catId}`)
+        .set("Cookie", cookieA);
       expect(resDel.status).toBe(409);
       expect(resDel.body.message).toMatch(/công việc bên trong/);
-      
-      await pool.query(`DROP TABLE tasks`);
+
+      // Chỉ dọn dòng đã chèn, giữ nguyên schema
+      await pool.query(`DELETE FROM tasks WHERE work_item_id = $1`, [catId]);
     });
 
     it("T-09: Không xóa được hạng mục nếu có hạng mục con (RESTRICT)", async () => {
