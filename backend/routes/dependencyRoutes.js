@@ -9,10 +9,9 @@ const {
   createProjectRouter,
 } = require("../middleware/projectAccess");
 
-const {
-  findCycleCreatedByEdge,
-  buildCycleDescription,
-} = require("../utils/dependencyCycle");
+// Empty - we removed the import block
+const { detectCycle } = require("../algorithms/cpm");
+const { buildTempGraph, rotateCycleToStartWith } = require("../utils/buildTempGraph");
 
 const {
   parsePositiveInt,
@@ -103,10 +102,11 @@ router.post(
 
       // Lấy tất cả công việc của project.
       const itemsResult = await client.query(
-        `SELECT id, name
-         FROM work_items
-         WHERE project_id = $1
-         ORDER BY id`,
+        `SELECT t.id, t.name
+         FROM tasks t
+         JOIN work_items w ON w.id = t.work_item_id
+         WHERE w.project_id = $1
+         ORDER BY t.id`,
         [projectId]
       );
 
@@ -159,53 +159,57 @@ router.post(
            d.predecessor_id,
            d.successor_id
          FROM dependencies d
-
-         JOIN work_items pre
-           ON pre.id = d.predecessor_id
-
-         JOIN work_items suc
-           ON suc.id = d.successor_id
-
-         WHERE pre.project_id = $1
-           AND suc.project_id = $1`,
+         JOIN tasks pre_t ON pre_t.id = d.predecessor_id
+         JOIN work_items pre ON pre.id = pre_t.work_item_id
+         JOIN tasks suc_t ON suc_t.id = d.successor_id
+         JOIN work_items suc ON suc.id = suc_t.work_item_id
+         WHERE pre.project_id = $1 AND suc.project_id = $1`,
         [projectId]
       );
 
-      const cycleIds =
-        findCycleCreatedByEdge(
-          itemsResult.rows.map(
-            (item) => item.id
-          ),
-          depsResult.rows,
-          predecessorId,
-          successorId
-        );
+      // Tự trỏ -> bắt sớm và trả 422
+      if (predecessorId === successorId) {
+        await client.query("ROLLBACK");
+        return res.status(422).json({
+          code: "DEPENDENCY_CYCLE",
+          message: "Không thể tự phụ thuộc vào chính mình",
+          cycleIds: [predecessorId, predecessorId],
+          cycleNames: [itemNames.get(predecessorId), itemNames.get(predecessorId)],
+          cyclePath: `${itemNames.get(predecessorId)} → ${itemNames.get(predecessorId)}`,
+        });
+      }
 
-      // Nếu quan hệ mới tạo vòng:
-      // rollback ngay, tuyệt đối không INSERT.
-      if (cycleIds) {
-        const cycle =
-          buildCycleDescription(
-            cycleIds,
-            itemNames
-          );
+      const graph = buildTempGraph(
+        itemsResult.rows,
+        depsResult.rows,
+        {
+          predecessor_id: predecessorId,
+          successor_id: successorId,
+          dependency_type: dependencyType,
+          lead_lag_days: leadLagDays
+        }
+      );
+
+      let cycleIds = detectCycle(graph);
+
+      // detectCycle trả một vòng bất kỳ nên vòng cũ trong DB có thể bị nêu ra
+      if (cycleIds && cycleIds.length > 0) {
+        // Xoay mảng để bắt đầu từ successorId (việc đang được khai)
+        cycleIds = rotateCycleToStartWith(cycleIds, successorId);
+
+        const names = cycleIds.map(id => itemNames.get(Number(id)) || `#${id}`);
+        // Thêm tên đầu vào cuối để đóng vòng
+        names.push(names[0]);
+        const pathStr = names.join(" → ");
 
         await client.query("ROLLBACK");
 
         return res.status(422).json({
           code: "DEPENDENCY_CYCLE",
-
-          message:
-            `Không thể tạo quan hệ vì sẽ tạo vòng phụ thuộc: ${cycle.cyclePath}`,
-
-          cycleIds:
-            cycle.cycleIds,
-
-          cycleNames:
-            cycle.cycleNames,
-
-          cyclePath:
-            cycle.cyclePath,
+          message: `Không thể tạo quan hệ vì sẽ tạo vòng phụ thuộc: ${pathStr}`,
+          cycleIds: cycleIds,
+          cycleNames: cycleIds.map(id => itemNames.get(Number(id)) || `#${id}`),
+          cyclePath: pathStr,
         });
       }
 
