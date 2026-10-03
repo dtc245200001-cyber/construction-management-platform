@@ -1,7 +1,7 @@
-// app.js — khởi tạo Express app đầy đủ (middleware, session, routes, error handler).
+﻿// app.js â€” khá»Ÿi táº¡o Express app Ä‘áº§y Ä‘á»§ (middleware, session, routes, error handler).
 //
-// server.js chỉ require('./app') rồi gọi listen().
-// __tests__/ import trực tiếp module này để test mà không cần listen().
+// server.js chá»‰ require('./app') rá»“i gá»i listen().
+// __tests__/ import trá»±c tiáº¿p module nÃ y Ä‘á»ƒ test mÃ  khÃ´ng cáº§n listen().
 
 "use strict";
 
@@ -18,6 +18,7 @@ const pool = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
 const categoryRoutes = require("./routes/categoryRoutes");
 const projectRoutes = require("./routes/projectRoutes");
+const dependencyRoutes = require("./routes/dependencyRoutes");
 const { notFoundHandler, errorHandler } = require("./middleware/errorHandler");
 const logger = require("./utils/logger");
 const swaggerUi = require("swagger-ui-express");
@@ -25,32 +26,32 @@ const swaggerSpec = require("./swagger");
 
 const isProd = process.env.NODE_ENV === "production";
 
-// ─── SESSION SECRET GUARD ─────────────────────────────────────────────────────
+// â”€â”€â”€ SESSION SECRET GUARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (isProd && !process.env.SESSION_SECRET) {
-  logger.fatal("SESSION_SECRET bắt buộc phải được đặt trong môi trường production. Thoát ứng dụng.");
+  logger.fatal("SESSION_SECRET báº¯t buá»™c pháº£i Ä‘Æ°á»£c Ä‘áº·t trong mÃ´i trÆ°á»ng production. ThoÃ¡t á»©ng dá»¥ng.");
   process.exit(1);
 }
 if (!isProd && !process.env.SESSION_SECRET) {
-  logger.warn("SESSION_SECRET chưa được đặt — đang dùng giá trị mặc định không an toàn (chỉ chấp nhận ở môi trường dev).");
+  logger.warn("SESSION_SECRET chÆ°a Ä‘Æ°á»£c Ä‘áº·t â€” Ä‘ang dÃ¹ng giÃ¡ trá»‹ máº·c Ä‘á»‹nh khÃ´ng an toÃ n (chá»‰ cháº¥p nháº­n á»Ÿ mÃ´i trÆ°á»ng dev).");
 }
 
 const SESSION_SECRET = process.env.SESSION_SECRET || "dev-secret-key-unsafe";
 
-// ─── CORS ─────────────────────────────────────────────────────────────────────
-// Đọc danh sách origin được phép từ CORS_ORIGINS (phân tách bằng dấu phẩy).
-// Ví dụ: CORS_ORIGINS=http://localhost:5173,https://app.example.com
+// â”€â”€â”€ CORS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Äá»c danh sÃ¡ch origin Ä‘Æ°á»£c phÃ©p tá»« CORS_ORIGINS (phÃ¢n tÃ¡ch báº±ng dáº¥u pháº©y).
+// VÃ­ dá»¥: CORS_ORIGINS=http://localhost:5173,https://app.example.com
 const allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5173")
   .split(",")
   .map((o) => o.trim().replace(/\/$/, ""))
   .filter(Boolean);
 
-// ─── RATE LIMIT ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ RATE LIMIT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const loginLimiter = rateLimit({
   windowMs: Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
   max: Number(process.env.LOGIN_RATE_LIMIT_MAX) || (process.env.NODE_ENV === 'test' ? 100 : 5),
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: "Tài khoản bị tạm khóa 15 phút do nhập sai quá nhiều lần. Vui lòng thử lại sau." },
+  message: { message: "TÃ i khoáº£n bá»‹ táº¡m khÃ³a 15 phÃºt do nháº­p sai quÃ¡ nhiá»u láº§n. Vui lÃ²ng thá»­ láº¡i sau." },
 });
 
 const registerLimiter = rateLimit({
@@ -58,13 +59,13 @@ const registerLimiter = rateLimit({
   max: Number(process.env.REGISTER_RATE_LIMIT_MAX) || 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: "Quá nhiều lần thử đăng ký. Vui lòng thử lại sau." },
+  message: { message: "QuÃ¡ nhiá»u láº§n thá»­ Ä‘Äƒng kÃ½. Vui lÃ²ng thá»­ láº¡i sau." },
 });
 
-// ─── APP ──────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ APP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const app = express();
 
-// Tin tưởng reverse proxy (Nginx, Render) để đọc đúng IP thật cho rate-limit và cookie secure.
+// Tin tÆ°á»Ÿng reverse proxy (Nginx, Render) Ä‘á»ƒ Ä‘á»c Ä‘Ãºng IP tháº­t cho rate-limit vÃ  cookie secure.
 if (isProd) {
   app.set("trust proxy", 1);
 }
@@ -100,20 +101,20 @@ app.use(
     store: new PgSession({
       pool,
       tableName: "session",
-      pruneSessionInterval: 60, // giây — dọn session hết hạn mỗi phút
+      pruneSessionInterval: 60, // giÃ¢y â€” dá»n session háº¿t háº¡n má»—i phÃºt
     }),
     cookie: {
       httpOnly: true,
       secure: isProd,
       sameSite,
-      maxAge: 12 * 60 * 60 * 1000, // 12 giờ
+      maxAge: 12 * 60 * 60 * 1000, // 12 giá»
     },
   })
 );
 
-// ─── ROUTES ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ ROUTES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// Liveness probe — không đụng DB, trả ngay
+// Liveness probe â€” khÃ´ng Ä‘á»¥ng DB, tráº£ ngay
 app.get("/health", (_req, res) => {
   res.status(200).json({
     status: "ok",
@@ -121,13 +122,13 @@ app.get("/health", (_req, res) => {
   });
 });
 
-// Readiness probe — kiểm tra DB
+// Readiness probe â€” kiá»ƒm tra DB
 app.get("/ready", async (_req, res) => {
   try {
     await pool.query("SELECT 1");
     res.status(200).json({ status: "ready", db: "ok" });
   } catch (err) {
-    logger.error({ err }, "Readiness check: lỗi kết nối DB");
+    logger.error({ err }, "Readiness check: lá»—i káº¿t ná»‘i DB");
     res.status(503).json({ status: "unavailable", db: "error" });
   }
 });
@@ -141,11 +142,12 @@ app.use("/api/auth/register", registerLimiter);
 app.use("/api/auth", authRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/projects", projectRoutes);
+app.use("/api/projects", dependencyRoutes);
 
 const adminRoutes = require("./routes/adminRoutes");
 app.use("/api/admin", adminRoutes);
 
-// ─── ERROR HANDLERS ───────────────────────────────────────────────────────────
+// â”€â”€â”€ ERROR HANDLERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(notFoundHandler);
 app.use(errorHandler);
 
