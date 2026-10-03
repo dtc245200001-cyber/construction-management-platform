@@ -85,3 +85,37 @@ Trong trường hợp luồng deploy bị kẹt hoặc cần rollback về bản
    # Đảm bảo container chính chạy lại:
    docker start construction_backend_staging
    ```
+
+## 6. API quan hệ phụ thuộc giữa các công việc
+
+a) Endpoint: `POST /api/projects/:projectId/dependencies`. Cần đăng nhập, chỉ vai trò ban_quan_ly của dự án đó.
+b) Body JSON: `predecessor_id` (số nguyên dương, id bảng tasks), `successor_id` (như trên), `dependency_type` (FS, SS, FF hoặc SF, mặc định FS), `lead_lag_days` (số nguyên, cho phép âm, mặc định 0). Nêu rõ predecessor_id và successor_id là id của bảng tasks, không phải work_items.
+c) Bảng mã phản hồi:
+   - 201: tạo thành công, trả về dependency vừa tạo.
+   - 400: dữ liệu sai (id không hợp lệ, loại quan hệ sai, lead_lag_days không phải số nguyên) hoặc công việc không thuộc dự án này.
+   - 403: không thuộc dự án hoặc không đủ vai trò.
+   - 409: cặp công việc này đã có quan hệ.
+   - 422: quan hệ sẽ tạo vòng phụ thuộc (kể cả tự trỏ). Quan hệ KHÔNG được lưu.
+d) Ví dụ phản hồi 422:
+```json
+{
+  "code": "DEPENDENCY_CYCLE",
+  "message": "Không thể tạo quan hệ vì sẽ tạo vòng phụ thuộc: A → B → A",
+  "cycleIds": [1, 2],
+  "cycleNames": ["A", "B"],
+  "cyclePath": "A → B → A"
+}
+```
+e) Giải thích: việc kiểm tra chạy trong cùng giao dịch, trước khi INSERT, có khoá theo dự án để hai yêu cầu đồng thời không tạo vòng; dùng detectCycle ở backend/algorithms/cpm.js (T-17).
+f) Ví dụ curl cho trường hợp tạo vòng:
+```bash
+curl -X POST http://localhost:3000/api/projects/PID/dependencies \
+  -H "Content-Type: application/json" \
+  -H "Cookie: connect.sid=your_cookie" \
+  -d '{
+    "predecessor_id": B_ID,
+    "successor_id": A_ID,
+    "dependency_type": "FS",
+    "lead_lag_days": 0
+  }'
+```

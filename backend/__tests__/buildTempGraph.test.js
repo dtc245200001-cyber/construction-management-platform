@@ -97,7 +97,17 @@ describe("buildTempGraph utility", () => {
     expect(deps).toEqual(depsCopy);
   });
 
-  it("kiểm tra hiệu năng: 500 nút, ~2000 cạnh, dưới 500ms (đo riêng phần bộ nhớ)", () => {
+  it("500 việc, ~2000 quan hệ: kiểm chu trình trong bộ nhớ dưới 500ms (NFR của S-11)", () => {
+    function mulberry32(a) {
+      return function() {
+        var t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ t >>> 15, t | 1);
+        t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+      }
+    }
+    const rng = mulberry32(12345);
+
     const items = Array.from({ length: 500 }, (_, i) => ({ id: i + 1, name: `N${i + 1}` }));
     const deps = [];
     
@@ -105,13 +115,15 @@ describe("buildTempGraph utility", () => {
     for (let i = 1; i < 500; i++) {
       deps.push({ predecessor_id: i, successor_id: i + 1 });
       for (let j = 0; j < 3; j++) {
-        const target = i + 2 + Math.floor(Math.random() * (500 - i - 2));
+        const target = i + 2 + Math.floor(rng() * (500 - i - 2));
         if (target <= 500) {
           deps.push({ predecessor_id: i, successor_id: target });
         }
       }
     }
     
+    expect(deps.length).toBeGreaterThanOrEqual(1900);
+
     const newEdge = { predecessor_id: 500, successor_id: 1 };
     
     const start = process.hrtime.bigint();
