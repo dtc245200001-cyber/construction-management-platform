@@ -11,7 +11,7 @@ const { calculateAndSaveSchedule } = require("../services/scheduleCalculation");
 
 const router = createProjectRouter();
 
-// GET /api/projects - Danh sÃ¡ch dá»± Ã¡n mÃ  user tham gia
+// GET /api/projects - Danh sÃƒÂ¡ch dÃ¡Â»Â± ÃƒÂ¡n mÃƒÂ  user tham gia
 router.get(
   "/",
   requireAuth,
@@ -39,7 +39,7 @@ router.get(
 const requireSystemAdmin = require("../middleware/systemAdmin");
 const { createAuditMiddleware } = require("../utils/auditLogger");
 
-// POST /api/projects - Táº¡o dá»± Ã¡n má»›i
+// POST /api/projects - TÃ¡ÂºÂ¡o dÃ¡Â»Â± ÃƒÂ¡n mÃ¡Â»â€ºi
 router.post(
   "/",
   requireSystemAdmin,
@@ -55,13 +55,13 @@ router.post(
 
     if (!name || name.length > 255) {
       return res.status(400).json({
-        message: "TÃªn dá»± Ã¡n lÃ  báº¯t buá»™c vÃ  khÃ´ng quÃ¡ 255 kÃ½ tá»±",
+        message: "TÃƒÂªn dÃ¡Â»Â± ÃƒÂ¡n lÃƒÂ  bÃ¡ÂºÂ¯t buÃ¡Â»â„¢c vÃƒÂ  khÃƒÂ´ng quÃƒÂ¡ 255 kÃƒÂ½ tÃ¡Â»Â±",
       });
     }
 
     if (!code) {
       return res.status(400).json({
-        message: "MÃ£ dá»± Ã¡n lÃ  báº¯t buá»™c",
+        message: "MÃƒÂ£ dÃ¡Â»Â± ÃƒÂ¡n lÃƒÂ  bÃ¡ÂºÂ¯t buÃ¡Â»â„¢c",
       });
     }
 
@@ -80,14 +80,14 @@ router.post(
         await client.query("ROLLBACK");
 
         return res.status(400).json({
-          message: "MÃ£ dá»± Ã¡n Ä‘Ã£ tá»“n táº¡i",
+          message: "MÃƒÂ£ dÃ¡Â»Â± ÃƒÂ¡n Ã„â€˜ÃƒÂ£ tÃ¡Â»â€œn tÃ¡ÂºÂ¡i",
         });
       }
 
       const projectResult = await client.query(
         `INSERT INTO projects
          (name, code, location, start_date, sprint_length_weeks, status, actual_progress, planned_progress)
-         VALUES ($1, $2, $3, $4, $5, 'Chuáº©n bá»‹', 0, 0)
+         VALUES ($1, $2, $3, $4, $5, 'ChuÃ¡ÂºÂ©n bÃ¡Â»â€¹', 0, 0)
          RETURNING *`,
         [
           name,
@@ -110,7 +110,7 @@ router.post(
       await client.query("COMMIT");
 
       return res.status(201).json({
-        message: "Táº¡o dá»± Ã¡n thÃ nh cÃ´ng",
+        message: "TÃ¡ÂºÂ¡o dÃ¡Â»Â± ÃƒÂ¡n thÃƒÂ nh cÃƒÂ´ng",
         project: newProject,
       });
     } catch (error) {
@@ -134,7 +134,7 @@ router.get(
 
       if (!Number.isInteger(projectId) || projectId <= 0) {
         return res.status(400).json({
-          message: "projectId khÃ´ng há»£p lá»‡",
+          message: "projectId khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡",
         });
       }
 
@@ -146,7 +146,7 @@ router.get(
           req.query.critical !== "false"
         ) {
           return res.status(400).json({
-            message: "critical pháº£i lÃ  true hoáº·c false",
+            message: "critical phÃ¡ÂºÂ£i lÃƒÂ  true hoÃ¡ÂºÂ·c false",
           });
         }
 
@@ -186,7 +186,7 @@ router.get(
 
       if (result.rows.length === 0) {
         return res.status(404).json({
-          message: "KhÃ´ng tÃ¬m tháº¥y dá»± Ã¡n",
+          message: "KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y dÃ¡Â»Â± ÃƒÂ¡n",
         });
       }
 
@@ -275,18 +275,18 @@ router.post(
 
     if (!email || !role) {
       return res.status(400).json({
-        message: "Vui lÃ²ng cung cáº¥p email vÃ  vai trÃ²",
+        message: "Vui lÃƒÂ²ng cung cÃ¡ÂºÂ¥p email vÃƒÂ  vai trÃƒÂ²",
       });
     }
 
     if (!Object.values(ROLES).includes(role)) {
       return res.status(400).json({
-        message: "Vai trÃ² khÃ´ng há»£p lá»‡",
+        message: "Vai trÃƒÂ² khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡",
       });
     }
 
     try {
-      // 1. TÃ¬m user theo email
+      // 1. TÃƒÂ¬m user theo email
       const userResult = await db.query(
         "SELECT id, name FROM users WHERE email = $1",
         [email]
@@ -315,18 +315,18 @@ router.post(
         );
 
         console.log(
-          `[EMAIL MOCK] Gá»­i thÆ° má»i tham gia dá»± Ã¡n Ä‘áº¿n ${email}. Link: http://localhost:5173/register?token=${token}`
+          `[EMAIL MOCK] GÃ¡Â»Â­i thÃ†Â° mÃ¡Â»Âi tham gia dÃ¡Â»Â± ÃƒÂ¡n Ã„â€˜Ã¡ÂºÂ¿n ${email}. Link: http://localhost:5173/register?token=${token}`
         );
 
         return res.status(201).json({
           message:
-            "NgÆ°á»i dÃ¹ng chÆ°a cÃ³ tÃ i khoáº£n. ÄÃ£ gá»­i thÆ° má»i tham gia há»‡ thá»‘ng vÃ  dá»± Ã¡n.",
+            "NgÃ†Â°Ã¡Â»Âi dÃƒÂ¹ng chÃ†Â°a cÃƒÂ³ tÃƒÂ i khoÃ¡ÂºÂ£n. Ã„ÂÃƒÂ£ gÃ¡Â»Â­i thÃ†Â° mÃ¡Â»Âi tham gia hÃ¡Â»â€¡ thÃ¡Â»â€˜ng vÃƒÂ  dÃ¡Â»Â± ÃƒÂ¡n.",
         });
       }
 
       const userId = userResult.rows[0].id;
 
-      // 2. Kiá»ƒm tra user Ä‘Ã£ trong dá»± Ã¡n chÆ°a
+      // 2. KiÃ¡Â»Æ’m tra user Ã„â€˜ÃƒÂ£ trong dÃ¡Â»Â± ÃƒÂ¡n chÃ†Â°a
       const exist = await db.query(
         `SELECT id
          FROM project_members
@@ -335,7 +335,7 @@ router.post(
       );
 
       if (exist.rows.length > 0) {
-        // Cáº­p nháº­t role
+        // CÃ¡ÂºÂ­p nhÃ¡ÂºÂ­t role
         await db.query(
           `UPDATE project_members
            SET role = $1
@@ -344,11 +344,11 @@ router.post(
         );
 
         return res.json({
-          message: "ÄÃ£ cáº­p nháº­t vai trÃ² cá»§a thÃ nh viÃªn",
+          message: "Ã„ÂÃƒÂ£ cÃ¡ÂºÂ­p nhÃ¡ÂºÂ­t vai trÃƒÂ² cÃ¡Â»Â§a thÃƒÂ nh viÃƒÂªn",
         });
       }
 
-      // 3. ThÃªm vÃ o dá»± Ã¡n
+      // 3. ThÃƒÂªm vÃƒÂ o dÃ¡Â»Â± ÃƒÂ¡n
       await db.query(
         `INSERT INTO project_members
          (project_id, user_id, role)
@@ -357,7 +357,7 @@ router.post(
       );
 
       return res.status(201).json({
-        message: "ÄÃ£ thÃªm thÃ nh viÃªn vÃ o dá»± Ã¡n",
+        message: "Ã„ÂÃƒÂ£ thÃƒÂªm thÃƒÂ nh viÃƒÂªn vÃƒÂ o dÃ¡Â»Â± ÃƒÂ¡n",
       });
     } catch (error) {
       next(error);
@@ -365,7 +365,7 @@ router.post(
   }
 );
 
-// POST /api/projects/:projectId/members/:userId/unlock - Má»Ÿ khÃ³a tÃ i khoáº£n thÃ nh viÃªn
+// POST /api/projects/:projectId/members/:userId/unlock - MÃ¡Â»Å¸ khÃƒÂ³a tÃƒÂ i khoÃ¡ÂºÂ£n thÃƒÂ nh viÃƒÂªn
 router.post(
   "/:projectId/members/:userId/unlock",
   requireAuth,
@@ -373,7 +373,7 @@ router.post(
   allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU]),
   async (req, res, next) => {
     try {
-      // Kiá»ƒm tra user cÃ³ trong dá»± Ã¡n nÃ y khÃ´ng
+      // KiÃ¡Â»Æ’m tra user cÃƒÂ³ trong dÃ¡Â»Â± ÃƒÂ¡n nÃƒÂ y khÃƒÂ´ng
       const member = await db.query(
         `SELECT u.id, u.email, u.failed_login_attempts, u.locked_until
          FROM users u
@@ -384,7 +384,7 @@ router.post(
 
       if (member.rows.length === 0) {
         return res.status(404).json({
-          message: "KhÃ´ng tÃ¬m tháº¥y thÃ nh viÃªn nÃ y trong dá»± Ã¡n",
+          message: "KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y thÃƒÂ nh viÃƒÂªn nÃƒÂ y trong dÃ¡Â»Â± ÃƒÂ¡n",
         });
       }
 
@@ -397,7 +397,7 @@ router.post(
       );
 
       return res.json({
-        message: "ÄÃ£ má»Ÿ khÃ³a vÃ  reset sá»‘ láº§n Ä‘Äƒng nháº­p sai vá» 0",
+        message: "Ã„ÂÃƒÂ£ mÃ¡Â»Å¸ khÃƒÂ³a vÃƒÂ  reset sÃ¡Â»â€˜ lÃ¡ÂºÂ§n Ã„â€˜Ã„Æ’ng nhÃ¡ÂºÂ­p sai vÃ¡Â»Â 0",
       });
     } catch (error) {
       next(error);
@@ -417,14 +417,14 @@ router.post(
 
       if (!Number.isInteger(projectId) || projectId <= 0) {
         return res.status(400).json({
-          message: "projectId không h?p l?",
+          message: "projectId khÃ´ng h?p l?",
         });
       }
 
       const result = await calculateAndSaveSchedule(projectId);
 
       return res.json({
-        message: "Ðã tính và luu k?t qu? l?ch",
+        message: "ÃÃ£ tÃ­nh vÃ  luu k?t qu? l?ch",
         ...result,
       });
     } catch (error) {

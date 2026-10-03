@@ -1,9 +1,9 @@
 "use strict";
 
 /**
- * Láº¥y dá»¯ liá»‡u task cá»§a 1 dá»± Ã¡n báº±ng Ä‘Ãºng 2 truy váº¥n vÃ  dá»±ng Ä‘á»“ thá»‹.
+ * LÃ¡ÂºÂ¥y dÃ¡Â»Â¯ liÃ¡Â»â€¡u task cÃ¡Â»Â§a 1 dÃ¡Â»Â± ÃƒÂ¡n bÃ¡ÂºÂ±ng Ã„â€˜ÃƒÂºng 2 truy vÃ¡ÂºÂ¥n vÃƒÂ  dÃ¡Â»Â±ng Ã„â€˜Ã¡Â»â€œ thÃ¡Â»â€¹.
  *
- * DB hiá»‡n táº¡i:
+ * DB hiÃ¡Â»â€¡n tÃ¡ÂºÂ¡i:
  * - tasks.id
  * - tasks.work_item_id
  * - tasks.name
@@ -14,19 +14,19 @@
  * - dependencies.lead_lag_days
  * - work_items.project_id
  *
- * Output váº«n giá»¯ format mÃ  cÃ¡c thuáº­t toÃ¡n T-15/T-16/T-17
- * vÃ  calculateSchedule() Ä‘ang sá»­ dá»¥ng:
+ * Output vÃ¡ÂºÂ«n giÃ¡Â»Â¯ format mÃƒÂ  cÃƒÂ¡c thuÃ¡ÂºÂ­t toÃƒÂ¡n T-15/T-16/T-17
+ * vÃƒÂ  calculateSchedule() Ã„â€˜ang sÃ¡Â»Â­ dÃ¡Â»Â¥ng:
  * - nodes[id] = { id, name, duration }
  * - adjList
  * - reverseAdjList
  * - inDegree
  *
  * @param {number} projectId
- * @param {object} pool Äá»‘i tÆ°á»£ng db pool
+ * @param {object} pool Ã„ÂÃ¡Â»â€˜i tÃ†Â°Ã¡Â»Â£ng db pool
  * @returns {object} { nodes, adjList, reverseAdjList, inDegree }
  */
 async function buildGraph(projectId, pool) {
-  // 1. Láº¥y toÃ n bá»™ task thuá»™c project
+  // 1. LÃ¡ÂºÂ¥y toÃƒÂ n bÃ¡Â»â„¢ task thuÃ¡Â»â„¢c project
   const tasksResult = await pool.query(
     `
       SELECT
@@ -43,7 +43,7 @@ async function buildGraph(projectId, pool) {
     [projectId],
   );
 
-  // 2. Láº¥y toÃ n bá»™ dependency giá»¯a cÃ¡c task thuá»™c cÃ¹ng project
+  // 2. LÃ¡ÂºÂ¥y toÃƒÂ n bÃ¡Â»â„¢ dependency giÃ¡Â»Â¯a cÃƒÂ¡c task thuÃ¡Â»â„¢c cÃƒÂ¹ng project
   const depsResult = await pool.query(
     `
       SELECT
@@ -72,7 +72,7 @@ async function buildGraph(projectId, pool) {
   const reverseAdjList = {};
   const inDegree = {};
 
-  // Khá»Ÿi táº¡o cÃ¡c Ä‘á»‰nh
+  // KhÃ¡Â»Å¸i tÃ¡ÂºÂ¡o cÃƒÂ¡c Ã„â€˜Ã¡Â»â€°nh
   for (const row of tasksResult.rows) {
     const id = row.id;
 
@@ -88,12 +88,12 @@ async function buildGraph(projectId, pool) {
     inDegree[id] = 0;
   }
 
-  // Khá»Ÿi táº¡o cÃ¡c cáº¡nh
+  // KhÃ¡Â»Å¸i tÃ¡ÂºÂ¡o cÃƒÂ¡c cÃ¡ÂºÂ¡nh
   for (const row of depsResult.rows) {
     const pre = row.predecessor_id;
     const suc = row.successor_id;
 
-    // Bá» qua náº¿u task khÃ´ng tá»“n táº¡i trong graph hiá»‡n táº¡i
+    // BÃ¡Â»Â qua nÃ¡ÂºÂ¿u task khÃƒÂ´ng tÃ¡Â»â€œn tÃ¡ÂºÂ¡i trong graph hiÃ¡Â»â€¡n tÃ¡ÂºÂ¡i
     if (!nodes[pre] || !nodes[suc]) {
       continue;
     }
@@ -103,13 +103,13 @@ async function buildGraph(projectId, pool) {
       delay: Number(row.lead_lag_days),
     };
 
-    // Chiá»u xuÃ´i: predecessor -> successor
+    // ChiÃ¡Â»Âu xuÃƒÂ´i: predecessor -> successor
     adjList[pre].push({
       target: suc,
       ...edge,
     });
 
-    // Chiá»u ngÆ°á»£c: successor -> predecessor
+    // ChiÃ¡Â»Âu ngÃ†Â°Ã¡Â»Â£c: successor -> predecessor
     reverseAdjList[suc].push({
       target: pre,
       ...edge,
@@ -127,26 +127,26 @@ async function buildGraph(projectId, pool) {
 }
 
 /**
- * CÃ i Ä‘áº·t Kahn's algorithm (sáº¯p xáº¿p topo khÃ´ng Ä‘á»‡ quy)
+ * CÃƒÂ i Ã„â€˜Ã¡ÂºÂ·t Kahn's algorithm (sÃ¡ÂºÂ¯p xÃ¡ÂºÂ¿p topo khÃƒÂ´ng Ã„â€˜Ã¡Â»â€¡ quy)
  *
  * @param {object} graph
  * @returns {object} { sortedOrder: number[], unresolvedNodes: number[] }
  */
 function topologicalSort(graph) {
-  // Táº¡o báº£n sao inDegree Ä‘á»ƒ khÃ´ng lÃ m há»ng báº£n gá»‘c
+  // TÃ¡ÂºÂ¡o bÃ¡ÂºÂ£n sao inDegree Ã„â€˜Ã¡Â»Æ’ khÃƒÂ´ng lÃƒÂ m hÃ¡Â»Âng bÃ¡ÂºÂ£n gÃ¡Â»â€˜c
   const currentInDegree = { ...graph.inDegree };
 
-  // HÃ ng Ä‘á»£i lÆ°u cÃ¡c nÃºt cÃ³ báº­c vÃ o = 0
+  // HÃƒÂ ng Ã„â€˜Ã¡Â»Â£i lÃ†Â°u cÃƒÂ¡c nÃƒÂºt cÃƒÂ³ bÃ¡ÂºÂ­c vÃƒÂ o = 0
   const queue = [];
 
-  // Khá»Ÿi táº¡o hÃ ng Ä‘á»£i
+  // KhÃ¡Â»Å¸i tÃ¡ÂºÂ¡o hÃƒÂ ng Ã„â€˜Ã¡Â»Â£i
   for (const nodeIdStr in currentInDegree) {
     if (currentInDegree[nodeIdStr] === 0) {
       queue.push(Number(nodeIdStr));
     }
   }
 
-  // Sort theo ID Ä‘á»ƒ Ä‘áº£m báº£o káº¿t quáº£ á»•n Ä‘á»‹nh
+  // Sort theo ID Ã„â€˜Ã¡Â»Æ’ Ã„â€˜Ã¡ÂºÂ£m bÃ¡ÂºÂ£o kÃ¡ÂºÂ¿t quÃ¡ÂºÂ£ Ã¡Â»â€¢n Ã„â€˜Ã¡Â»â€¹nh
   queue.sort((a, b) => a - b);
 
   const sortedOrder = [];
@@ -173,7 +173,7 @@ function topologicalSort(graph) {
       }
     }
 
-    // Giá»¯ thá»© tá»± á»•n Ä‘á»‹nh
+    // GiÃ¡Â»Â¯ thÃ¡Â»Â© tÃ¡Â»Â± Ã¡Â»â€¢n Ã„â€˜Ã¡Â»â€¹nh
     if (zeroInDegreeNeighbors.length > 0) {
       zeroInDegreeNeighbors.sort((a, b) => a - b);
 
@@ -183,7 +183,7 @@ function topologicalSort(graph) {
     }
   }
 
-  // Nhá»¯ng node chÆ°a sort Ä‘Æ°á»£c lÃ  node bá»‹ káº¹t bá»Ÿi cycle
+  // NhÃ¡Â»Â¯ng node chÃ†Â°a sort Ã„â€˜Ã†Â°Ã¡Â»Â£c lÃƒÂ  node bÃ¡Â»â€¹ kÃ¡ÂºÂ¹t bÃ¡Â»Å¸i cycle
   const unresolvedNodes = [];
 
   for (const nodeIdStr in currentInDegree) {
@@ -201,22 +201,22 @@ function topologicalSort(graph) {
 }
 
 /**
- * Thu háº¹p danh sÃ¡ch unresolvedNodes vá» ÄÃšNG cÃ¡c nÃºt náº±m trÃªn má»™t vÃ²ng.
+ * Thu hÃ¡ÂºÂ¹p danh sÃƒÂ¡ch unresolvedNodes vÃ¡Â»Â Ã„ÂÃƒÅ¡NG cÃƒÂ¡c nÃƒÂºt nÃ¡ÂºÂ±m trÃƒÂªn mÃ¡Â»â„¢t vÃƒÂ²ng.
  *
  * @param {object} graph
  * @param {number[]} unresolvedNodes
  * @returns {number[]}
  */
 function findCycleNodes(graph, unresolvedNodes) {
-  // KhÃ´ng cÃ³ nÃºt chÆ°a giáº£i quyáº¿t
+  // KhÃƒÂ´ng cÃƒÂ³ nÃƒÂºt chÃ†Â°a giÃ¡ÂºÂ£i quyÃ¡ÂºÂ¿t
   if (!unresolvedNodes || unresolvedNodes.length === 0) {
     return [];
   }
 
-  // Táº¡o Set Ä‘á»ƒ tra cá»©u nhanh
+  // TÃ¡ÂºÂ¡o Set Ã„â€˜Ã¡Â»Æ’ tra cÃ¡Â»Â©u nhanh
   const remaining = new Set(unresolvedNodes);
 
-  // Chá»n node nhá» nháº¥t lÃ m Ä‘iá»ƒm báº¯t Ä‘áº§u
+  // ChÃ¡Â»Ân node nhÃ¡Â»Â nhÃ¡ÂºÂ¥t lÃƒÂ m Ã„â€˜iÃ¡Â»Æ’m bÃ¡ÂºÂ¯t Ã„â€˜Ã¡ÂºÂ§u
   let startNode = Infinity;
 
   for (const nodeId of remaining) {
@@ -229,7 +229,7 @@ function findCycleNodes(graph, unresolvedNodes) {
   const visited = new Set([startNode]);
   let current = startNode;
 
-  // Truy váº¿t ngÆ°á»£c qua reverseAdjList
+  // Truy vÃ¡ÂºÂ¿t ngÃ†Â°Ã¡Â»Â£c qua reverseAdjList
   // eslint-disable-next-line no-constant-condition
   while (true) {
     let nextNode = -1;
@@ -242,7 +242,7 @@ function findCycleNodes(graph, unresolvedNodes) {
           continue;
         }
 
-        // Æ¯u tiÃªn node Ä‘Ã£ thÄƒm Ä‘á»ƒ phÃ¡t hiá»‡n cycle
+        // Ã†Â¯u tiÃƒÂªn node Ã„â€˜ÃƒÂ£ thÃ„Æ’m Ã„â€˜Ã¡Â»Æ’ phÃƒÂ¡t hiÃ¡Â»â€¡n cycle
         if (visited.has(edge.target)) {
           nextNode = edge.target;
           break;
@@ -254,12 +254,12 @@ function findCycleNodes(graph, unresolvedNodes) {
       }
     }
 
-    // KhÃ´ng cÃ²n Ä‘Æ°á»ng truy váº¿t
+    // KhÃƒÂ´ng cÃƒÂ²n Ã„â€˜Ã†Â°Ã¡Â»Âng truy vÃ¡ÂºÂ¿t
     if (nextNode === -1) {
       return [];
     }
 
-    // ÄÃ£ quay láº¡i node cÅ© => tÃ¬m tháº¥y cycle
+    // Ã„ÂÃƒÂ£ quay lÃ¡ÂºÂ¡i node cÃ…Â© => tÃƒÂ¬m thÃ¡ÂºÂ¥y cycle
     if (visited.has(nextNode)) {
       const cycleStart = path.indexOf(nextNode);
 
@@ -273,10 +273,10 @@ function findCycleNodes(graph, unresolvedNodes) {
 }
 
 /**
- * HÃ m tiá»‡n Ã­ch: phÃ¡t hiá»‡n vÃ²ng trong Ä‘á»“ thá»‹.
+ * HÃƒÂ m tiÃ¡Â»â€¡n ÃƒÂ­ch: phÃƒÂ¡t hiÃ¡Â»â€¡n vÃƒÂ²ng trong Ã„â€˜Ã¡Â»â€œ thÃ¡Â»â€¹.
  *
  * @param {object} graph
- * @returns {number[]} Máº£ng ID cÃ¡c node náº±m trÃªn cycle.
+ * @returns {number[]} MÃ¡ÂºÂ£ng ID cÃƒÂ¡c node nÃ¡ÂºÂ±m trÃƒÂªn cycle.
  */
 function detectCycle(graph) {
   const { unresolvedNodes } = topologicalSort(graph);
