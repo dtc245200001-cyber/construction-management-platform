@@ -102,10 +102,11 @@ router.post(
 
       // Lấy tất cả công việc của project.
       const itemsResult = await client.query(
-        `SELECT id, name
-         FROM work_items
-         WHERE project_id = $1
-         ORDER BY id`,
+        `SELECT t.id, t.name
+         FROM tasks t
+         JOIN work_items w ON w.id = t.work_item_id
+         WHERE w.project_id = $1
+         ORDER BY t.id`,
         [projectId]
       );
 
@@ -158,15 +159,11 @@ router.post(
            d.predecessor_id,
            d.successor_id
          FROM dependencies d
-
-         JOIN work_items pre
-           ON pre.id = d.predecessor_id
-
-         JOIN work_items suc
-           ON suc.id = d.successor_id
-
-         WHERE pre.project_id = $1
-           AND suc.project_id = $1`,
+         JOIN tasks pre_t ON pre_t.id = d.predecessor_id
+         JOIN work_items pre ON pre.id = pre_t.work_item_id
+         JOIN tasks suc_t ON suc_t.id = d.successor_id
+         JOIN work_items suc ON suc.id = suc_t.work_item_id
+         WHERE pre.project_id = $1 AND suc.project_id = $1`,
         [projectId]
       );
 

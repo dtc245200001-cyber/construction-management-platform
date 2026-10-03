@@ -24,7 +24,7 @@ describe("Dependencies Cycle Check Integration Tests", () => {
     runMigration("up");
     
     // Clear data
-    await pool.query("TRUNCATE users, roles, projects, project_members, work_items, dependencies RESTART IDENTITY CASCADE");
+    await pool.query("TRUNCATE users, roles, projects, project_members, work_items, tasks, dependencies RESTART IDENTITY CASCADE");
 
     // Insert Roles
     const { rows: roles } = await pool.query(
@@ -63,18 +63,32 @@ describe("Dependencies Cycle Check Integration Tests", () => {
 
     // Insert Work Items
     const wRes1 = await pool.query(
-      "INSERT INTO work_items (project_id, name) VALUES ($1, 'A1'), ($1, 'B1'), ($1, 'C1') RETURNING id",
+      "INSERT INTO work_items (project_id, name) VALUES ($1, 'Cat A1'), ($1, 'Cat B1'), ($1, 'Cat C1') RETURNING id",
       [p1]
     );
-    itemA1 = wRes1.rows[0].id;
-    itemB1 = wRes1.rows[1].id;
-    itemC1 = wRes1.rows[2].id;
+    const wItemA1 = wRes1.rows[0].id;
+    const wItemB1 = wRes1.rows[1].id;
+    const wItemC1 = wRes1.rows[2].id;
+
+    const tRes1 = await pool.query(
+      "INSERT INTO tasks (work_item_id, name, duration_days) VALUES ($1, 'A1', 1), ($2, 'B1', 1), ($3, 'C1', 1) RETURNING id",
+      [wItemA1, wItemB1, wItemC1]
+    );
+    itemA1 = tRes1.rows[0].id;
+    itemB1 = tRes1.rows[1].id;
+    itemC1 = tRes1.rows[2].id;
 
     const wRes2 = await pool.query(
-      "INSERT INTO work_items (project_id, name) VALUES ($1, 'A2') RETURNING id",
+      "INSERT INTO work_items (project_id, name) VALUES ($1, 'Cat A2') RETURNING id",
       [p2]
     );
-    itemA2 = wRes2.rows[0].id;
+    const wItemA2 = wRes2.rows[0].id;
+
+    const tRes2 = await pool.query(
+      "INSERT INTO tasks (work_item_id, name, duration_days) VALUES ($1, 'A2', 1) RETURNING id",
+      [wItemA2]
+    );
+    itemA2 = tRes2.rows[0].id;
   });
 
   afterAll(async () => {
@@ -155,12 +169,18 @@ describe("Dependencies Cycle Check Integration Tests", () => {
   it("Tạo vòng 3 nút với thứ tự ID lộn xộn vẫn bắt đầu từ việc đang khai", async () => {
     // Tạo 3 việc mới không theo thứ tự A, B, C để ID lộn xộn
     const wRes = await pool.query(
-      "INSERT INTO work_items (project_id, name) VALUES ($1, 'N3'), ($1, 'N1'), ($1, 'N2') RETURNING id",
+      "INSERT INTO work_items (project_id, name) VALUES ($1, 'Cat Random') RETURNING id",
       [p1]
     );
-    const id3 = wRes.rows[0].id; // N3
-    const id1 = wRes.rows[1].id; // N1
-    const id2 = wRes.rows[2].id; // N2
+    const wId = wRes.rows[0].id;
+
+    const tRes = await pool.query(
+      "INSERT INTO tasks (work_item_id, name, duration_days) VALUES ($1, 'N3', 1), ($1, 'N1', 1), ($1, 'N2', 1) RETURNING id",
+      [wId]
+    );
+    const id3 = tRes.rows[0].id; // N3
+    const id1 = tRes.rows[1].id; // N1
+    const id2 = tRes.rows[2].id; // N2
 
     // Tạo N1 -> N2, N2 -> N3
     await request(app).post(`/api/projects/${p1}/dependencies`).set("Cookie", cookieA).send({ predecessor_id: id1, successor_id: id2 });
