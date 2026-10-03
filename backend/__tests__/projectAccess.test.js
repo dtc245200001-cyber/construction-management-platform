@@ -1,83 +1,140 @@
+const request = require("supertest");
+const express = require("express");
+
+const mockQuery = jest.fn();
 jest.mock("../config/db", () => ({
-  query: jest.fn(),
+  query: (...args) => mockQuery(...args),
 }));
 
-const db = require("../config/db");
-const { checkProjectAccess, requireProjectRoles } = require('../middleware/projectAccess');
+const mockLoggerWarn = jest.fn();
+jest.mock("../utils/logger", () => ({
+  warn: (...args) => mockLoggerWarn(...args),
+}));
 
-function createResponse() {
-  const res = {};
-  res.status = jest.fn(() => res);
-  res.json = jest.fn(() => res);
-  return res;
-}
+const { checkProjectAccess, requireProjectRoles, allow, createProjectRouter } = require("../middleware/projectAccess");
 
-describe("T-07 project access middleware", () => {
+describe("projectAccess middleware (1.9)", () => {
+  let app;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    app = express();
+    app.use(express.json());
+    // Mock middleware auth
+    app.use((req, res, next) => {
+      req.user = { id: 10 };
+      next();
+    });
   });
 
-  test("route khong khai bao role phai tra 403", async () => {
-    const req = {
-      user: { id: 1 },
-      params: { projectId: "1" },
-      projectRole: "MEMBER"
-    };
+  describe("checkProjectAccess", () => {
+    test("tra 400 thi thieu projectId", async () => {
+      app.get("/test", checkProjectAccess, (req, res) => res.sendStatus(200));
+      const res = await request(app).get("/test");
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("Thiếu projectId hoặc projectId không hợp lệ");
+    });
 
-    const res = createResponse();
-    const next = jest.fn();
+    test("tra 403 va ghi log co cau truc khi khong la thanh vien", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+      app.get("/test/:projectId", checkProjectAccess, (req, res) => res.sendStatus(200));
 
-    await requireProjectRoles()(req, res, next);
+      const res = await request(app).get("/test/1");
 
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(next).not.toHaveBeenCalled();
+      expect(res.status).toBe(403);
+      expect(res.body.error).toMatch(/quyền truy cập/);
+      
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 10,
+          projectId: "1",
+          reason: "NOT_MEMBER",
+        }),
+        "Truy cập bị từ chối: user không phải thành viên dự án"
+      );
+    });
+
+    test("di tiep va gan req.projectRole khi la thanh vien", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] });
+      app.get("/test/:projectId", checkProjectAccess, (req, res) => {
+        res.json({ role: req.projectRole });
+      });
+
+      const res = await request(app).get("/test/1");
+      expect(res.status).toBe(200);
+      // fix(T-test): role lưu trong DB là chữ thường, middleware không uppercase hóa
+      expect(res.body.role).toBe("ban_quan_ly");
+    });
   });
 
-  test("user khong tham gia project phai tra 403", async () => {
-    const req = {
-      user: { id: 10 },
-      params: { projectId: "1" },
-      projectRole: undefined
-    };
+  describe("requireProjectRoles", () => {
+    test("tra 403 va ghi log mac dinh tu choi (default deny) neu khong truyen role", async () => {
+      app.get("/test/:projectId", (req, res, next) => {
+        req.projectRole = "chu_dau_tu";
+        next();
+      }, requireProjectRoles(), (req, res) => res.sendStatus(200));
 
-    const res = createResponse();
-    const next = jest.fn();
+      const res = await request(app).get("/test/1");
+      expect(res.status).toBe(403);
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: "ROLE_NOT_ALLOWED" }),
+        expect.stringContaining("default deny")
+      );
+    });
 
-    await requireProjectRoles(["MEMBER"])(req, res, next);
+    test("tra 403 va ghi log neu role khong nam trong allowed", async () => {
+      app.get("/test/:projectId", (req, res, next) => {
+        req.projectRole = "MEMBER";
+        next();
+      }, requireProjectRoles(["chu_dau_tu"]), (req, res) => res.sendStatus(200));
 
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(next).not.toHaveBeenCalled();
+      const res = await request(app).get("/test/1");
+      expect(res.status).toBe(403);
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          currentRole: "MEMBER",
+          allowedRoles: ["chu_dau_tu"],
+          reason: "ROLE_NOT_ALLOWED"
+        }),
+        "Truy cập bị từ chối: vai trò không đủ quyền"
+      );
+    });
+
+    test("di tiep neu role thuoc allowed", async () => {
+      app.get("/test/:projectId", (req, res, next) => {
+        req.projectRole = "chu_dau_tu";
+        next();
+      }, requireProjectRoles(["ban_quan_ly", "chu_dau_tu"]), (req, res) => res.sendStatus(200));
+
+      const res = await request(app).get("/test/1");
+      expect(res.status).toBe(200);
+    });
   });
 
-  test("user co role hop le duoc phep truy cap", async () => {
-    const req = {
-      user: { id: 10 },
-      params: { projectId: "1" },
-      projectRole: "MEMBER"
-    };
+  describe("createProjectRouter", () => {
+    test("tra 403 truoc khi handler chay neu route khong su dung allow wrapper", async () => {
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "production";
+      
+      const projectRouter = createProjectRouter();
+      
+      const mockHandler = jest.fn((req, res) => res.sendStatus(200));
+      
+      projectRouter.get("/:projectId/no-allow", mockHandler);
+      
+      app.use("/api/projects", projectRouter);
 
-    const res = createResponse();
-    const next = jest.fn();
-
-    await requireProjectRoles(["MEMBER"])(req, res, next);
-
-    expect(next).toHaveBeenCalledTimes(1);
-    expect(res.status).not.toHaveBeenCalled();
-  });
-
-  test("user thuoc project nhung sai role phai tra 403", async () => {
-    const req = {
-      user: { id: 10 },
-      params: { projectId: "1" },
-      projectRole: "MEMBER"
-    };
-
-    const res = createResponse();
-    const next = jest.fn();
-
-    await requireProjectRoles(["OWNER"])(req, res, next);
-
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(next).not.toHaveBeenCalled();
+      const res = await request(app).get("/api/projects/1/no-allow");
+      
+      process.env.NODE_ENV = originalEnv;
+      
+      expect(res.status).toBe(403);
+      expect(mockHandler).not.toHaveBeenCalled();
+      
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: "DEFAULT_DENY" }),
+        expect.stringContaining("route không sử dụng wrapper allow()")
+      );
+    });
   });
 });

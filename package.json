@@ -1,0 +1,32 @@
+{
+  "name": "construction-management-platform",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dtc245200001-cyber/construction-management-platform.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/dtc245200001-cyber/construction-management-platform/issues"
+  },
+  "homepage": "https://github.com/dtc245200001-cyber/construction-management-platform#readme",
+  "dependencies": {
+    "dotenv": "^18.0.2",
+    "express": "^5.2.1",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
