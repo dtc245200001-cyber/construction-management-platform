@@ -1,4 +1,4 @@
-"use strict";
+﻿"use strict";
 
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
@@ -9,50 +9,33 @@ const {
   createProjectRouter,
 } = require("../middleware/projectAccess");
 
+const { detectCycle } = require("../algorithms/cpm");
 const {
-  findCycleCreatedByEdge,
-  buildCycleDescription,
-} = require("../utils/dependencyCycle");
+  buildTempGraph,
+  rotateCycleToStartWith,
+} = require("../utils/buildTempGraph");
 
-const {
-  parsePositiveInt,
-} = require("../utils/validators");
-
-const {
-  ROLES,
-} = require("../utils/constants");
-
+const { parsePositiveInt } = require("../utils/validators");
+const { ROLES } = require("../utils/constants");
 const asyncHandler = require("../utils/asyncHandler");
-const { markProjectScheduleDirty } = require("../services/scheduleRecalculation");
+const {
+  markProjectScheduleDirty,
+} = require("../services/scheduleRecalculation");
 
 const router = createProjectRouter();
 
-const VALID_TYPES = [
-  "FS",
-  "SS",
-  "FF",
-  "SF",
-];
+const VALID_TYPES = ["FS", "SS", "FF", "SF"];
 
 router.post(
   "/:projectId/dependencies",
-
   requireAuth,
   checkProjectAccess,
   allow([ROLES.BAN_QUAN_LY]),
 
   asyncHandler(async (req, res) => {
-    const projectId = parsePositiveInt(
-      req.params.projectId
-    );
-
-    const predecessorId = parsePositiveInt(
-      req.body.predecessor_id
-    );
-
-    const successorId = parsePositiveInt(
-      req.body.successor_id
-    );
+    const projectId = parsePositiveInt(req.params.projectId);
+    const predecessorId = parsePositiveInt(req.body.predecessor_id);
+    const successorId = parsePositiveInt(req.body.successor_id);
 
     const dependencyType = String(
       req.body.dependency_type || "FS"
@@ -65,28 +48,27 @@ router.post(
 
     if (!projectId) {
       return res.status(400).json({
-        message: "projectId khÃ´ng há»£p lá»‡",
+        message: "projectId không hợp lệ",
       });
     }
 
     if (!predecessorId || !successorId) {
       return res.status(400).json({
         message:
-          "predecessor_id vÃ  successor_id pháº£i há»£p lá»‡",
+          "predecessor_id và successor_id phải hợp lệ",
       });
     }
 
     if (!VALID_TYPES.includes(dependencyType)) {
       return res.status(400).json({
         message:
-          "dependency_type chá»‰ Ä‘Æ°á»£c lÃ  FS, SS, FF hoáº·c SF",
+          "dependency_type chỉ được là FS, SS, FF hoặc SF",
       });
     }
 
     if (!Number.isInteger(leadLagDays)) {
       return res.status(400).json({
-        message:
-          "lead_lag_days pháº£i lÃ  sá»‘ nguyÃªn",
+        message: "lead_lag_days phải là số nguyên",
       });
     }
 
@@ -95,14 +77,14 @@ router.post(
     try {
       await client.query("BEGIN");
 
-      // KhÃ³a theo project Ä‘á»ƒ trÃ¡nh 2 request Ä‘á»“ng thá»i
-      // cÃ¹ng táº¡o ra vÃ²ng.
+      // Khóa theo project để tránh 2 request đồng thời
+      // cùng tạo ra vòng phụ thuộc.
       await client.query(
         "SELECT pg_advisory_xact_lock($1)",
         [projectId]
       );
 
-      // Láº¥y táº¥t cáº£ cÃ´ng viá»‡c cá»§a project.
+      // Lấy toàn bộ task thuộc project.
       const itemsResult = await client.query(
         `SELECT
            t.id,
@@ -118,10 +100,7 @@ router.post(
       const itemNames = new Map();
 
       for (const row of itemsResult.rows) {
-        itemNames.set(
-          Number(row.id),
-          row.name
-        );
+        itemNames.set(Number(row.id), row.name);
       }
 
       if (
@@ -131,96 +110,108 @@ router.post(
         await client.query("ROLLBACK");
 
         return res.status(400).json({
-          message:
-            "CÃ´ng viá»‡c khÃ´ng thuá»™c dá»± Ã¡n nÃ y",
+          message: "Công việc không thuộc dự án này",
         });
       }
 
-      // Cháº·n quan há»‡ trÃ¹ng.
+      // Chặn quan hệ trùng.
       const duplicate = await client.query(
         `SELECT 1
          FROM dependencies
          WHERE predecessor_id = $1
            AND successor_id = $2
          LIMIT 1`,
-        [
-          predecessorId,
-          successorId,
-        ]
+        [predecessorId, successorId]
       );
 
       if (duplicate.rows.length > 0) {
         await client.query("ROLLBACK");
 
         return res.status(409).json({
-          message:
-            "Quan há»‡ cÃ´ng viá»‡c Ä‘Ã£ tá»“n táº¡i",
+          message: "Quan hệ công việc đã tồn tại",
         });
       }
 
-      // Láº¥y cÃ¡c quan há»‡ hiá»‡n cÃ³ trong Ä‘Ãºng project.
+      // Lấy các quan hệ hiện có trong project.
       const depsResult = await client.query(
         `SELECT
            d.predecessor_id,
            d.successor_id
          FROM dependencies d
-
          JOIN tasks pre_task
            ON pre_task.id = d.predecessor_id
-
          JOIN work_items pre
            ON pre.id = pre_task.work_item_id
-
          JOIN tasks suc_task
            ON suc_task.id = d.successor_id
-
          JOIN work_items suc
            ON suc.id = suc_task.work_item_id
-
          WHERE pre.project_id = $1
            AND suc.project_id = $1`,
         [projectId]
       );
 
-      const cycleIds =
-        findCycleCreatedByEdge(
-          itemsResult.rows.map(
-            (item) => item.id
-          ),
-          depsResult.rows,
-          predecessorId,
+      // Tự trỏ -> bắt sớm và trả 422.
+      if (predecessorId === successorId) {
+        await client.query("ROLLBACK");
+
+        return res.status(422).json({
+          code: "DEPENDENCY_CYCLE",
+          message: "Không thể tự phụ thuộc vào chính mình",
+          cycleIds: [predecessorId, predecessorId],
+          cycleNames: [
+            itemNames.get(predecessorId),
+            itemNames.get(predecessorId),
+          ],
+          cyclePath: `${itemNames.get(predecessorId)} → ${itemNames.get(predecessorId)}`,
+        });
+      }
+
+      // Dựng graph với dependency mới để kiểm tra cycle.
+      const graph = buildTempGraph(
+        itemsResult.rows,
+        depsResult.rows,
+        {
+          predecessor_id: predecessorId,
+          successor_id: successorId,
+          dependency_type: dependencyType,
+          lead_lag_days: leadLagDays,
+        }
+      );
+
+      let cycleIds = detectCycle(graph);
+
+      // detectCycle có thể trả một vòng bất kỳ.
+      // Xoay để bắt đầu từ successorId nếu có thể.
+      if (cycleIds && cycleIds.length > 0) {
+        cycleIds = rotateCycleToStartWith(
+          cycleIds,
           successorId
         );
 
-      // Náº¿u quan há»‡ má»›i táº¡o vÃ²ng:
-      // rollback ngay, tuyá»‡t Ä‘á»‘i khÃ´ng INSERT.
-      if (cycleIds) {
-        const cycle =
-          buildCycleDescription(
-            cycleIds,
-            itemNames
-          );
+        const names = cycleIds.map(
+          (id) =>
+            itemNames.get(Number(id)) || `#${id}`
+        );
+
+        // Đóng vòng.
+        names.push(names[0]);
+
+        const pathStr = names.join(" → ");
 
         await client.query("ROLLBACK");
 
         return res.status(422).json({
           code: "DEPENDENCY_CYCLE",
-
           message:
-            `KhÃ´ng thá»ƒ táº¡o quan há»‡ vÃ¬ sáº½ táº¡o vÃ²ng phá»¥ thuá»™c: ${cycle.cyclePath}`,
-
-          cycleIds:
-            cycle.cycleIds,
-
-          cycleNames:
-            cycle.cycleNames,
-
-          cyclePath:
-            cycle.cyclePath,
+            `Không thể tạo quan hệ vì sẽ tạo vòng phụ thuộc: ${pathStr}`,
+          cycleIds,
+          cycleNames: names,
+          cyclePath: pathStr,
         });
       }
 
-      // KhÃ´ng cÃ³ vÃ²ng -> má»›i Ä‘Æ°á»£c INSERT.
+      // Không có vòng -> mới được INSERT.
       const result = await client.query(
         `INSERT INTO dependencies (
            predecessor_id,
@@ -229,7 +220,6 @@ router.post(
            lead_lag_days
          )
          VALUES ($1, $2, $3, $4)
-
          RETURNING
            predecessor_id,
            successor_id,
@@ -243,16 +233,17 @@ router.post(
         ]
       );
 
-      await markProjectScheduleDirty(projectId, client);
+      // T-26: dependency thay đổi -> schedule cần tính lại.
+      await markProjectScheduleDirty(
+        projectId,
+        client
+      );
 
       await client.query("COMMIT");
 
       return res.status(201).json({
-        message:
-          "Táº¡o quan há»‡ cÃ´ng viá»‡c thÃ nh cÃ´ng",
-
-        dependency:
-          result.rows[0],
+        message: "Tạo quan hệ công việc thành công",
+        dependency: result.rows[0],
       });
     } catch (error) {
       await client.query("ROLLBACK");
