@@ -4,10 +4,10 @@ async function getScheduleResults(projectId, criticalOnly = null) {
   const result = await db.query(
     `
       SELECT
-        w.id,
-        w.project_id,
-        w.name,
-        w.code,
+        t.id,
+        t.name,
+        t.work_item_id,
+        wi.name AS work_item_name,
         sr.early_start,
         sr.early_finish,
         sr.late_start,
@@ -15,15 +15,17 @@ async function getScheduleResults(projectId, criticalOnly = null) {
         sr.total_float,
         sr.is_critical,
         sr.calculated_at
-      FROM work_items w
+      FROM tasks t
+      JOIN work_items wi
+        ON wi.id = t.work_item_id
       LEFT JOIN schedule_results sr
-        ON sr.work_item_id = w.id
-      WHERE w.project_id = $1
+        ON sr.task_id = t.id
+      WHERE wi.project_id = $1
         AND (
           $2::boolean IS NULL
           OR sr.is_critical = $2
         )
-      ORDER BY sr.early_start NULLS LAST, w.id
+      ORDER BY sr.early_start NULLS LAST, t.id
     `,
     [projectId, criticalOnly]
   );

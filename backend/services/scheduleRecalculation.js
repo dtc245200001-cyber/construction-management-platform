@@ -12,8 +12,10 @@ async function markProjectScheduleDirty(projectId, client = pool) {
     `
       UPDATE schedule_results sr
       SET needs_recalculation = true
-      FROM work_items wi
-      WHERE wi.id = sr.work_item_id
+      FROM tasks t
+      JOIN work_items wi
+        ON wi.id = t.work_item_id
+      WHERE t.id = sr.task_id
         AND wi.project_id = $1
     `,
     [projectId]
