@@ -198,6 +198,32 @@ function backwardPass(tasks, dependencies, topologicalOrder, earlyResults) {
   return results;
 }
 
+/**
+ * Tính độ trễ cho phép (Total Float - T-21):
+ * Độ trễ cho phép bằng khởi muộn (LS) trừ khởi sớm (ES).
+ * Làm tròn về số nguyên ngày để tránh sai số số thực.
+ *
+ * @param {number} LS - Khởi muộn
+ * @param {number} ES - Khởi sớm
+ * @returns {number} - Độ trễ toàn phần tính theo số nguyên ngày
+ */
+function calculateTotalFloat(LS, ES) {
+  return Math.round(Number(LS) - Number(ES));
+}
+
+/**
+ * Đánh dấu việc găng (Critical Task - T-21):
+ * Việc có độ trễ bằng 0 là găng.
+ * Ràng buộc: so sánh bằng 0 trên số nguyên ngày, không so trên số thực.
+ *
+ * @param {number} totalFloat - Độ trễ cho phép
+ * @returns {boolean} - true nếu là việc găng, false nếu không
+ */
+function isCriticalTask(totalFloat) {
+  const intFloat = Math.trunc(Math.round(Number(totalFloat)));
+  return intFloat === 0;
+}
+
 function calculateSchedule(
   tasks,
   dependencies,
@@ -226,7 +252,8 @@ function calculateSchedule(
     const EF = early[id].EF;
     const LS = late[id].LS;
     const LF = late[id].LF;
-    const totalFloat = LS - ES;
+    const totalFloat = calculateTotalFloat(LS, ES);
+    const critical = isCriticalTask(totalFloat);
 
     results[id] = {
       ES,
@@ -234,7 +261,7 @@ function calculateSchedule(
       LS,
       LF,
       float: totalFloat,
-      critical: totalFloat === 0,
+      critical,
     };
   });
 
@@ -256,5 +283,7 @@ module.exports = {
   calculateSFBackward,
   forwardPass,
   backwardPass,
+  calculateTotalFloat,
+  isCriticalTask,
   calculateSchedule,
 };

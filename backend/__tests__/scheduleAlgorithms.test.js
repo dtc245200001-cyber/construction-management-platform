@@ -9,6 +9,9 @@ const {
   calculateBackwardSF,
   forwardPass,
   backwardPass,
+  calculateTotalFloat,
+  isCriticalTask,
+  calculateSchedule,
 } = require('../utils/scheduleAlgorithms');
 const k01 = require('./fixtures/k01-expected.json');
 
@@ -211,3 +214,141 @@ describe('T-20: Backward Pass Algorithm (S-09)', () => {
     });
   });
 });
+
+describe('T-21: Total Float & Critical Task Flagging (S-09)', () => {
+  describe('calculateTotalFloat and isCriticalTask unit tests', () => {
+    test('calculateTotalFloat should return LS - ES as an integer', () => {
+      // Độ trễ cho phép bằng khởi muộn trừ khởi sớm
+      expect(calculateTotalFloat(5, 3)).toBe(2);
+      expect(calculateTotalFloat(3, 3)).toBe(0);
+      expect(calculateTotalFloat(12, 7)).toBe(5);
+    });
+
+    test('isCriticalTask should return true only when totalFloat is 0 (integer comparison)', () => {
+      // Việc có độ trễ bằng 0 là găng; so sánh trên số nguyên ngày
+      expect(isCriticalTask(0)).toBe(true);
+      expect(isCriticalTask(1)).toBe(false);
+      expect(isCriticalTask(2)).toBe(false);
+      expect(isCriticalTask(-0)).toBe(true);
+    });
+  });
+
+  describe('calculateSchedule on K-01 sample network', () => {
+    test('critical flags and float values match K-01 hand-calculated answer table', () => {
+      const schedule = calculateSchedule(
+        k01.tasks,
+        k01.dependencies,
+        k01.topologicalOrder,
+        k01.projectStart
+      );
+
+      // Mọi việc trong K-01 có float và critical khớp bảng đáp án tính tay
+      k01.expected.forEach((expectedRow) => {
+        const actual = schedule[expectedRow.id];
+        expect(actual).toBeDefined();
+        expect(actual.float).toBe(expectedRow.float);
+        expect(actual.critical).toBe(expectedRow.critical);
+        expect(actual.ES).toBe(expectedRow.ES);
+        expect(actual.EF).toBe(expectedRow.EF);
+        expect(actual.LS).toBe(expectedRow.LS);
+        expect(actual.LF).toBe(expectedRow.LF);
+      });
+
+      // Tập việc găng khớp đường găng vẽ tay ở K-01
+      const criticalTasks = k01.topologicalOrder.filter(
+        (id) => schedule[id].critical
+      );
+      expect(criticalTasks).toEqual(k01.criticalPath);
+    });
+  });
+
+  describe('Parallel branches and critical path coverage', () => {
+    test('mạng có hai đường găng song song thì cả hai đều được đánh dấu (T-21 AC)', () => {
+      // Mạng có 2 nhánh song song cùng chiều dài:
+      // Start (dur: 2) -> P1 (dur: 4) -> P2 (dur: 3) -> End (dur: 2)
+      //               \-> Q1 (dur: 5) -> Q2 (dur: 2) -> End
+      // Nhánh P: 4 + 3 = 7 ngày.
+      // Nhánh Q: 5 + 2 = 7 ngày.
+      // Cả 2 nhánh dài bằng nhau và đều nằm trên đường găng (tổng 2 + 7 + 2 = 11 ngày)
+      const tasks = [
+        { id: 'START', duration: 2 },
+        { id: 'P1', duration: 4 },
+        { id: 'P2', duration: 3 },
+        { id: 'Q1', duration: 5 },
+        { id: 'Q2', duration: 2 },
+        { id: 'END', duration: 2 },
+      ];
+
+      const dependencies = [
+        { from: 'START', to: 'P1', type: 'FS', lag: 0 },
+        { from: 'P1', to: 'P2', type: 'FS', lag: 0 },
+        { from: 'P2', to: 'END', type: 'FS', lag: 0 },
+        { from: 'START', to: 'Q1', type: 'FS', lag: 0 },
+        { from: 'Q1', to: 'Q2', type: 'FS', lag: 0 },
+        { from: 'Q2', to: 'END', type: 'FS', lag: 0 },
+      ];
+
+      const topologicalOrder = ['START', 'P1', 'P2', 'Q1', 'Q2', 'END'];
+
+      const schedule = calculateSchedule(tasks, dependencies, topologicalOrder, 0);
+
+      // Cả hai nhánh song song đều phải được đánh dấu găng (critical = true, float = 0)
+      expect(schedule['START']).toEqual({
+        ES: 0, EF: 2, LS: 0, LF: 2, float: 0, critical: true,
+      });
+      expect(schedule['P1']).toEqual({
+        ES: 2, EF: 6, LS: 2, LF: 6, float: 0, critical: true,
+      });
+      expect(schedule['P2']).toEqual({
+        ES: 6, EF: 9, LS: 6, LF: 9, float: 0, critical: true,
+      });
+      expect(schedule['Q1']).toEqual({
+        ES: 2, EF: 7, LS: 2, LF: 7, float: 0, critical: true,
+      });
+      expect(schedule['Q2']).toEqual({
+        ES: 7, EF: 9, LS: 7, LF: 9, float: 0, critical: true,
+      });
+      expect(schedule['END']).toEqual({
+        ES: 9, EF: 11, LS: 9, LF: 11, float: 0, critical: true,
+      });
+
+      const allCritical = tasks.every((t) => schedule[t.id].critical);
+      expect(allCritical).toBe(true);
+    });
+
+    test('nhánh song song dài hơn nằm trên đường găng, nhánh ngắn hơn có độ trễ dương đúng bằng chênh lệch (S-09 AC)', () => {
+      // Start (dur: 2)
+      // Nhánh dài: L1 (dur: 6) -> End (dur: 2) -> nhánh dài: 6 ngày
+      // Nhánh ngắn: S1 (dur: 4) -> End          -> nhánh ngắn: 4 ngày
+      // Chênh lệch = 6 - 4 = 2 ngày. Nhánh ngắn có float = 2.
+      const tasks = [
+        { id: 'START', duration: 2 },
+        { id: 'L1', duration: 6 },
+        { id: 'S1', duration: 4 },
+        { id: 'END', duration: 2 },
+      ];
+
+      const dependencies = [
+        { from: 'START', to: 'L1', type: 'FS', lag: 0 },
+        { from: 'L1', to: 'END', type: 'FS', lag: 0 },
+        { from: 'START', to: 'S1', type: 'FS', lag: 0 },
+        { from: 'S1', to: 'END', type: 'FS', lag: 0 },
+      ];
+
+      const topologicalOrder = ['START', 'L1', 'S1', 'END'];
+      const schedule = calculateSchedule(tasks, dependencies, topologicalOrder, 0);
+
+      // Nhánh dài L1 là găng: float = 0, critical = true
+      expect(schedule['L1'].float).toBe(0);
+      expect(schedule['L1'].critical).toBe(true);
+
+      // Nhánh ngắn S1 không găng: float = 2 (đúng bằng chênh lệch), critical = false
+      expect(schedule['S1'].float).toBe(2);
+      expect(schedule['S1'].critical).toBe(false);
+
+      expect(schedule['START'].critical).toBe(true);
+      expect(schedule['END'].critical).toBe(true);
+    });
+  });
+});
+
