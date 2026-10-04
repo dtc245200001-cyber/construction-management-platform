@@ -5,7 +5,7 @@ import {
   Search, Plus, List, LayoutGrid, MoreHorizontal, 
   ChevronRight, ChevronDown, FolderOpen, FileText, 
   Check, Lightbulb, X, FileSpreadsheet, Download, Share2, Network,
-  Maximize2, Minimize2
+  Maximize2, Minimize2, Pencil, Trash2, PlusCircle, FolderPlus
 } from "lucide-react";
 import { PieChart, Pie, Cell } from "recharts";
 
@@ -71,7 +71,18 @@ function WBSPage() {
   const [search, setSearch] = useState("");
   const [showRightPanel, setShowRightPanel] = useState(true);
   
-  const projectId = localStorage.getItem('currentProjectId') || 5;
+  const projectId = localStorage.getItem('currentProjectId') || 13;
+
+  // State cho Modal Thêm / Sửa theo chuẩn T-05 / T-09
+  const [modalConfig, setModalConfig] = useState({
+    isOpen: false,
+    mode: "add_root", // 'add_root' | 'add_child' | 'edit'
+    targetNode: null,
+    name: "",
+    code: "",
+    error: "",
+  });
+  const [modalLoading, setModalLoading] = useState(false);
 
   const fetchWBS = async () => {
     try {
@@ -82,7 +93,8 @@ function WBSPage() {
       
       const initExpanded = new Set();
       const traverse = (node, level) => {
-        if (level < 2) {
+        // T-09: Mặc định mở rộng tầng 1 và tầng 2, thu gọn từ tầng 3 trở xuống
+        if (level < 3) {
           initExpanded.add(node.id);
           node.children.forEach(c => traverse(c, level + 1));
         }
@@ -106,6 +118,98 @@ function WBSPage() {
     if (next.has(id)) next.delete(id);
     else next.add(id);
     setExpanded(next);
+  };
+
+  const openAddRootModal = () => {
+    setModalConfig({
+      isOpen: true,
+      mode: "add_root",
+      targetNode: null,
+      name: "",
+      code: "",
+      error: "",
+    });
+  };
+
+  const openAddChildModal = (node) => {
+    setModalConfig({
+      isOpen: true,
+      mode: "add_child",
+      targetNode: node,
+      name: "",
+      code: "",
+      error: "",
+    });
+  };
+
+  const openEditModal = (node) => {
+    setModalConfig({
+      isOpen: true,
+      mode: "edit",
+      targetNode: node,
+      name: node.name,
+      code: node.code || "",
+      error: "",
+    });
+  };
+
+  const closeModal = () => {
+    setModalConfig(prev => ({ ...prev, isOpen: false, error: "" }));
+  };
+
+  const handleModalSubmit = async (e) => {
+    e.preventDefault();
+    if (!modalConfig.name.trim()) {
+      setModalConfig(prev => ({ ...prev, error: "Vui lòng nhập tên hạng mục" }));
+      return;
+    }
+
+    try {
+      setModalLoading(true);
+      setModalConfig(prev => ({ ...prev, error: "" }));
+
+      if (modalConfig.mode === "add_root") {
+        await api.post(`/categories/${projectId}`, {
+          name: modalConfig.name.trim(),
+          code: modalConfig.code.trim() || undefined,
+          parent_id: null,
+        });
+      } else if (modalConfig.mode === "add_child") {
+        await api.post(`/categories/${projectId}`, {
+          name: modalConfig.name.trim(),
+          code: modalConfig.code.trim() || undefined,
+          parent_id: modalConfig.targetNode.id,
+        });
+        // Tự động mở rộng node cha để thấy con mới tạo
+        setExpanded(prev => new Set([...prev, modalConfig.targetNode.id]));
+      } else if (modalConfig.mode === "edit") {
+        await api.put(`/categories/${projectId}/${modalConfig.targetNode.id}`, {
+          name: modalConfig.name.trim(),
+        });
+      }
+
+      closeModal();
+      await fetchWBS();
+    } catch (err) {
+      setModalConfig(prev => ({
+        ...prev,
+        error: err.response?.data?.message || err.message || "Lỗi khi lưu hạng mục",
+      }));
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const handleDeleteCategory = async (node) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa hạng mục "${node.name}"?`)) {
+      return;
+    }
+    try {
+      await api.delete(`/categories/${projectId}/${node.id}`);
+      await fetchWBS();
+    } catch (err) {
+      alert("Lỗi khi xóa hạng mục: " + (err.response?.data?.message || err.message));
+    }
   };
 
   const updateStatus = async (id, newStatus) => {
@@ -198,9 +302,29 @@ function WBSPage() {
               </div>
             </td>
             <td className="px-4 text-right">
-              <button className="p-1 border border-black/10 rounded-full hover:bg-black/5">
-                <MoreHorizontal className="size-4" />
-              </button>
+              <div className="flex items-center justify-end gap-1">
+                <button
+                  onClick={() => openAddChildModal(node)}
+                  title="Thêm hạng mục con"
+                  className="p-1.5 text-[#1F63E0] hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
+                >
+                  <PlusCircle className="size-4" />
+                </button>
+                <button
+                  onClick={() => openEditModal(node)}
+                  title="Sửa tên hạng mục"
+                  className="p-1.5 text-[#475569] hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
+                >
+                  <Pencil className="size-4" />
+                </button>
+                <button
+                  onClick={() => handleDeleteCategory(node)}
+                  title="Xóa hạng mục"
+                  className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              </div>
             </td>
           </tr>
           {isExpanded && node.children.map((child, i) => renderRow(child, level + 1, `${indexStr}.${i + 1}`, colorIndex))}
@@ -318,7 +442,10 @@ function WBSPage() {
             >
               {showRightPanel ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
             </button>
-            <button className="h-11 px-5 flex items-center gap-2 bg-[#1F63E0] hover:bg-[#1A54C2] text-white rounded-[10px] text-[14px] font-medium shadow-sm transition-colors">
+            <button 
+              onClick={openAddRootModal}
+              className="h-11 px-5 flex items-center gap-2 bg-[#1F63E0] hover:bg-[#1A54C2] text-white rounded-[10px] text-[14px] font-medium shadow-sm transition-colors cursor-pointer"
+            >
               <Plus className="size-4" /> Thêm hạng mục gốc
             </button>
           </div>
@@ -405,7 +532,10 @@ function WBSPage() {
           <div className="bg-white rounded-2xl border border-[#E6EBF3] p-5 shadow-[0_1px_2px_rgba(16,24,40,.04),0_4px_12px_rgba(16,24,40,.04)]">
             <h3 className="font-bold text-[#0F1B3D] mb-4">Thao tác nhanh</h3>
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-[#F4F7FC] p-3 rounded-xl flex flex-col items-center justify-center gap-2 hover:-translate-y-0.5 hover:border-[#1F63E0] border border-transparent transition-all cursor-pointer">
+              <div 
+                onClick={openAddRootModal}
+                className="bg-[#F4F7FC] p-3 rounded-xl flex flex-col items-center justify-center gap-2 hover:-translate-y-0.5 hover:border-[#1F63E0] border border-transparent transition-all cursor-pointer"
+              >
                 <div className="size-10 bg-white rounded-full flex items-center justify-center text-[#1F63E0] shadow-sm"><Plus className="size-5" /></div>
                 <span className="text-[12px] font-medium text-[#0F1B3D]">Thêm hạng mục</span>
               </div>
@@ -431,7 +561,7 @@ function WBSPage() {
               <div className="mt-0.5 text-[#1F63E0]"><Lightbulb className="size-4 fill-current" /></div>
               <div>
                 <h4 className="font-bold text-[13px] text-[#0F1B3D] mb-1">Mẹo nhỏ</h4>
-                <p className="text-[12px] text-[#64748B] leading-relaxed">Bạn có thể kéo thả để thay đổi thứ tự các hạng mục trong WBS hoặc xuất báo cáo nhanh ra Excel.</p>
+                <p className="text-[12px] text-[#64748B] leading-relaxed">Bạn có thể thêm hạng mục con, sửa tên hoặc xóa trực tiếp tại mỗi dòng hạng mục.</p>
               </div>
             </div>
           </div>
@@ -439,6 +569,94 @@ function WBSPage() {
         </div>
         )}
       </div>
+
+      {/* Modal Thêm / Sửa Hạng mục theo bố cục chuẩn T-05 / Design System */}
+      {modalConfig.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl border border-[#E6EBF3] animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-4 border-b border-[#EEF2F7]">
+              <div className="flex items-center gap-3">
+                <div className="size-10 rounded-xl bg-blue-50 text-[#1F63E0] flex items-center justify-center">
+                  {modalConfig.mode === "edit" ? <Pencil className="size-5" /> : <FolderPlus className="size-5" />}
+                </div>
+                <div>
+                  <h3 className="font-bold text-[#0F1B3D] text-[16px]">
+                    {modalConfig.mode === "add_root" && "Thêm hạng mục gốc"}
+                    {modalConfig.mode === "add_child" && "Thêm hạng mục con"}
+                    {modalConfig.mode === "edit" && "Đổi tên hạng mục"}
+                  </h3>
+                  {modalConfig.mode === "add_child" && modalConfig.targetNode && (
+                    <p className="text-xs text-[#64748B]">Trực thuộc: <span className="font-semibold text-[#0F1B3D]">{modalConfig.targetNode.name}</span></p>
+                  )}
+                </div>
+              </div>
+              <button 
+                onClick={closeModal}
+                className="size-8 rounded-lg text-[#64748B] hover:bg-slate-100 flex items-center justify-center cursor-pointer"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            {modalConfig.error && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl">
+                {modalConfig.error}
+              </div>
+            )}
+
+            <form onSubmit={handleModalSubmit} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#0F1B3D] mb-1.5">
+                  Tên hạng mục <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="Nhập tên hạng mục..."
+                  value={modalConfig.name}
+                  onChange={(e) => setModalConfig(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full h-11 px-3.5 rounded-xl border border-[#E6EBF3] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F63E0]/20 focus:border-[#1F63E0]"
+                  disabled={modalLoading}
+                />
+              </div>
+
+              {modalConfig.mode !== "edit" && (
+                <div>
+                  <label className="block text-xs font-semibold text-[#0F1B3D] mb-1.5">
+                    Mã hạng mục (tùy chọn)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ví dụ: HM-01, KET-CAU..."
+                    value={modalConfig.code}
+                    onChange={(e) => setModalConfig(prev => ({ ...prev, code: e.target.value }))}
+                    className="w-full h-11 px-3.5 rounded-xl border border-[#E6EBF3] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F63E0]/20 focus:border-[#1F63E0]"
+                    disabled={modalLoading}
+                  />
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#EEF2F7]">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  disabled={modalLoading}
+                  className="h-10 px-4 rounded-xl text-sm font-medium text-[#475569] hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={modalLoading}
+                  className="h-10 px-5 rounded-xl text-sm font-semibold text-white bg-[#1F63E0] hover:bg-[#1A54C2] transition-colors shadow-sm cursor-pointer disabled:opacity-60"
+                >
+                  {modalLoading ? "Đang lưu..." : modalConfig.mode === "edit" ? "Cập nhật" : "Thêm mới"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
