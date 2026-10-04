@@ -1,236 +1,286 @@
 "use strict";
 
 /**
- * Lấy dữ liệu 1 dự án bằng đúng 2 truy vấn và dựng đồ thị
- * @param {number} projectId 
- * @param {object} pool Đối tượng db pool
+ * LÃ¡ÂºÂ¥y dÃ¡Â»Â¯ liÃ¡Â»â€¡u task cÃ¡Â»Â§a 1 dÃ¡Â»Â± ÃƒÂ¡n bÃ¡ÂºÂ±ng Ã„â€˜ÃƒÂºng 2 truy vÃ¡ÂºÂ¥n vÃƒÂ  dÃ¡Â»Â±ng Ã„â€˜Ã¡Â»â€œ thÃ¡Â»â€¹.
+ *
+ * DB hiÃ¡Â»â€¡n tÃ¡ÂºÂ¡i:
+ * - tasks.id
+ * - tasks.work_item_id
+ * - tasks.name
+ * - tasks.duration_days
+ * - dependencies.predecessor_id
+ * - dependencies.successor_id
+ * - dependencies.dependency_type
+ * - dependencies.lead_lag_days
+ * - work_items.project_id
+ *
+ * Output vÃ¡ÂºÂ«n giÃ¡Â»Â¯ format mÃƒÂ  cÃƒÂ¡c thuÃ¡ÂºÂ­t toÃƒÂ¡n T-15/T-16/T-17
+ * vÃƒÂ  calculateSchedule() Ã„â€˜ang sÃ¡Â»Â­ dÃ¡Â»Â¥ng:
+ * - nodes[id] = { id, name, duration }
+ * - adjList
+ * - reverseAdjList
+ * - inDegree
+ *
+ * @param {number} projectId
+ * @param {object} pool Ã„ÂÃ¡Â»â€˜i tÃ†Â°Ã¡Â»Â£ng db pool
  * @returns {object} { nodes, adjList, reverseAdjList, inDegree }
  */
 async function buildGraph(projectId, pool) {
-  // 1. Truy vấn lấy toàn bộ công việc của dự án
-  const workItemsResult = await pool.query(`
-    SELECT wi.id, wi.name, wi.duration 
-    FROM work_items wi
-    JOIN categories c ON wi.category_id = c.id
-    WHERE c.project_id = $1
-  `, [projectId]);
+  // 1. LÃ¡ÂºÂ¥y toÃƒÂ n bÃ¡Â»â„¢ task thuÃ¡Â»â„¢c project
+  const tasksResult = await pool.query(
+    `
+      SELECT
+        t.id,
+        t.work_item_id,
+        t.name,
+        t.duration_days AS duration
+      FROM tasks t
+      JOIN work_items wi
+        ON wi.id = t.work_item_id
+      WHERE wi.project_id = $1
+      ORDER BY t.id
+    `,
+    [projectId],
+  );
 
-  // 2. Truy vấn lấy toàn bộ quan hệ của dự án
-  const depsResult = await pool.query(`
-    SELECT d.predecessor_id, d.successor_id, d.dependency_type, d.lead_lag_days
-    FROM dependencies d
-    JOIN work_items wi ON d.predecessor_id = wi.id
-    JOIN categories c ON wi.category_id = c.id
-    WHERE c.project_id = $1
-  `, [projectId]);
+  // 2. LÃ¡ÂºÂ¥y toÃƒÂ n bÃ¡Â»â„¢ dependency giÃ¡Â»Â¯a cÃƒÂ¡c task thuÃ¡Â»â„¢c cÃƒÂ¹ng project
+  const depsResult = await pool.query(
+    `
+      SELECT
+        d.predecessor_id,
+        d.successor_id,
+        d.dependency_type,
+        d.lead_lag_days
+      FROM dependencies d
+      JOIN tasks pre_task
+        ON pre_task.id = d.predecessor_id
+      JOIN work_items pre_wi
+        ON pre_wi.id = pre_task.work_item_id
+      JOIN tasks suc_task
+        ON suc_task.id = d.successor_id
+      JOIN work_items suc_wi
+        ON suc_wi.id = suc_task.work_item_id
+      WHERE pre_wi.project_id = $1
+        AND suc_wi.project_id = $1
+      ORDER BY d.id
+    `,
+    [projectId],
+  );
 
   const nodes = {};
   const adjList = {};
   const reverseAdjList = {};
   const inDegree = {};
 
-  // Khởi tạo các đỉnh
-  for (const row of workItemsResult.rows) {
+  // KhÃ¡Â»Å¸i tÃ¡ÂºÂ¡o cÃƒÂ¡c Ã„â€˜Ã¡Â»â€°nh
+  for (const row of tasksResult.rows) {
     const id = row.id;
-    nodes[id] = row;
+
+    nodes[id] = {
+      id: row.id,
+      workItemId: row.work_item_id,
+      name: row.name,
+      duration: Number(row.duration),
+    };
+
     adjList[id] = [];
     reverseAdjList[id] = [];
     inDegree[id] = 0;
   }
 
-  // Khởi tạo các cạnh
+  // KhÃ¡Â»Å¸i tÃ¡ÂºÂ¡o cÃƒÂ¡c cÃ¡ÂºÂ¡nh
   for (const row of depsResult.rows) {
     const pre = row.predecessor_id;
     const suc = row.successor_id;
-    
-    // Bỏ qua nếu có dữ liệu thừa không khớp công việc (rác)
-    if (!nodes[pre] || !nodes[suc]) continue;
+
+    // BÃ¡Â»Â qua nÃ¡ÂºÂ¿u task khÃƒÂ´ng tÃ¡Â»â€œn tÃ¡ÂºÂ¡i trong graph hiÃ¡Â»â€¡n tÃ¡ÂºÂ¡i
+    if (!nodes[pre] || !nodes[suc]) {
+      continue;
+    }
 
     const edge = {
       type: row.dependency_type,
-      delay: row.lead_lag_days
+      delay: Number(row.lead_lag_days),
     };
 
-    // Chiều xuôi: pre -> suc
+    // ChiÃ¡Â»Âu xuÃƒÂ´i: predecessor -> successor
     adjList[pre].push({
       target: suc,
-      ...edge
+      ...edge,
     });
 
-    // Chiều ngược: suc -> pre
+    // ChiÃ¡Â»Âu ngÃ†Â°Ã¡Â»Â£c: successor -> predecessor
     reverseAdjList[suc].push({
       target: pre,
-      ...edge
+      ...edge,
     });
 
     inDegree[suc]++;
   }
 
-  return { nodes, adjList, reverseAdjList, inDegree };
+  return {
+    nodes,
+    adjList,
+    reverseAdjList,
+    inDegree,
+  };
 }
+
 /**
- * Cài đặt Kahn's algorithm (sắp xếp topo không đệ quy)
- * @param {object} graph { nodes, adjList, reverseAdjList, inDegree }
+ * CÃƒÂ i Ã„â€˜Ã¡ÂºÂ·t Kahn's algorithm (sÃ¡ÂºÂ¯p xÃ¡ÂºÂ¿p topo khÃƒÂ´ng Ã„â€˜Ã¡Â»â€¡ quy)
+ *
+ * @param {object} graph
  * @returns {object} { sortedOrder: number[], unresolvedNodes: number[] }
  */
 function topologicalSort(graph) {
-  // Tạo bản sao inDegree để không làm hỏng bản gốc
+  // TÃ¡ÂºÂ¡o bÃ¡ÂºÂ£n sao inDegree Ã„â€˜Ã¡Â»Æ’ khÃƒÂ´ng lÃƒÂ m hÃ¡Â»Âng bÃ¡ÂºÂ£n gÃ¡Â»â€˜c
   const currentInDegree = { ...graph.inDegree };
-  
-  // Hàng đợi lưu các nút có bậc vào = 0
-  let queue = [];
-  
-  // Khởi tạo hàng đợi: Tìm tất cả các nút bậc vào 0, sort theo ID (tính ổn định)
+
+  // HÃƒÂ ng Ã„â€˜Ã¡Â»Â£i lÃ†Â°u cÃƒÂ¡c nÃƒÂºt cÃƒÂ³ bÃ¡ÂºÂ­c vÃƒÂ o = 0
+  const queue = [];
+
+  // KhÃ¡Â»Å¸i tÃ¡ÂºÂ¡o hÃƒÂ ng Ã„â€˜Ã¡Â»Â£i
   for (const nodeIdStr in currentInDegree) {
     if (currentInDegree[nodeIdStr] === 0) {
       queue.push(Number(nodeIdStr));
     }
   }
+
+  // Sort theo ID Ã„â€˜Ã¡Â»Æ’ Ã„â€˜Ã¡ÂºÂ£m bÃ¡ÂºÂ£o kÃ¡ÂºÂ¿t quÃ¡ÂºÂ£ Ã¡Â»â€¢n Ã„â€˜Ã¡Â»â€¹nh
   queue.sort((a, b) => a - b);
 
   const sortedOrder = [];
-  let head = 0; // Con trỏ đầu hàng đợi (tránh dùng shift)
+  let head = 0;
 
   while (head < queue.length) {
     const current = queue[head];
     head++;
+
     sortedOrder.push(current);
 
-    // Duyệt các đỉnh kề (chiều xuôi)
     const neighbors = graph.adjList[current];
     if (!neighbors) continue;
 
     const zeroInDegreeNeighbors = [];
+
     for (const edge of neighbors) {
       const neighbor = edge.target;
+
       currentInDegree[neighbor]--;
-      
-      // Nếu bậc vào về 0, gom lại để sort và đẩy vào queue
+
       if (currentInDegree[neighbor] === 0) {
         zeroInDegreeNeighbors.push(neighbor);
       }
     }
 
-    // Sort các nút kề mới đạt bậc 0 theo ID để giữ tính ổn định, rồi đẩy vào queue
+    // GiÃ¡Â»Â¯ thÃ¡Â»Â© tÃ¡Â»Â± Ã¡Â»â€¢n Ã„â€˜Ã¡Â»â€¹nh
     if (zeroInDegreeNeighbors.length > 0) {
       zeroInDegreeNeighbors.sort((a, b) => a - b);
-      for (const n of zeroInDegreeNeighbors) {
-        queue.push(n);
+
+      for (const node of zeroInDegreeNeighbors) {
+        queue.push(node);
       }
     }
   }
 
-  // Tìm các nút chưa sắp xếp được (có vòng)
+  // NhÃ¡Â»Â¯ng node chÃ†Â°a sort Ã„â€˜Ã†Â°Ã¡Â»Â£c lÃƒÂ  node bÃ¡Â»â€¹ kÃ¡ÂºÂ¹t bÃ¡Â»Å¸i cycle
   const unresolvedNodes = [];
+
   for (const nodeIdStr in currentInDegree) {
     if (currentInDegree[nodeIdStr] > 0) {
       unresolvedNodes.push(Number(nodeIdStr));
     }
   }
-  // Sắp xếp unresolvedNodes để kết quả ổn định
+
   unresolvedNodes.sort((a, b) => a - b);
 
-  return { sortedOrder, unresolvedNodes };
+  return {
+    sortedOrder,
+    unresolvedNodes,
+  };
 }
 
 /**
- * Thu hẹp danh sách unresolvedNodes về ĐÚNG các nút nằm trên một vòng.
+ * Thu hÃ¡ÂºÂ¹p danh sÃƒÂ¡ch unresolvedNodes vÃ¡Â»Â Ã„ÂÃƒÅ¡NG cÃƒÂ¡c nÃƒÂºt nÃ¡ÂºÂ±m trÃƒÂªn mÃ¡Â»â„¢t vÃƒÂ²ng.
  *
- * Thuật toán (không đệ quy, chỉ dùng kết quả của topologicalSort):
- *   Sau khi topologicalSort chạy xong, mọi nút trong unresolvedNodes đều
- *   có ít nhất 1 tiền nhiệm cũng nằm trong unresolvedNodes (vì Kahn đã
- *   loại hết nút bậc vào = 0 rồi). Tập này chứa cả nút trên vòng LẪN
- *   nút nằm SAU vòng (bị kẹt vì chờ nút trong vòng).
- *
- *   Để lấy đúng vòng, ta truy vết ngược:
- *   1. Chọn nút ID nhỏ nhất trong tập làm điểm bắt đầu.
- *   2. Đi ngược qua reverseAdjList (chỉ trong tập) cho tới khi gặp lại
- *      nút đã thăm. Ghi lại đường đi trong mảng path.
- *   3. Khi gặp lại nút X đã thăm: đoạn từ vị trí X trong path tới cuối
- *      chính là vòng. Các nút trước X (nếu có) nằm SAU vòng → bị loại
- *      nhờ path.slice(cycleStart).
- *
- * Nếu có nhiều vòng độc lập, hàm trả về một vòng bất kỳ mà bước truy
- * vết gặp trước (bắt đầu từ nút ID nhỏ nhất trong tập unresolvedNodes).
- *
- * @param {object} graph   { nodes, adjList, reverseAdjList, inDegree }
- * @param {number[]} unresolvedNodes  Mảng ID các nút chưa sắp xếp được
- * @returns {number[]}  Mảng ID các nút trên vòng, theo thứ tự "chờ".
- *                       Ví dụ: A chờ B, B chờ C, C chờ A → [A, B, C].
- *                       Trả về [] nếu không có vòng.
+ * @param {object} graph
+ * @param {number[]} unresolvedNodes
+ * @returns {number[]}
  */
 function findCycleNodes(graph, unresolvedNodes) {
-  // Không có nút chưa giải quyết → không có vòng
+  // KhÃƒÂ´ng cÃƒÂ³ nÃƒÂºt chÃ†Â°a giÃ¡ÂºÂ£i quyÃ¡ÂºÂ¿t
   if (!unresolvedNodes || unresolvedNodes.length === 0) {
     return [];
   }
 
-  // Tạo tập từ unresolvedNodes để tra cứu nhanh O(1)
+  // TÃ¡ÂºÂ¡o Set Ã„â€˜Ã¡Â»Æ’ tra cÃ¡Â»Â©u nhanh
   const remaining = new Set(unresolvedNodes);
 
-  // Tìm nút ID nhỏ nhất làm điểm bắt đầu truy vết.
-  // Nút này có thể nằm trên vòng hoặc nằm SAU vòng đều được —
-  // bước slice bên dưới sẽ chỉ lấy đúng đoạn vòng.
+  // ChÃ¡Â»Ân node nhÃ¡Â»Â nhÃ¡ÂºÂ¥t lÃƒÂ m Ã„â€˜iÃ¡Â»Æ’m bÃ¡ÂºÂ¯t Ã„â€˜Ã¡ÂºÂ§u
   let startNode = Infinity;
+
   for (const nodeId of remaining) {
     if (nodeId < startNode) {
       startNode = nodeId;
     }
   }
 
-  // Truy vết ngược: đi qua reverseAdjList (chỉ trong tập remaining)
-  // từ startNode, ghi lại đường đi. Khi gặp lại nút đã thăm thì dừng.
   const path = [startNode];
   const visited = new Set([startNode]);
   let current = startNode;
 
+  // Truy vÃ¡ÂºÂ¿t ngÃ†Â°Ã¡Â»Â£c qua reverseAdjList
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    // Tìm một tiền nhiệm của current nằm trong remaining
     let nextNode = -1;
-    const preds = graph.reverseAdjList[current];
-    if (preds) {
-      for (const edge of preds) {
-        if (remaining.has(edge.target)) {
-          // Ưu tiên nút đã thăm (sẽ tạo ra vòng ngay)
-          if (visited.has(edge.target)) {
-            nextNode = edge.target;
-            break;
-          }
-          // Nếu chưa có ứng viên, chọn nút này
-          if (nextNode === -1) {
-            nextNode = edge.target;
-          }
+
+    const predecessors = graph.reverseAdjList[current];
+
+    if (predecessors) {
+      for (const edge of predecessors) {
+        if (!remaining.has(edge.target)) {
+          continue;
+        }
+
+        // Ã†Â¯u tiÃƒÂªn node Ã„â€˜ÃƒÂ£ thÃ„Æ’m Ã„â€˜Ã¡Â»Æ’ phÃƒÂ¡t hiÃ¡Â»â€¡n cycle
+        if (visited.has(edge.target)) {
+          nextNode = edge.target;
+          break;
+        }
+
+        if (nextNode === -1) {
+          nextNode = edge.target;
         }
       }
     }
 
-    // Nếu nextNode đã nằm trong visited → tìm thấy vòng
+    // KhÃƒÂ´ng cÃƒÂ²n Ã„â€˜Ã†Â°Ã¡Â»Âng truy vÃ¡ÂºÂ¿t
+    if (nextNode === -1) {
+      return [];
+    }
+
+    // Ã„ÂÃƒÂ£ quay lÃ¡ÂºÂ¡i node cÃ…Â© => tÃƒÂ¬m thÃ¡ÂºÂ¥y cycle
     if (visited.has(nextNode)) {
-      // Chỉ lấy đoạn từ vị trí nextNode trong path tới cuối = đúng vòng.
-      // Các nút trước đó (nếu startNode nằm SAU vòng) bị loại.
-      // Thứ tự "chờ": path[i] chờ path[i+1] (vì path[i+1] là tiền nhiệm
-      // của path[i] qua reverseAdjList), nút cuối chờ nút đầu → đúng vòng.
       const cycleStart = path.indexOf(nextNode);
+
       return path.slice(cycleStart);
     }
 
-    // Thêm nextNode vào path và tiếp tục đi ngược
     visited.add(nextNode);
     path.push(nextNode);
     current = nextNode;
   }
 }
 
-
 /**
- * Hàm tiện ích: phát hiện vòng trong đồ thị.
- * Gọi topologicalSort rồi findCycleNodes.
- * @param {object} graph  { nodes, adjList, reverseAdjList, inDegree }
- * @returns {number[]}  Mảng ID các nút trên vòng, hoặc [] nếu không có vòng.
+ * HÃƒÂ m tiÃ¡Â»â€¡n ÃƒÂ­ch: phÃƒÂ¡t hiÃ¡Â»â€¡n vÃƒÂ²ng trong Ã„â€˜Ã¡Â»â€œ thÃ¡Â»â€¹.
+ *
+ * @param {object} graph
+ * @returns {number[]} MÃ¡ÂºÂ£ng ID cÃƒÂ¡c node nÃ¡ÂºÂ±m trÃƒÂªn cycle.
  */
 function detectCycle(graph) {
   const { unresolvedNodes } = topologicalSort(graph);
+
   return findCycleNodes(graph, unresolvedNodes);
 }
 
@@ -238,5 +288,5 @@ module.exports = {
   buildGraph,
   topologicalSort,
   findCycleNodes,
-  detectCycle
+  detectCycle,
 };
