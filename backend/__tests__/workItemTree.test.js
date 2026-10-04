@@ -83,8 +83,6 @@ describe("T-08: bảng projects/work_items dạng cây", () => {
       await pool.query("DELETE FROM projects WHERE id = $1", [projectId]);
       await pool.end();
     }
-    // Migration lùi: phải chạy sạch, không lỗi, và dọn hết bảng đã tạo.
-    runMigration("down");
   });
 
   it("có index trên cột work_items.parent_id", async () => {

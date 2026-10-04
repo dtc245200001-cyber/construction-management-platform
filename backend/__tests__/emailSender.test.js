@@ -12,9 +12,7 @@ jest.mock('../lib/mailer', () => ({
 describe('Email Sender (E3)', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
-    await db.query('DELETE FROM email_logs');
-    await db.query('DELETE FROM invitations');
-    await db.query('DELETE FROM users');
+    await db.query('TRUNCATE TABLE email_logs, invitations, audit_logs, users RESTART IDENTITY CASCADE');
   });
 
   afterAll(async () => {
