@@ -212,16 +212,15 @@ router.post('/invitations/:token/accept', (req, res, next) => invitationLimiter(
 
       // Thêm vào project nếu có
       if (invitation.project_id && invitation.project_role) {
-        // Lấy role_id thực tế từ roles table
-        const roleRes = await client.query('SELECT id FROM roles WHERE name = $1', [invitation.project_role]);
-        const roleId = roleRes.rows.length > 0 ? roleRes.rows[0].id : 3; // Fallback
-
         // Check if already in project
-        const memberCheck = await client.query('SELECT id FROM project_members WHERE project_id = $1 AND user_id = $2', [invitation.project_id, userId]);
+        const memberCheck = await client.query(
+          'SELECT id FROM project_members WHERE project_id = $1 AND user_id = $2',
+          [invitation.project_id, userId]
+        );
         if (memberCheck.rows.length === 0) {
           await client.query(
-            'INSERT INTO project_members (project_id, user_id, role_id) VALUES ($1, $2, $3)',
-            [invitation.project_id, userId, roleId]
+            'INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, $3)',
+            [invitation.project_id, userId, invitation.project_role]
           );
         }
       }
