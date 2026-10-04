@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import api from "../lib/api";
+import TaskForm from "../components/TaskForm";
 import { format, parseISO } from "date-fns";
 import { 
   Search, Plus, List, LayoutGrid, MoreHorizontal, 
@@ -70,8 +71,15 @@ function WBSPage() {
   const [expanded, setExpanded] = useState(new Set());
   const [search, setSearch] = useState("");
   const [showRightPanel, setShowRightPanel] = useState(true);
-  
-  const projectId = localStorage.getItem('currentProjectId') || 13;
+  // =========================
+  // T-12 TASK FORM
+  // =========================
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [selectedWorkItem, setSelectedWorkItem] = useState(null);
+  const [editingTask, setEditingTask] = useState(null);
+
+  // Giữ projectId theo phiên bản mới nhất từ main
+  const projectId = localStorage.getItem("currentProjectId") || 13;
 
   // State cho Modal Thêm / Sửa theo chuẩn T-05 / T-09 / T-12
   const [modalConfig, setModalConfig] = useState({
@@ -84,15 +92,30 @@ function WBSPage() {
     duration_days: 1,
     error: "",
   });
+
   const [modalLoading, setModalLoading] = useState(false);
 
   // NFR T-12: Kiểm tra hạng mục lá (không có work_item con nào)
   const isLeafCategory = (node) => {
     if (!node) return false;
-    if (!node.children || node.children.length === 0) return true;
+
+    if (!node.children || node.children.length === 0) {
+      return true;
+    }
+
     return node.children.every((child) => child.type === "task");
   };
+  const openCreateTaskForm = (workItem) => {
+  setSelectedWorkItem(workItem);
+  setEditingTask(null);
+  setShowTaskForm(true);
+};
 
+const closeTaskForm = () => {
+  setShowTaskForm(false);
+  setSelectedWorkItem(null);
+  setEditingTask(null);
+};
   const fetchWBS = async () => {
     try {
       setLoading(true);
@@ -381,30 +404,48 @@ function WBSPage() {
               </div>
             </td>
             <td className="px-4 text-right">
-              <div className="flex items-center justify-end gap-1">
-                <button
-                  onClick={() => openAddChildModal(node)}
-                  title="Thêm mục con"
-                  className="p-1.5 text-[#1F63E0] hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
-                >
-                  <PlusCircle className="size-4" />
-                </button>
-                <button
-                  onClick={() => openEditCategoryModal(node)}
-                  title="Sửa tên hạng mục"
-                  className="p-1.5 text-[#475569] hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
-                >
-                  <Pencil className="size-4" />
-                </button>
-                <button
-                  onClick={() => handleDeleteCategory(node)}
-                  title="Xóa hạng mục"
-                  className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                >
-                  <Trash2 className="size-4" />
-                </button>
-              </div>
-            </td>
+ <div className="flex items-center justify-end gap-1">
+  {/* T-12: Thêm công việc */}
+  <button
+    type="button"
+    onClick={() => openCreateTaskForm(node)}
+    title="Thêm công việc"
+    className="p-1.5 text-[#1F63E0] hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
+  >
+    <Plus className="size-4" />
+  </button>
+
+  {/* Main: Thêm hạng mục con */}
+  <button
+    type="button"
+    onClick={() => openAddChildModal(node)}
+    title="Thêm mục con"
+    className="p-1.5 text-[#1F63E0] hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
+  >
+    <PlusCircle className="size-4" />
+  </button>
+
+  {/* Main: Sửa hạng mục */}
+  <button
+    type="button"
+    onClick={() => openEditCategoryModal(node)}
+    title="Sửa tên hạng mục"
+    className="p-1.5 text-[#475569] hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
+  >
+    <Pencil className="size-4" />
+  </button>
+
+  {/* Main: Xóa hạng mục */}
+  <button
+    type="button"
+    onClick={() => handleDeleteCategory(node)}
+    title="Xóa hạng mục"
+    className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+  >
+    <Trash2 className="size-4" />
+  </button>
+</div>
+</td>
           </tr>
           {isExpanded && node.children.map((child, i) => renderRow(child, level + 1, `${indexStr}.${i + 1}`, colorIndex))}
         </React.Fragment>
@@ -657,9 +698,22 @@ function WBSPage() {
               </div>
             </div>
           </div>
-
         </div>
         )}
+
+{showTaskForm && (
+  <TaskForm
+    projectId={projectId}
+    workItem={selectedWorkItem}
+    task={editingTask}
+    onClose={closeTaskForm}
+    onSuccess={() => {
+      closeTaskForm();
+      fetchWBS();
+    }}
+  />
+)}
+
       </div>
 
       {/* Modal Thêm / Sửa Hạng mục & Công việc theo bố cục chuẩn T-05 / Design System */}
