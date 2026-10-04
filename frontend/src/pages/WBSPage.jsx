@@ -109,6 +109,10 @@ function WBSPage() {
   };
 
   const updateStatus = async (id, newStatus) => {
+    // Node loại [Công việc] từ bảng tasks không đi qua các endpoint sửa/xoá của categories
+    if (typeof id === 'string' && id.startsWith('task-')) {
+      return;
+    }
     try {
       await api.put(`/categories/${projectId}/${id}`, { status: newStatus });
       fetchWBS();
@@ -210,6 +214,11 @@ function WBSPage() {
               <span className="text-xs text-[#64748B] font-medium">{indexStr}</span>
               <FileText className="size-4 text-[#94A3B8]" />
               <span className="text-[#0F1B3D]">{node.name}</span>
+              {node.duration_days && (
+                <span className="text-[11px] text-[#475569] bg-[#F1F5F9] px-2 py-0.5 rounded font-mono font-medium">
+                  {node.duration_days} ngày
+                </span>
+              )}
             </div>
           </td>
           <td className="px-4">

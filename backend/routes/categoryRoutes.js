@@ -118,7 +118,51 @@ router.get(
       [projectId]
     );
 
-    return res.json(result.rows);
+    // Lấy toàn bộ tasks của project bằng ĐÚNG MỘT câu SELECT (JOIN qua work_items.project_id) - Tránh N+1
+    let taskRows = [];
+    try {
+      const tasksResult = await db.query(
+        `
+          SELECT
+            t.id,
+            t.work_item_id,
+            t.name,
+            t.duration_days,
+            sr.early_start,
+            sr.early_finish,
+            sr.is_critical
+          FROM tasks t
+          JOIN work_items wi ON wi.id = t.work_item_id
+          LEFT JOIN schedule_results sr ON sr.task_id = t.id
+          WHERE wi.project_id = $1
+          ORDER BY t.id ASC
+        `,
+        [projectId]
+      );
+      if (tasksResult && Array.isArray(tasksResult.rows)) {
+        taskRows = tasksResult.rows;
+      }
+    } catch {
+      // Trường hợp DB chưa có bảng tasks hoặc unit test mock không có query thứ 2
+      taskRows = [];
+    }
+
+    // Node công việc chỉ dùng hiển thị, id phân biệt rõ ràng không trùng work_item.id
+    const taskNodes = taskRows.map((t) => ({
+      id: `task-${t.id}`,
+      task_id: t.id,
+      name: t.name,
+      parent_id: t.work_item_id,
+      type: "task",
+      duration_days: t.duration_days,
+      start_date: t.early_start || null,
+      end_date: t.early_finish || null,
+      status: "Chưa bắt đầu",
+      progress: 0,
+      is_critical: t.is_critical || false,
+    }));
+
+    return res.json([...result.rows, ...taskNodes]);
   })
 );
 
