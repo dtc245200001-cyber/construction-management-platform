@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import api from "../lib/api";
+import TaskForm from "../components/TaskForm";
 import { format, parseISO } from "date-fns";
 import { 
   Search, Plus, List, LayoutGrid, MoreHorizontal, 
@@ -70,9 +71,23 @@ function WBSPage() {
   const [expanded, setExpanded] = useState(new Set());
   const [search, setSearch] = useState("");
   const [showRightPanel, setShowRightPanel] = useState(true);
-  
+
+  const [showTaskForm, setShowTaskForm] = useState(false);
+const [selectedWorkItem, setSelectedWorkItem] = useState(null);
+const [editingTask, setEditingTask] = useState(null);
   const projectId = localStorage.getItem('currentProjectId') || 5;
 
+  const openCreateTaskForm = (workItem) => {
+  setSelectedWorkItem(workItem);
+  setEditingTask(null);
+  setShowTaskForm(true);
+};
+
+const closeTaskForm = () => {
+  setShowTaskForm(false);
+  setSelectedWorkItem(null);
+  setEditingTask(null);
+};
   const fetchWBS = async () => {
     try {
       setLoading(true);
@@ -194,10 +209,24 @@ function WBSPage() {
               </div>
             </td>
             <td className="px-4 text-right">
-              <button className="p-1 border border-black/10 rounded-full hover:bg-black/5">
-                <MoreHorizontal className="size-4" />
-              </button>
-            </td>
+  <div className="flex items-center justify-end gap-2">
+    <button
+      type="button"
+      onClick={() => openCreateTaskForm(node)}
+      className="p-1 border border-blue-200 text-blue-600 rounded-md hover:bg-blue-50"
+      title="Thêm công việc"
+    >
+      <Plus className="size-4" />
+    </button>
+
+    <button
+      type="button"
+      className="p-1 border border-black/10 rounded-md"
+    >
+      <MoreHorizontal className="size-4" />
+    </button>
+  </div>
+</td>
           </tr>
           {isExpanded && node.children.map((child, i) => renderRow(child, level + 1, `${indexStr}.${i + 1}`, colorIndex))}
         </React.Fragment>
@@ -426,9 +455,22 @@ function WBSPage() {
               </div>
             </div>
           </div>
-
         </div>
         )}
+
+{showTaskForm && (
+  <TaskForm
+    projectId={projectId}
+    workItem={selectedWorkItem}
+    task={editingTask}
+    onClose={closeTaskForm}
+    onSuccess={() => {
+      closeTaskForm();
+      fetchWBS();
+    }}
+  />
+)}
+
       </div>
     </div>
   );
