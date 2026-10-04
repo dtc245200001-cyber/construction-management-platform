@@ -22,6 +22,7 @@ import AdminPage from './pages/AdminPage';
 import NotFoundPage from './pages/NotFoundPage';
 import ComingSoonPage from './pages/ComingSoonPage';
 import InvitationAcceptPage from './pages/InvitationAcceptPage';
+import SchedulePage from './pages/SchedulePage';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -86,6 +87,7 @@ function App() {
         <Route element={user ? <DashboardLayout user={user} setUser={setUser} /> : <Navigate to="/login" replace />}>
           <Route path="/dashboard" element={<LandingPage user={user} setUser={setUser} />} />
           <Route path="/wbs" element={<WBSPage user={user} />} />
+          <Route path="/schedule" element={<SchedulePage user={user} />} />
           <Route path="/members" element={<MembersPage user={user} />} />
         </Route>
 
