@@ -21,7 +21,7 @@ module.exports = async () => {
 
   const dbUrl =
     process.env.LOCAL_DATABASE_URL ||
-    "postgres://postgres:postgres123@localhost:5433/construction_db_test";
+    "postgres://postgres:postgres123@localhost:5432/construction_db_test";
 
   console.log("\n[Jest globalSetup] Đang chạy migration trên DB test:", dbUrl.split("@")[1]);
 
