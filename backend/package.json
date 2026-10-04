@@ -10,8 +10,8 @@
     "lint": "eslint .",
     "build": "node --check server.js app.js routes/authRoutes.js routes/categoryRoutes.js routes/projectRoutes.js middleware/auth.js middleware/projectAccess.js middleware/errorHandler.js config/db.js utils/logger.js utils/asyncHandler.js utils/validators.js && echo 'Syntax check passed'",
     "test": "jest --runInBand --forceExit",
-    "test:unit": "cross-env NODE_ENV=test DATABASE_URL=postgres://postgres:postgres123@localhost:5432/construction_db_test jest --selectProjects unit --runInBand --forceExit",
-    "test:integration": "cross-env NODE_ENV=test DATABASE_URL=postgres://postgres:postgres123@localhost:5432/construction_db_test jest --selectProjects integration --runInBand --forceExit",
+    "test:unit": "cross-env NODE_ENV=test jest --selectProjects unit --runInBand --forceExit",
+    "test:integration": "cross-env NODE_ENV=test jest --selectProjects integration --runInBand --forceExit",
     "migrate:up": "node -r dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate up",
     "migrate:down": "node -r dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate down"
   },
@@ -52,7 +52,6 @@
     "testEnvironment": "node",
     "testEnvironmentOptions": {
       "env": {
-        "DATABASE_URL": "postgres://postgres:postgres123@localhost:5432/construction_db_test",
         "NODE_ENV": "test"
       }
     },
