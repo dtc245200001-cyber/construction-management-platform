@@ -20,6 +20,7 @@ export default function MembersPage({ user }) {
   const [inviteData, setInviteData] = useState({ email: "", role: "doi_truong" });
   const [inviteError, setInviteError] = useState("");
   const [inviteSuccess, setInviteSuccess] = useState("");
+  const [resendingId, setResendingId] = useState(null);
 
   const currentProjectId = localStorage.getItem("currentProjectId");
   const canInvite = user?.role === "ban_quan_ly" || user?.role === "chu_dau_tu";
@@ -56,6 +57,19 @@ export default function MembersPage({ user }) {
       setTimeout(() => setShowInviteModal(false), 1500);
     } catch (err) {
       setInviteError(err.response?.data?.message || "Lỗi khi mời thành viên");
+    }
+  };
+
+  const handleResend = async (invId) => {
+    setResendingId(invId);
+    try {
+      await api.post(`/projects/${currentProjectId}/invitations/${invId}/resend`);
+      setInviteSuccess("Đã gửi lại thư mời thành công!");
+      fetchMembers();
+    } catch (err) {
+      setInviteError(err.response?.data?.message || "Lỗi khi gửi lại thư mời");
+    } finally {
+      setResendingId(null);
     }
   };
 
@@ -211,10 +225,34 @@ export default function MembersPage({ user }) {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-site-alert/10 text-site-alert">
-                        <span className="size-1.5 rounded-full bg-current"></span>
-                        Đã gửi thư mời
-                      </span>
+                      <div className="flex items-center justify-end gap-2 flex-wrap">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                          inv.email_status === 'error' ? 'bg-site-critical/10 text-site-critical' : 
+                          inv.email_status === 'sent' ? 'bg-site-success/10 text-site-success' : 
+                          'bg-site-alert/10 text-site-alert'
+                        }`}>
+                          <span className="size-1.5 rounded-full bg-current"></span>
+                          {inv.email_status === 'error' ? 'Lỗi gửi thư' : inv.email_status === 'sent' ? 'Đã gửi thư' : 'Đang gửi...'}
+                        </span>
+                        
+                        {inv.is_expired && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-site-critical/10 text-site-critical">
+                            <span className="size-1.5 rounded-full bg-current"></span>
+                            Hết hạn
+                          </span>
+                        )}
+                        
+                        {canInvite && (
+                          <button
+                            onClick={() => handleResend(inv.id)}
+                            disabled={resendingId === inv.id}
+                            title="Gửi lại thư mời"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-site-primary/10 text-site-primary hover:bg-site-primary hover:text-white transition-colors disabled:opacity-50"
+                          >
+                            <Mail className="size-3" /> {resendingId === inv.id ? 'Đang gửi...' : 'Gửi lại'}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

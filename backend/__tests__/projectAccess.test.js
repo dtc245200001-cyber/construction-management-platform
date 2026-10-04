@@ -11,7 +11,7 @@ jest.mock("../utils/logger", () => ({
   warn: (...args) => mockLoggerWarn(...args),
 }));
 
-const { checkProjectAccess, requireProjectRoles, allow, createProjectRouter } = require("../middleware/projectAccess");
+const { checkProjectAccess, requireProjectRoles, allow: _allow, createProjectRouter } = require("../middleware/projectAccess");
 
 describe("projectAccess middleware (1.9)", () => {
   let app;

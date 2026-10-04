@@ -12,7 +12,7 @@ const { saveScheduleResults } = require("./schedulePersistence");
  *
  * Flow:
  * buildGraph -> topologicalSort -> calculateSchedule
- * -> map task results to work_item_id -> persist
+ * -> persist schedule results by task_id
  */
 async function calculateAndSaveSchedule(projectId) {
   const projectResult = await pool.query(
@@ -36,9 +36,10 @@ async function calculateAndSaveSchedule(projectId) {
     `
       SELECT
         COUNT(*) AS result_count,
-        COUNT(*) FILTER (WHERE needs_recalculation = true) AS dirty_count
+        COUNT(*) FILTER (WHERE sr.needs_recalculation = true) AS dirty_count
       FROM schedule_results sr
-      JOIN work_items wi ON wi.id = sr.work_item_id
+      JOIN tasks t ON t.id = sr.task_id
+      JOIN work_items wi ON wi.id = t.work_item_id
       WHERE wi.project_id = $1
     `,
     [projectId]
@@ -95,27 +96,15 @@ async function calculateAndSaveSchedule(projectId) {
     0
   );
 
-  const scheduleByWorkItem = {};
-
-  for (const task of tasks) {
-    const result = scheduleByTask[task.id];
-
-    if (!result) {
-      continue;
-    }
-
-    scheduleByWorkItem[task.workItemId] = result;
-  }
-
   const savedCount = await saveScheduleResults(
-    scheduleByWorkItem,
+    scheduleByTask,
     project.start_date
   );
 
   return {
     projectId,
     savedCount,
-    results: scheduleByWorkItem,
+    results: scheduleByTask,
   };
 }
 

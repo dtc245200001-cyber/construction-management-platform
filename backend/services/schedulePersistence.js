@@ -50,11 +50,11 @@ async function saveScheduleResults(scheduleResults, projectStart) {
   try {
     await client.query("BEGIN");
 
-    for (const [workItemId, result] of entries) {
+    for (const [taskId, result] of entries) {
       await client.query(
         `
         INSERT INTO schedule_results (
-          work_item_id,
+          task_id,
           early_start,
           early_finish,
           late_start,
@@ -65,7 +65,7 @@ async function saveScheduleResults(scheduleResults, projectStart) {
           needs_recalculation
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, false)
-        ON CONFLICT (work_item_id)
+        ON CONFLICT (task_id)
         DO UPDATE SET
           early_start = EXCLUDED.early_start,
           early_finish = EXCLUDED.early_finish,
@@ -77,7 +77,7 @@ async function saveScheduleResults(scheduleResults, projectStart) {
           needs_recalculation = false
         `,
         [
-          Number(workItemId),
+          Number(taskId),
           addDays(projectStart, result.ES),
           addDays(projectStart, result.EF),
           addDays(projectStart, result.LS),

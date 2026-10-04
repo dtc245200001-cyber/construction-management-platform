@@ -17,7 +17,7 @@ function runMigration(direction) {
 
 
 describe("Projects Integration Tests", () => {
-  let cookieAdmin, cookieManager, cookieNormal;
+  let cookieAdmin, _cookieManager, cookieNormal;
   
   beforeAll(async () => {
     // Ensure latest migrations are applied
@@ -46,7 +46,7 @@ describe("Projects Integration Tests", () => {
     cookieAdmin = resA.headers["set-cookie"];
 
     const resM = await request(app).post("/api/auth/login").send({ email: "manager@test.com", password: "Password123" });
-    cookieManager = resM.headers["set-cookie"];
+    _cookieManager = resM.headers["set-cookie"];
 
     const resN = await request(app).post("/api/auth/login").send({ email: "normal@test.com", password: "Password123" });
     cookieNormal = resN.headers["set-cookie"];
@@ -58,7 +58,7 @@ describe("Projects Integration Tests", () => {
     
     // Re-login to update session role
     const resM2 = await request(app).post("/api/auth/login").send({ email: "manager@test.com", password: "Password123" });
-    cookieManager = resM2.headers["set-cookie"];
+    _cookieManager = resM2.headers["set-cookie"];
 
     const resN2 = await request(app).post("/api/auth/login").send({ email: "normal@test.com", password: "Password123" });
     cookieNormal = resN2.headers["set-cookie"];

@@ -1,4 +1,4 @@
-﻿// app.js â€” khá»Ÿi táº¡o Express app Ä‘áº§y Ä‘á»§ (middleware, session, routes, error handler).
+// app.js â€” khá»Ÿi táº¡o Express app Ä‘áº§y Ä‘á»§ (middleware, session, routes, error handler).
 //
 // server.js chá»‰ require('./app') rá»“i gá»i listen().
 // __tests__/ import trá»±c tiáº¿p module nÃ y Ä‘á»ƒ test mÃ  khÃ´ng cáº§n listen().
@@ -63,7 +63,32 @@ const registerLimiter = rateLimit({
   message: { message: "QuÃ¡ nhiá»u láº§n thá»­ Ä‘Äƒng kÃ½. Vui lÃ²ng thá»­ láº¡i sau." },
 });
 
-// â”€â”€â”€ APP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const publicApiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 phút
+  max: 150, // Tối đa 150 request / 15 phút mỗi IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Quá nhiều yêu cầu, vui lòng thử lại sau." },
+});
+
+const newsletterLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 phút
+  max: 5, // Tối đa 5 lần đăng ký email / 15 phút mỗi IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Bạn đã đăng ký quá nhiều lần. Vui lòng thử lại sau." },
+});
+
+const invitationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 phút
+  max: 10, // Tối đa 10 lần kiểm tra/chấp nhận token / 15 phút mỗi IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Bạn đã thử quá nhiều lần. Vui lòng thử lại sau." },
+});
+
+// ─── APP ──────────────────────────────────────────────────────────────────────
+
 const app = express();
 
 // Tin tÆ°á»Ÿng reverse proxy (Nginx, Render) Ä‘á»ƒ Ä‘á»c Ä‘Ãºng IP tháº­t cho rate-limit vÃ  cookie secure.
@@ -146,7 +171,14 @@ app.use("/api/projects", projectRoutes);
 app.use("/api/projects", dependencyRoutes);
 app.use("/api/projects", taskRoutes);
 const adminRoutes = require("./routes/adminRoutes");
+const { router: publicRoutes, setNewsletterLimiter, setInvitationLimiter } = require("./routes/publicRoutes");
+
+// Truyền limiter vào router
+setNewsletterLimiter(newsletterLimiter);
+setInvitationLimiter(invitationLimiter);
+
 app.use("/api/admin", adminRoutes);
+app.use("/api/public", publicApiLimiter, publicRoutes);
 
 // â”€â”€â”€ ERROR HANDLERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(notFoundHandler);

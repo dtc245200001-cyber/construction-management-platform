@@ -111,7 +111,7 @@ export default function DashboardLayout({ user, setUser }) {
                 key={item.label}
                 title={item.label}
                 onClick={() => {
-                  if (item.path === '/dashboard' || item.path === '/wbs' || item.path === '/members') {
+                  if (item.path === '/dashboard' || item.path === '/wbs' || item.path === '/members' || item.path === '/schedule') {
                     navigate(item.path);
                   } else {
                     alert("Tính năng này sẽ được phát triển trong các Sprint tiếp theo.");

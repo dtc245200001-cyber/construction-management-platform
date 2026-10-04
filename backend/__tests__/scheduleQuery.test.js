@@ -64,6 +64,6 @@ describe("scheduleQuery", () => {
 
     const sql = db.query.mock.calls[0][0];
 
-    expect(sql).toContain("ORDER BY sr.early_start NULLS LAST, w.id");
+    expect(sql).toContain("ORDER BY sr.early_start NULLS LAST, t.id");
   });
 });
