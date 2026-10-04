@@ -1,10 +1,16 @@
 const {
   calculateFS,
+  calculateBackwardFS,
   calculateSS,
+  calculateBackwardSS,
   calculateFF,
+  calculateBackwardFF,
   calculateSF,
+  calculateBackwardSF,
   forwardPass,
+  backwardPass,
 } = require('../utils/scheduleAlgorithms');
+const k01 = require('./fixtures/k01-expected.json');
 
 describe('T-18: Dependency Formulas (Development test fixture, not K-01 acceptance data)', () => {
   test('calculateFS should return predecessorEF + lag', () => {
@@ -98,5 +104,110 @@ describe('T-19: Forward Pass Algorithm (Development test fixture, algorithm impl
     // T6: ES = max(0, 4 + (-2)) = 2, EF = 2 + 3 = 5
     expect(results[5]).toEqual({ ES: 0, EF: 4 });
     expect(results[6]).toEqual({ ES: 2, EF: 5 });
+  });
+});
+
+describe('T-20: Backward Dependency Formulas (S-09)', () => {
+  test('calculateBackwardFS should return successorLS - lag', () => {
+    // LF_trước <= LS_sau - lag
+    expect(calculateBackwardFS(12, 2)).toBe(10);
+    expect(calculateBackwardFS(4, -1)).toBe(5);
+    expect(calculateBackwardFS(8)).toBe(8); // lag = 0
+  });
+
+  test('calculateBackwardSS should return successorLS - lag + predecessorDuration', () => {
+    // LS_trước <= LS_sau - lag => LF_trước <= LS_sau - lag + duration_trước
+    expect(calculateBackwardSS(7, 4, 3)).toBe(6);
+    expect(calculateBackwardSS(3, -2, 4)).toBe(9);
+    expect(calculateBackwardSS(6, 0, 5)).toBe(11);
+  });
+
+  test('calculateBackwardFF should return successorLF - lag', () => {
+    // LF_trước <= LF_sau - lag
+    expect(calculateBackwardFF(13, 2)).toBe(11);
+    expect(calculateBackwardFF(12, -3)).toBe(15);
+    expect(calculateBackwardFF(10)).toBe(10); // lag = 0
+  });
+
+  test('calculateBackwardSF should return successorLF - lag + predecessorDuration', () => {
+    // LS_trước <= LF_sau - lag => LF_trước <= LF_sau - lag + duration_trước
+    expect(calculateBackwardSF(12, 5, 3)).toBe(10);
+    expect(calculateBackwardSF(6, -2, 2)).toBe(10);
+    expect(calculateBackwardSF(8, 0, 4)).toBe(12);
+  });
+});
+
+describe('T-20: Backward Pass Algorithm (S-09)', () => {
+  test('backwardPass should correctly compute LS and LF for the development fixture', () => {
+    const tasks = [
+      { id: 1, duration: 3 },
+      { id: 2, duration: 4 },
+      { id: 3, duration: 2 },
+      { id: 4, duration: 5 }
+    ];
+
+    const dependencies = [
+      { from: 1, to: 2, type: 'FS', lag: 0 },
+      { from: 1, to: 3, type: 'SS', lag: 1 },
+      { from: 2, to: 4, type: 'FF', lag: 0 },
+      { from: 3, to: 4, type: 'SF', lag: 12 }
+    ];
+
+    const topologicalOrder = [1, 2, 3, 4];
+    const earlyResults = forwardPass(tasks, dependencies, topologicalOrder, 0);
+
+    const lateResults = backwardPass(tasks, dependencies, topologicalOrder, earlyResults);
+
+    // Expected backward calculations:
+    // projectFinish = EF4 = 13
+    // Task 4: no successors => LF = 13, LS = 13 - 5 = 8
+    // Task 3: succ(4) SF(12) => LF = 13 - 12 + 2 = 3, LS = 3 - 2 = 1
+    // Task 2: succ(4) FF(0)  => LF = 13 - 0 = 13, LS = 13 - 4 = 9
+    // Task 1: succ(2) FS(0) => LF_cand1 = 9 - 0 = 9
+    //         succ(3) SS(1) => LF_cand2 = 1 - 1 + 3 = 3
+    //         => MIN(9, 3) = 3, LS = 3 - 3 = 0
+    expect(lateResults[1]).toEqual({ LS: 0, LF: 3 });
+    expect(lateResults[2]).toEqual({ LS: 9, LF: 13 });
+    expect(lateResults[3]).toEqual({ LS: 1, LF: 3 });
+    expect(lateResults[4]).toEqual({ LS: 8, LF: 13 });
+  });
+
+  test('backwardPass should set LF to projectFinish for tasks with no successors', () => {
+    const tasks = [
+      { id: 'T1', duration: 3 },
+      { id: 'T2', duration: 5 }
+    ];
+    const earlyResults = {
+      T1: { ES: 0, EF: 3 },
+      T2: { ES: 0, EF: 5 }
+    };
+    const lateResults = backwardPass(tasks, [], ['T1', 'T2'], earlyResults);
+
+    expect(lateResults['T1']).toEqual({ LS: 2, LF: 5 });
+    expect(lateResults['T2']).toEqual({ LS: 0, LF: 5 });
+  });
+
+  test('backwardPass results match khởi muộn (LS) và kết muộn (LF) trong bảng đáp án K-01', () => {
+    const earlyResults = forwardPass(
+      k01.tasks,
+      k01.dependencies,
+      k01.topologicalOrder,
+      k01.projectStart
+    );
+
+    const lateResults = backwardPass(
+      k01.tasks,
+      k01.dependencies,
+      k01.topologicalOrder,
+      earlyResults
+    );
+
+    // Đối chiếu từng công việc trong K-01 với cột khởi muộn (LS) và kết muộn (LF)
+    k01.expected.forEach((expectedRow) => {
+      const actual = lateResults[expectedRow.id];
+      expect(actual).toBeDefined();
+      expect(actual.LS).toBe(expectedRow.LS);
+      expect(actual.LF).toBe(expectedRow.LF);
+    });
   });
 });
