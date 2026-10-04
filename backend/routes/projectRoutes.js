@@ -436,7 +436,7 @@ router.post(
   "/:projectId/invitations/:invId/resend",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.CHI_HUY_TRUONG, ROLES.CHU_DAU_TU, ROLES.QUAN_LY_DU_AN]),
+  allow([ROLES.CHI_HUY_TRUONG, ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY]),
   async (req, res, next) => {
     try {
       const { projectId, invId } = req.params;

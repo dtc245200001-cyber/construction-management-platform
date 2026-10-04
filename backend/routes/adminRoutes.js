@@ -5,6 +5,7 @@ const requireSystemAdmin = require('../middleware/systemAdmin');
 const { createAuditMiddleware } = require('../utils/auditLogger');
 const { createEmailLog, processEmailLogs } = require('../lib/emailSender');
 const emailTemplates = require('../lib/emailTemplates');
+const { ROLES } = require('../utils/constants');
 
 const router = express.Router();
 
@@ -41,6 +42,10 @@ router.post('/invitations', createAuditMiddleware('CREATE_INVITATION', 'invitati
 
     let invId;
     if (projectId && role) {
+      if (!Object.values(ROLES).includes(role)) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ message: "Vai trò không hợp lệ" });
+      }
       const result = await client.query(
         `INSERT INTO invitations (email, token_hash, invited_by, expires_at, project_id, project_role) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
         [email, tokenHash, req.user.id, expiresAt, projectId, role]
