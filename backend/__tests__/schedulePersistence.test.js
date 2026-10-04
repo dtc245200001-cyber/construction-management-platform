@@ -179,7 +179,7 @@ describe("schedulePersistence", () => {
 
     const insertQuery = client.query.mock.calls[1][0];
 
-    expect(insertQuery).toContain("ON CONFLICT (work_item_id)");
+    expect(insertQuery).toContain("ON CONFLICT (task_id)");
     expect(insertQuery).toContain("DO UPDATE SET");
     expect(insertQuery).toContain(
       "total_float = EXCLUDED.total_float"

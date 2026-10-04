@@ -23,3 +23,6 @@ fix_data_binding.js
 # File office tam
 ~$*.docx
 ~$*.xlsx
+
+# Tai lieu ban giao noi bo
+BAN-GIAO*.md
