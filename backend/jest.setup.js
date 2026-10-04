@@ -22,4 +22,5 @@ require("dotenv").config({
 });
 
 // Đảm bảo db.js dùng DB local test (không phải Supabase)
-process.env.DATABASE_URL = process.env.LOCAL_DATABASE_URL;
+process.env.DATABASE_URL = process.env.LOCAL_DATABASE_URL || "postgres://postgres:postgres123@localhost:5433/construction_db_test";
+

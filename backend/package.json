@@ -60,6 +60,9 @@
       {
         "displayName": "unit",
         "testEnvironment": "node",
+        "setupFiles": [
+          "./jest.setup.js"
+        ],
         "testMatch": [
           "<rootDir>/__tests__/*.test.js"
         ],
@@ -71,6 +74,9 @@
       {
         "displayName": "integration",
         "testEnvironment": "node",
+        "setupFiles": [
+          "./jest.setup.js"
+        ],
         "testMatch": [
           "<rootDir>/__tests__/integration/**/*.test.js",
           "<rootDir>/__tests__/workItemTree.test.js"

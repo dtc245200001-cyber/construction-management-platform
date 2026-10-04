@@ -6,6 +6,8 @@ const { checkProjectAccess, allow, createProjectRouter } = require('../middlewar
 const { ROLES } = require('../utils/constants');
 const { createEmailLog, processEmailLogs } = require('../lib/emailSender');
 const emailTemplates = require('../lib/emailTemplates');
+const { getScheduleResults } = require("../services/scheduleQuery");
+const { calculateAndSaveSchedule } = require("../services/scheduleCalculation");
 
 const router = createProjectRouter();
 
@@ -161,6 +163,55 @@ router.put(
     }
   }
 );
+
+
+// GET /api/projects/:projectId/schedule-results
+router.get(
+  "/:projectId/schedule-results",
+  requireAuth,
+  checkProjectAccess,
+  allow(Object.values(ROLES)),
+  async (req, res, next) => {
+    try {
+      const projectId = Number(req.params.projectId);
+
+      if (!Number.isInteger(projectId) || projectId <= 0) {
+        return res.status(400).json({
+          message: "projectId không hợp lệ",
+        });
+      }
+
+      let criticalOnly = null;
+
+      if (req.query.critical !== undefined) {
+        if (
+          req.query.critical !== "true" &&
+          req.query.critical !== "false"
+        ) {
+          return res.status(400).json({
+            message: "critical phải là true hoặc false",
+          });
+        }
+
+        criticalOnly = req.query.critical === "true";
+      }
+
+      const results = await getScheduleResults(
+        projectId,
+        criticalOnly
+      );
+
+      return res.json({
+        projectId,
+        count: results.length,
+        data: results,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 
 // GET /api/projects/:projectId
 router.get(
@@ -431,6 +482,35 @@ router.post(
       } finally {
         client.release();
       }
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+
+// POST /api/projects/:projectId/schedule/recalculate
+router.post(
+  "/:projectId/schedule/recalculate",
+  requireAuth,
+  checkProjectAccess,
+  allow(Object.values(ROLES)),
+  async (req, res, next) => {
+    try {
+      const projectId = Number(req.params.projectId);
+
+      if (!Number.isInteger(projectId) || projectId <= 0) {
+        return res.status(400).json({
+          message: "projectId không hợp lệ",
+        });
+      }
+
+      const result = await calculateAndSaveSchedule(projectId);
+
+      return res.json({
+        message: "Đã tính và lưu kết quả lịch",
+        ...result,
+      });
     } catch (error) {
       next(error);
     }
