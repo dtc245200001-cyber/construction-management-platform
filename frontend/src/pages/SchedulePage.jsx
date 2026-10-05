@@ -13,6 +13,12 @@ import {
   Search,
 } from "lucide-react";
 
+// Server đã dựng sẵn câu "A chờ B, B chờ C, C chờ A" trong message,
+// nên frontend dùng luôn, không tự ghép lại.
+function getErrorText(err, fallback) {
+  return err.response?.data?.message || fallback;
+}
+
 export default function SchedulePage() {
   const [scheduleData, setScheduleData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,12 +35,35 @@ export default function SchedulePage() {
       setLoading(true);
       setErrorMessage("");
       const queryParam = onlyCritical ? "?critical=true" : "";
-      const res = await api.get(`/projects/${currentProjectId}/schedule-results${queryParam}`);
-      setScheduleData(res.data.data || []);
+      const res = await api.get(
+        `/projects/${currentProjectId}/schedule-results${queryParam}`
+      );
+      const rows = res.data.data || [];
+      setScheduleData(rows);
+
+      // Có việc nhưng chưa có mốc nào => chưa từng tính (hoặc tính không được).
+      // Thử tính một lần để phát hiện vòng và báo ngay khi mở trang.
+      const neverCalculated =
+        rows.length > 0 && rows.every((r) => !r.early_start);
+
+      if (neverCalculated && !onlyCritical) {
+        try {
+          await api.post(`/projects/${currentProjectId}/schedule/recalculate`);
+          const again = await api.get(
+            `/projects/${currentProjectId}/schedule-results`
+          );
+          setScheduleData(again.data.data || []);
+        } catch (calcErr) {
+          // Chỉ báo khi là lỗi vòng; lỗi khác (vd thiếu ngày bắt đầu) để im
+          if (calcErr.response?.data?.code === "DEPENDENCY_CYCLE") {
+            setErrorMessage(calcErr.response.data.message);
+          }
+        }
+      }
     } catch (err) {
       console.error("Lỗi tải tiến độ CPM:", err);
       setErrorMessage(
-        err.response?.data?.message || "Không thể tải dữ liệu tiến độ & đường găng."
+        getErrorText(err, "Không thể tải dữ liệu tiến độ & đường găng.")
       );
     } finally {
       setLoading(false);
@@ -51,13 +80,17 @@ export default function SchedulePage() {
       setRecalculating(true);
       setErrorMessage("");
       setSuccessMessage("");
-      const res = await api.post(`/projects/${currentProjectId}/schedule/recalculate`);
-      setSuccessMessage(res.data?.message || "Đã tính toán lại tiến độ CPM thành công.");
+      const res = await api.post(
+        `/projects/${currentProjectId}/schedule/recalculate`
+      );
+      setSuccessMessage(
+        res.data?.message || "Đã tính toán lại tiến độ CPM thành công."
+      );
       await fetchSchedule(criticalOnly);
     } catch (err) {
       console.error("Lỗi tính toán lại tiến độ:", err);
       setErrorMessage(
-        err.response?.data?.message || "Lỗi khi chạy thuật toán tính tiến độ CPM."
+        getErrorText(err, "Lỗi khi chạy thuật toán tính tiến độ CPM.")
       );
     } finally {
       setRecalculating(false);
@@ -85,7 +118,8 @@ export default function SchedulePage() {
   // Thống kê nhanh
   const totalTasks = scheduleData.length;
   const criticalTasksCount = scheduleData.filter((i) => i.is_critical).length;
-  const criticalPercent = totalTasks > 0 ? Math.round((criticalTasksCount / totalTasks) * 100) : 0;
+  const criticalPercent =
+    totalTasks > 0 ? Math.round((criticalTasksCount / totalTasks) * 100) : 0;
 
   return (
     <div className="flex-1 min-h-screen bg-[#F3F6FB] text-[#0F1B3D] flex flex-col overflow-hidden">
@@ -130,7 +164,10 @@ export default function SchedulePage() {
 
         {/* Thông báo lỗi / thành công */}
         {errorMessage && (
-          <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
+          <div
+            role="alert"
+            className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm"
+          >
             <AlertTriangle className="size-5 shrink-0 text-red-500" />
             <span>{errorMessage}</span>
           </div>

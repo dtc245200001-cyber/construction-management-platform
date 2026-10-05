@@ -161,9 +161,14 @@ describe("Dependencies Cycle Check Integration Tests", () => {
     expect(res.body.code).toBe("DEPENDENCY_CYCLE");
     expect(res.body.cycleIds.length).toBe(3);
     
-    // Khai báo C -> A. Việc đang khai là successor = A1. 
+    // Khai báo C -> A. Việc đang khai là successor = A1.
     // Chuỗi chờ: A1 chờ C1, C1 chờ B1, B1 chờ A1.
+    expect(res.body.message).toBe(
+      "Không thể tạo quan hệ vì sẽ tạo vòng phụ thuộc: " +
+      "A1 chờ C1, C1 chờ B1, B1 chờ A1."
+    );
     expect(res.body.cyclePath).toBe("A1 → C1 → B1 → A1");
+    expect(res.body.cycleNames).toEqual(["A1", "C1", "B1", "A1"]);
   });
 
   it("Tạo vòng 3 nút với thứ tự ID lộn xộn vẫn bắt đầu từ việc đang khai", async () => {
