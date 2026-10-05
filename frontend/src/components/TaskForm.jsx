@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import "./TaskForm.css";
-
+import api from "../lib/api";
+import DependencySection from "./DependencySection";
+// import api ... (giống WBSPage)
 function TaskForm({
   projectId,
   workItem = null,
   task = null,
+  allTasks = [], 
   onSuccess,
   onClose,
 }) {
@@ -26,6 +29,23 @@ function TaskForm({
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [deps, setDeps] = useState([]);
+
+  const loadDeps = async () => {
+    if (!task?.id) return;
+    try {
+      const res = await api.get(
+        `/projects/${projectId}/tasks/${task.id}/dependencies`
+      );
+      setDeps(res.data.dependencies);
+    } catch (err) {
+      console.error("Không tải được quan hệ:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (isEdit) loadDeps();
+  }, [isEdit, task?.id]);
 
   // Khi người dùng bấm dấu + ở hạng mục khác
   // thì cập nhật lại hạng mục cho form.
@@ -83,7 +103,7 @@ function TaskForm({
         : `/api/projects/${projectId}/tasks`;
 
       const response = await fetch(url, {
-        method: isEdit ? "PATCH" : "POST",
+        method: isEdit ? "PUT" : "POST",
 
         headers: {
           "Content-Type": "application/json",
@@ -265,6 +285,15 @@ function TaskForm({
           </small>
 
         </div>
+                {isEdit && (
+          <DependencySection
+            projectId={projectId}
+            taskId={task.id}
+            tasks={allTasks}
+            dependencies={deps}
+            onChanged={loadDeps}
+          />
+        )}
 
         {/* ERROR */}
         {error && (
