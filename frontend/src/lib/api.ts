@@ -19,6 +19,20 @@ api.interceptors.response.use(
         window.location.href = '/login';
       }
     }
+
+    // Giữ lại body của lỗi 422 (code, cycleSentence, cycleNames) khi ném lỗi
+    if (error.response && error.response.status === 422) {
+      const data = error.response.data;
+      if (data && (data.code === 'DEPENDENCY_CYCLE' || data.code === 'EXISTING_CYCLE')) {
+        error.cycleData = {
+          code: data.code,
+          cycleSentence: data.cycleSentence,
+          cycleNames: data.cycleNames,
+          cyclePath: data.cyclePath,
+        };
+      }
+    }
+
     return Promise.reject(error);
   }
 );

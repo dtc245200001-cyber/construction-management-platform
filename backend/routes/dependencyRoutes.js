@@ -11,6 +11,7 @@ const {
 
 const { detectCycle } = require("../algorithms/cpm");
 const { buildTempGraph, rotateCycleToStartWith } = require("../utils/buildTempGraph");
+const { formatCycleSentence } = require("../utils/cycleMessage");
 
 const {
   parsePositiveInt,
@@ -39,26 +40,30 @@ router.post(
   allow([ROLES.BAN_QUAN_LY]),
 
   asyncHandler(async (req, res) => {
-    const projectId = parsePositiveInt(
-      req.params.projectId
-    );
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      return res.status(400).json({ message: "Body không hợp lệ" });
+    }
 
-    const predecessorId = parsePositiveInt(
-      req.body.predecessor_id
-    );
+    const projectId = parsePositiveInt(req.params.projectId);
+    const predecessorId = parsePositiveInt(req.body.predecessor_id);
+    const successorId = parsePositiveInt(req.body.successor_id);
+    const dependencyType = String(req.body.dependency_type || "FS").toUpperCase();
 
-    const successorId = parsePositiveInt(
-      req.body.successor_id
-    );
-
-    const dependencyType = String(
-      req.body.dependency_type || "FS"
-    ).toUpperCase();
-
-    const leadLagDays =
-      req.body.lead_lag_days == null
-        ? 0
-        : Number(req.body.lead_lag_days);
+    let leadLagDays = 0;
+    if (req.body.lead_lag_days !== undefined && req.body.lead_lag_days !== null) {
+      const val = req.body.lead_lag_days;
+      if (typeof val === 'boolean' || Array.isArray(val) || val === '') {
+        return res.status(400).json({ message: "lead_lag_days phải là số nguyên" });
+      }
+      const num = Number(val);
+      if (!Number.isInteger(num)) {
+        return res.status(400).json({ message: "lead_lag_days phải là số nguyên" });
+      }
+      if (num < -3650 || num > 3650) {
+        return res.status(400).json({ message: "lead_lag_days phải nằm trong khoảng -3650 đến 3650" });
+      }
+      leadLagDays = num;
+    }
 
     if (!projectId) {
       return res.status(400).json({
@@ -77,13 +82,6 @@ router.post(
       return res.status(400).json({
         message:
           "dependency_type chỉ được là FS, SS, FF hoặc SF",
-      });
-    }
-
-    if (!Number.isInteger(leadLagDays)) {
-      return res.status(400).json({
-        message:
-          "lead_lag_days phải là số nguyên",
       });
     }
 
@@ -169,16 +167,49 @@ router.post(
       // Tự trỏ -> bắt sớm và trả 422
       if (predecessorId === successorId) {
         await client.query("ROLLBACK");
+        const name = itemNames.get(predecessorId) || "(công việc không tên)";
         return res.status(422).json({
           code: "DEPENDENCY_CYCLE",
           message: "Không thể tự phụ thuộc vào chính mình",
-          cycleIds: [predecessorId, predecessorId],
-          cycleNames: [itemNames.get(predecessorId), itemNames.get(predecessorId)],
-          cyclePath: `${itemNames.get(predecessorId)} → ${itemNames.get(predecessorId)}`,
+          cycleIds: [predecessorId],
+          cycleNames: [name],
+          cyclePath: `${name} → ${name}`,
+          cycleSentence: formatCycleSentence([name])
         });
       }
 
-      const graph = buildTempGraph(
+      // BƯỚC 1: Dựng đồ thị hiện tại (không có cạnh mới) để kiểm tra vòng lặp cũ
+      const currentGraph = buildTempGraph(
+        itemsResult.rows,
+        depsResult.rows
+      );
+
+      let oldCycleIds = detectCycle(currentGraph);
+
+      if (oldCycleIds && oldCycleIds.length > 0) {
+        // Có vòng cũ trong DB
+        // Xoay vòng lặp cũ để dễ nhìn (nếu có id nào trong mảng)
+        oldCycleIds = rotateCycleToStartWith(oldCycleIds, oldCycleIds[0]);
+        const oldNames = oldCycleIds.map(id => itemNames.get(Number(id)) || "(công việc không tên)");
+        const sentence = formatCycleSentence(oldNames);
+        
+        // Thêm phần tử đầu vào cuối mảng names cho cyclePath (tương thích cũ)
+        const oldPathNames = [...oldNames];
+        oldPathNames.push(oldPathNames[0]);
+
+        await client.query("ROLLBACK");
+        return res.status(422).json({
+          code: "EXISTING_CYCLE",
+          message: "Dự án đang có sẵn vòng phụ thuộc từ dữ liệu cũ, cần sửa trước khi khai thêm quan hệ",
+          cycleIds: oldCycleIds,
+          cycleNames: oldNames,
+          cyclePath: oldPathNames.join(" → "),
+          cycleSentence: sentence
+        });
+      }
+
+      // BƯỚC 2: Nếu không có vòng cũ, dựng đồ thị với cạnh mới
+      const newGraph = buildTempGraph(
         itemsResult.rows,
         depsResult.rows,
         {
@@ -189,26 +220,28 @@ router.post(
         }
       );
 
-      let cycleIds = detectCycle(graph);
+      let cycleIds = detectCycle(newGraph);
 
-      // detectCycle trả một vòng bất kỳ nên vòng cũ trong DB có thể bị nêu ra
       if (cycleIds && cycleIds.length > 0) {
         // Xoay mảng để bắt đầu từ successorId (việc đang được khai)
         cycleIds = rotateCycleToStartWith(cycleIds, successorId);
+        const names = cycleIds.map(id => itemNames.get(Number(id)) || "(công việc không tên)");
+        const sentence = formatCycleSentence(names);
 
-        const names = cycleIds.map(id => itemNames.get(Number(id)) || `#${id}`);
         // Thêm tên đầu vào cuối để đóng vòng
-        names.push(names[0]);
-        const pathStr = names.join(" → ");
+        const pathNames = [...names];
+        pathNames.push(pathNames[0]);
+        const pathStr = pathNames.join(" → ");
 
         await client.query("ROLLBACK");
 
         return res.status(422).json({
           code: "DEPENDENCY_CYCLE",
-          message: `Không thể tạo quan hệ vì sẽ tạo vòng phụ thuộc: ${pathStr}`,
+          message: sentence, // Trả message là sentence luôn hoặc tuỳ. Yêu cầu: "thêm field cycleSentence và dùng nó làm message của 422. Giữ nguyên cycleIds, cycleNames, cyclePath."
           cycleIds: cycleIds,
-          cycleNames: cycleIds.map(id => itemNames.get(Number(id)) || `#${id}`),
+          cycleNames: names,
           cyclePath: pathStr,
+          cycleSentence: sentence
         });
       }
 

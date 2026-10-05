@@ -86,7 +86,7 @@ Trong trường hợp luồng deploy bị kẹt hoặc cần rollback về bản
    docker start construction_backend_staging
    ```
 
-## 6. API quan hệ phụ thuộc giữa các công việc
+## 6. API quan hệ phụ thuộc giữa các công việc (S-11, T-24)
 
 a) Endpoint: `POST /api/projects/:projectId/dependencies`. Cần đăng nhập, chỉ vai trò ban_quan_ly của dự án đó.
 b) Body JSON: `predecessor_id` (số nguyên dương, id bảng tasks), `successor_id` (như trên), `dependency_type` (FS, SS, FF hoặc SF, mặc định FS), `lead_lag_days` (số nguyên, cho phép âm, mặc định 0). Nêu rõ predecessor_id và successor_id là id của bảng tasks, không phải work_items.

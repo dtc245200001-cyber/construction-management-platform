@@ -6,7 +6,7 @@ const {
   createProjectRouter,
 } = require("../middleware/projectAccess");
 const { ROLES } = require("../utils/constants");
-const { getScheduleResults } = require("../services/scheduleQuery");
+const { getScheduleResults, checkProjectCycle } = require("../services/scheduleQuery");
 
 const router = createProjectRouter();
 
@@ -150,6 +150,17 @@ router.get(
         }
 
         criticalOnly = req.query.critical === "true";
+      }
+
+      const cycleCheck = await checkProjectCycle(projectId);
+      if (cycleCheck.hasCycle) {
+        return res.status(422).json({
+          code: "EXISTING_CYCLE",
+          message: cycleCheck.cycleSentence,
+          cycleIds: cycleCheck.cycleIds,
+          cycleNames: cycleCheck.cycleNames,
+          cycleSentence: cycleCheck.cycleSentence
+        });
       }
 
       const results = await getScheduleResults(
