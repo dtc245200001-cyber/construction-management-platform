@@ -67,12 +67,46 @@ async function calculateAndSaveSchedule(projectId) {
   const { sortedOrder, unresolvedNodes } = topologicalSort(graph);
 
   if (unresolvedNodes.length > 0) {
-    const cycleNodes = findCycleNodes(graph, unresolvedNodes);
-    const error = new Error("Schedule contains a dependency cycle");
-    error.status = 400;
-    error.cycleNodes = cycleNodes;
-    throw error;
+  const cycleNodes = findCycleNodes(
+    graph,
+    unresolvedNodes
+  );
+
+  const cycleNames = cycleNodes.map(
+    (id) =>
+      graph.nodes[id]?.name || `#${id}`
+  );
+
+  const waitPairs = [];
+
+  for (let i = 0; i < cycleNames.length; i++) {
+    const current = cycleNames[i];
+    const next =
+      cycleNames[(i + 1) % cycleNames.length];
+
+    waitPairs.push(
+      `${current} chờ ${next}`
+    );
   }
+
+  // Đóng vòng cho giống route tạo quan hệ: A → C → B → A
+     const closedNames = [...cycleNames, cycleNames[0]];
+     const cyclePath = closedNames.join(" → ");
+
+
+  const error = new Error(
+    `Không thể tính tiến độ vì dữ liệu có vòng phụ thuộc: ` +
+    `${waitPairs.join(", ")}.`
+  );
+
+  error.status = 422;
+  error.code = "DEPENDENCY_CYCLE";
+  error.cycleNodes = cycleNodes;
+  error.cycleNames = closedNames;
+  error.cyclePath = cyclePath;
+
+  throw error;
+}
 
   const tasks = Object.values(graph.nodes);
 

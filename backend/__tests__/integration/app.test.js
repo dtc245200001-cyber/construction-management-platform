@@ -21,7 +21,7 @@ describe("App & Security Integration Tests", () => {
     const serverPath = path.join(__dirname, "..", "..", "server.js");
     let exitedWithError = false;
     try {
-      execSync(`node ${serverPath}`, {
+      execSync(`node "${serverPath}"`, {
         env: { ...process.env, NODE_ENV: "production", SESSION_SECRET: "" },
         stdio: "pipe"
       });
@@ -52,7 +52,7 @@ describe("App & Security Integration Tests", () => {
     
     let exitedWithError = false;
     try {
-      execSync(`node ${tmpFile}`, { env: { ...process.env, NODE_ENV: "development" } });
+      execSync(`node "${tmpFile}"`, { env: { ...process.env, NODE_ENV: "development" } });
     } catch(e) {
       exitedWithError = true;
     } finally {
