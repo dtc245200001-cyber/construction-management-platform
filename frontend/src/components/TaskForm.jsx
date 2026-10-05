@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import "./TaskForm.css";
-
+import DependencySection from "./DependencySection";
+// import api ... (giống WBSPage)
 function TaskForm({
   projectId,
   workItem = null,
   task = null,
+  allTasks = [], 
   onSuccess,
   onClose,
 }) {
@@ -83,7 +85,7 @@ function TaskForm({
         : `/api/projects/${projectId}/tasks`;
 
       const response = await fetch(url, {
-        method: isEdit ? "PATCH" : "POST",
+        method: isEdit ? "PUT" : "POST",
 
         headers: {
           "Content-Type": "application/json",
