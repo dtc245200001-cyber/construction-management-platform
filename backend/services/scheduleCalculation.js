@@ -108,7 +108,14 @@ async function calculateAndSaveSchedule(projectId) {
   throw error;
 }
 
-  const tasks = Object.values(graph.nodes);
+  const tasks = Object.values(graph.nodes).map(task => {
+    if (task.schedulingMode === 'manual' && task.manualStartDate) {
+      const msPerDay = 1000 * 60 * 60 * 24;
+      const offset = Math.round((new Date(task.manualStartDate) - new Date(project.start_date)) / msPerDay);
+      return { ...task, manualOffset: offset };
+    }
+    return task;
+  });
 
   const dependencies = [];
 
