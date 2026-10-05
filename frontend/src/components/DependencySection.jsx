@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-// import api ... (copy từ WBSPage)
+import api from "../lib/api";
 
 const TYPES = [
   { value: "FS", label: "FS – Kết thúc → Bắt đầu" },
@@ -68,7 +68,8 @@ export default function DependencySection({
         placeholder="Gõ để tìm công việc..."
         value={query}
         onChange={(e) => { setQuery(e.target.value); setPredId(null); }}
-      />
+        onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+        />
       <select
         size={5}
         value={predId ?? ""}
@@ -83,8 +84,13 @@ export default function DependencySection({
         {TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
       </select>
 
-      <input type="number" step="1" value={lag}
-             onChange={(e) => setLag(e.target.value)} />
+      <input
+        type="number"
+        step="1"
+        value={lag}
+        onChange={(e) => setLag(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+        />
 
       {error && <div className="task-form-error">{error}</div>}
       <button type="button" onClick={handleAdd} disabled={saving}>
