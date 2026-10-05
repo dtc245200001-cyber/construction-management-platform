@@ -59,7 +59,6 @@ describe("TaskForm (T-12)", () => {
       name: "Xây tường tầng 2",
       duration_days: 4,
       scheduling_mode: "auto",
-      manual_start_date: "",
     });
   });
 
@@ -86,7 +85,6 @@ describe("TaskForm (T-12)", () => {
       name: "Trát tường",
       duration_days: 6,
       scheduling_mode: "auto",
-      manual_start_date: "",
     });
   });
 
