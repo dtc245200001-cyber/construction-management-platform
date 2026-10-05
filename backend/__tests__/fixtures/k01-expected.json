@@ -4,7 +4,7 @@
     "calculatedBy": "Học",
     "calculatedDate": "2026-09-30",
     "method": "Tính tay CPM độc lập với code được kiểm thử",
-    "note": "Mạng mẫu 10 công việc. T-23 chịu trách nhiệm bổ sung các mạng chuyên kiểm đủ 4 loại quan hệ và lag âm."
+    "note": "Mạng mẫu 10 công việc. T-23 chịu trách nhiệm bổ sung các mạng chuyên kiểm đủ 4 loại quan hệ và lag âm. Mạng bổ sung của T-23 và các ca từng loại quan hệ nằm trong khoá networks."
   },
   "projectStart": 0,
   "tasks": [
@@ -235,5 +235,617 @@
     "G",
     "I",
     "J"
+  ],
+  "networks": [
+    {
+      "id": "T23-N1",
+      "name": "Đủ bốn loại quan hệ và độ trễ âm",
+      "kind": "t23",
+      "description": "",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
+      "projectStart": 0,
+      "tasks": [
+        {
+          "id": "A",
+          "duration": 4
+        },
+        {
+          "id": "B",
+          "duration": 3
+        },
+        {
+          "id": "C",
+          "duration": 5
+        },
+        {
+          "id": "D",
+          "duration": 2
+        },
+        {
+          "id": "E",
+          "duration": 4
+        },
+        {
+          "id": "F",
+          "duration": 3
+        },
+        {
+          "id": "G",
+          "duration": 2
+        }
+      ],
+      "dependencies": [
+        {
+          "from": "A",
+          "to": "B",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "from": "A",
+          "to": "C",
+          "type": "SS",
+          "lag": 1
+        },
+        {
+          "from": "B",
+          "to": "D",
+          "type": "FF",
+          "lag": 0
+        },
+        {
+          "from": "C",
+          "to": "D",
+          "type": "SF",
+          "lag": 6
+        },
+        {
+          "from": "D",
+          "to": "E",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "from": "C",
+          "to": "F",
+          "type": "FS",
+          "lag": -1
+        },
+        {
+          "from": "E",
+          "to": "G",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "from": "F",
+          "to": "G",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "topologicalOrder": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G"
+      ],
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 4,
+          "LS": 0,
+          "LF": 4,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 4,
+          "EF": 7,
+          "LS": 4,
+          "LF": 7,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "C",
+          "ES": 1,
+          "EF": 6,
+          "LS": 1,
+          "LF": 6,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "D",
+          "ES": 5,
+          "EF": 7,
+          "LS": 5,
+          "LF": 7,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "E",
+          "ES": 7,
+          "EF": 11,
+          "LS": 7,
+          "LF": 11,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "F",
+          "ES": 5,
+          "EF": 8,
+          "LS": 8,
+          "LF": 11,
+          "float": 3,
+          "critical": false
+        },
+        {
+          "id": "G",
+          "ES": 11,
+          "EF": 13,
+          "LS": 11,
+          "LF": 13,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 13,
+      "criticalPath": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "G"
+      ]
+    },
+    {
+      "id": "T23-N2",
+      "name": "Hai nhánh song song lệch nhau 3 ngày",
+      "kind": "t23",
+      "description": "nhánh ngắn C-E xong ngày 9, F bắt đầu ngày 12, nên độ trễ cho phép của nhánh ngắn = 12 - 9 = 3.",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
+      "projectStart": 0,
+      "tasks": [
+        {
+          "id": "A",
+          "duration": 2
+        },
+        {
+          "id": "B",
+          "duration": 6
+        },
+        {
+          "id": "C",
+          "duration": 2
+        },
+        {
+          "id": "D",
+          "duration": 4
+        },
+        {
+          "id": "E",
+          "duration": 2
+        },
+        {
+          "id": "F",
+          "duration": 1
+        }
+      ],
+      "dependencies": [
+        {
+          "from": "A",
+          "to": "B",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "from": "A",
+          "to": "C",
+          "type": "FS",
+          "lag": 3
+        },
+        {
+          "from": "B",
+          "to": "D",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "from": "C",
+          "to": "E",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "from": "D",
+          "to": "F",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "from": "E",
+          "to": "F",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "topologicalOrder": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F"
+      ],
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 2,
+          "LS": 0,
+          "LF": 2,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 2,
+          "EF": 8,
+          "LS": 2,
+          "LF": 8,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "C",
+          "ES": 5,
+          "EF": 7,
+          "LS": 8,
+          "LF": 10,
+          "float": 3,
+          "critical": false
+        },
+        {
+          "id": "D",
+          "ES": 8,
+          "EF": 12,
+          "LS": 8,
+          "LF": 12,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "E",
+          "ES": 7,
+          "EF": 9,
+          "LS": 10,
+          "LF": 12,
+          "float": 3,
+          "critical": false
+        },
+        {
+          "id": "F",
+          "ES": 12,
+          "EF": 13,
+          "LS": 12,
+          "LF": 13,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 13,
+      "criticalPath": [
+        "A",
+        "B",
+        "D",
+        "F"
+      ]
+    },
+    {
+      "id": "REL-FS",
+      "name": "REL-FS",
+      "kind": "single-relation",
+      "description": "B bắt đầu sau A kết thúc nên ES(B) = EF(A) + 0 = 3",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
+      "projectStart": 0,
+      "tasks": [
+        {
+          "id": "A",
+          "duration": 3
+        },
+        {
+          "id": "B",
+          "duration": 2
+        }
+      ],
+      "dependencies": [
+        {
+          "from": "A",
+          "to": "B",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "topologicalOrder": [
+        "A",
+        "B"
+      ],
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 3,
+          "LS": 0,
+          "LF": 3,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 3,
+          "EF": 5,
+          "LS": 3,
+          "LF": 5,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 5,
+      "criticalPath": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "REL-SS",
+      "name": "REL-SS",
+      "kind": "single-relation",
+      "description": "B bắt đầu sau A bắt đầu 2 ngày nên ES(B)=0+2=2",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
+      "projectStart": 0,
+      "tasks": [
+        {
+          "id": "A",
+          "duration": 4
+        },
+        {
+          "id": "B",
+          "duration": 3
+        }
+      ],
+      "dependencies": [
+        {
+          "from": "A",
+          "to": "B",
+          "type": "SS",
+          "lag": 2
+        }
+      ],
+      "topologicalOrder": [
+        "A",
+        "B"
+      ],
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 4,
+          "LS": 0,
+          "LF": 4,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 2,
+          "EF": 5,
+          "LS": 2,
+          "LF": 5,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 5,
+      "criticalPath": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "REL-FF",
+      "name": "REL-FF",
+      "kind": "single-relation",
+      "description": "B kết thúc sau A kết thúc 1 ngày nên EF(B)=5+1=6, ES(B)=6-2=4",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
+      "projectStart": 0,
+      "tasks": [
+        {
+          "id": "A",
+          "duration": 5
+        },
+        {
+          "id": "B",
+          "duration": 2
+        }
+      ],
+      "dependencies": [
+        {
+          "from": "A",
+          "to": "B",
+          "type": "FF",
+          "lag": 1
+        }
+      ],
+      "topologicalOrder": [
+        "A",
+        "B"
+      ],
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 5,
+          "LS": 0,
+          "LF": 5,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 4,
+          "EF": 6,
+          "LS": 4,
+          "LF": 6,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 6,
+      "criticalPath": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "REL-SF",
+      "name": "REL-SF",
+      "kind": "single-relation",
+      "description": "B kết thúc sau A bắt đầu 4 ngày nên EF(B)=0+4=4, ES(B)=4-2=2",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
+      "projectStart": 0,
+      "tasks": [
+        {
+          "id": "A",
+          "duration": 3
+        },
+        {
+          "id": "B",
+          "duration": 2
+        }
+      ],
+      "dependencies": [
+        {
+          "from": "A",
+          "to": "B",
+          "type": "SF",
+          "lag": 4
+        }
+      ],
+      "topologicalOrder": [
+        "A",
+        "B"
+      ],
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 3,
+          "LS": 0,
+          "LF": 3,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 2,
+          "EF": 4,
+          "LS": 2,
+          "LF": 4,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 4,
+      "criticalPath": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "REL-LAGAM",
+      "name": "REL-LAGAM",
+      "kind": "single-relation",
+      "description": "B bắt đầu trước khi A kết thúc 2 ngày nên ES(B)=4-2=2",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
+      "projectStart": 0,
+      "tasks": [
+        {
+          "id": "A",
+          "duration": 4
+        },
+        {
+          "id": "B",
+          "duration": 3
+        }
+      ],
+      "dependencies": [
+        {
+          "from": "A",
+          "to": "B",
+          "type": "FS",
+          "lag": -2
+        }
+      ],
+      "topologicalOrder": [
+        "A",
+        "B"
+      ],
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 4,
+          "LS": 0,
+          "LF": 4,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 2,
+          "EF": 5,
+          "LS": 2,
+          "LF": 5,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 5,
+      "criticalPath": [
+        "A",
+        "B"
+      ]
+    }
   ]
 }
