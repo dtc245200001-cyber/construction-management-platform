@@ -58,6 +58,8 @@ describe("TaskForm (T-12)", () => {
       work_item_id: 24,
       name: "Xây tường tầng 2",
       duration_days: 4,
+      scheduling_mode: "auto",
+      manual_start_date: "",
     });
   });
 
@@ -83,6 +85,8 @@ describe("TaskForm (T-12)", () => {
     expect(api.put).toHaveBeenCalledWith("/projects/13/tasks/7", {
       name: "Trát tường",
       duration_days: 6,
+      scheduling_mode: "auto",
+      manual_start_date: "",
     });
   });
 
