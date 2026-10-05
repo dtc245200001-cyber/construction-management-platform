@@ -105,9 +105,26 @@ function WBSPage() {
 
     return node.children.every((child) => child.type === "task");
   };
+
+  const flattenTasks = (nodes) =>
+  nodes.flatMap((n) => [
+    ...(n.type === "task" ? [n] : []),
+    ...flattenTasks(n.children || []),
+  ]);
+
   const openCreateTaskForm = (workItem) => {
   setSelectedWorkItem(workItem);
   setEditingTask(null);
+  setShowTaskForm(true);
+};
+
+const openEditTaskForm = (node) => {
+  setEditingTask({
+    id: node.task_id,
+    name: node.name,
+    duration_days: node.duration_days,
+  });
+  setSelectedWorkItem(null);
   setShowTaskForm(true);
 };
 
@@ -368,7 +385,7 @@ const closeTaskForm = () => {
   const renderDate = (date) => date ? format(parseISO(date), 'dd/MM/yyyy') : '--';
 
   const renderRow = (node, level, indexStr, colorIndex = 0) => {
-    const isExpanded = expanded.has(node.id);
+    const isExpanded = search.trim() ? true : expanded.has(node.id);
     const isCategory = node.type === 'category';
     const indent = level * 36;
     const color = COLORS[colorIndex % COLORS.length];
@@ -482,7 +499,7 @@ const closeTaskForm = () => {
           <td className="px-4 text-right">
             <div className="flex items-center justify-end gap-1">
               <button
-                onClick={() => openEditTaskModal(node)}
+                onClick={() => openEditTaskForm (node)}
                 title="Sửa công việc"
                 className="p-1.5 text-[#475569] hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
               >
@@ -523,6 +540,26 @@ const closeTaskForm = () => {
     { name: "Hoàn thành", value: stats.done, color: "#22C55E" },
     { name: "Còn lại", value: stats.total - stats.done, color: "#E8EDF5" }
   ];
+  const normalize = (s) =>
+  (s || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase();
+
+const visibleItems = useMemo(() => {
+  const q = normalize(search.trim());
+  if (!q) return items;
+
+  const filterNode = (n) => {
+    if (normalize(n.name).includes(q)) return n; // khớp thì giữ cả nhánh con
+    const kids = (n.children || []).map(filterNode).filter(Boolean);
+    return kids.length ? { ...n, children: kids } : null;
+  };
+
+  return items.map(filterNode).filter(Boolean);
+}, [items, search]);
 
   return (
     <div className="flex-1 min-h-screen bg-[#F3F6FB] text-[#0F1B3D] flex flex-col overflow-hidden">
@@ -603,8 +640,10 @@ const closeTaskForm = () => {
                     <tr><td colSpan="7" className="p-8 text-center text-gray-500">Đang tải dữ liệu...</td></tr>
                   ) : items.length === 0 ? (
                     <tr><td colSpan="7" className="p-16 text-center text-gray-500">Chưa có hạng mục nào.</td></tr>
+                  ) : visibleItems.length === 0 ? (
+                    <tr><td colSpan="7" className="p-16 text-center text-gray-500">Không tìm thấy kết quả.</td></tr>
                   ) : (
-                    items.map((root, i) => renderRow(root, 0, (i+1).toString(), i))
+                    visibleItems.map((root, i) => renderRow(root, 0, (i+1).toString(), i))
                   )}
                 </tbody>
               </table>
@@ -706,6 +745,7 @@ const closeTaskForm = () => {
     projectId={projectId}
     workItem={selectedWorkItem}
     task={editingTask}
+    allTasks={flattenTasks(items)}
     onClose={closeTaskForm}
     onSuccess={() => {
       closeTaskForm();
