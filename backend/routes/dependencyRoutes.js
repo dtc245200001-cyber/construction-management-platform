@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
@@ -13,6 +13,8 @@ const { detectCycle } = require("../algorithms/cpm");
 const {
   buildTempGraph,
   rotateCycleToStartWith,
+  cycleContainsEdge,
+  findCycleThroughEdge,
 } = require("../utils/buildTempGraph");
 
 const { parsePositiveInt } = require("../utils/validators");
@@ -180,14 +182,28 @@ router.post(
       );
 
       let cycleIds = detectCycle(graph);
+      let isRealCycle = false;
 
-      // detectCycle có thể trả một vòng bất kỳ.
-      // Xoay để bắt đầu từ successorId nếu có thể.
+      // Xử lý để phân biệt vòng cũ và vòng mới do chính quan hệ này gây ra
       if (cycleIds && cycleIds.length > 0) {
-        cycleIds = rotateCycleToStartWith(
-          cycleIds,
-          successorId
-        );
+        if (cycleContainsEdge(cycleIds, predecessorId, successorId)) {
+          // Vòng detectCycle tìm được chính là vòng chứa quan hệ mới
+          cycleIds = rotateCycleToStartWith(cycleIds, successorId);
+          isRealCycle = true;
+        } else {
+          // detectCycle tìm thấy một vòng cũ không liên quan, ta cần tự tìm xem có vòng qua cạnh mới không
+          const newCycle = findCycleThroughEdge(graph, predecessorId, successorId);
+          if (newCycle.length > 0) {
+            cycleIds = newCycle; // Không cần xoay vì findCycleThroughEdge đã trả ra mảng bắt đầu từ successorId
+            isRealCycle = true;
+          } else {
+            // Không có vòng nào đi qua quan hệ mới -> hợp lệ
+            isRealCycle = false;
+          }
+        }
+      }
+
+      if (isRealCycle) {
 
         const names = cycleIds.map(
           (id) =>

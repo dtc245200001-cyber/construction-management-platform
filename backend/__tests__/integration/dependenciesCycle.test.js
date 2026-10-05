@@ -229,4 +229,88 @@ describe("Dependencies Cycle Check Integration Tests", () => {
     expect(res.status).toBe(422);
     expect(res.body.code).toBe("DEPENDENCY_CYCLE");
   });
+  it("a) Vòng cũ V1<->V2 có sẵn trong DB; khai quan hệ hợp lệ V3->V4 qua API: kỳ vọng 201", async () => {
+    // Tạo V1, V2, V3, V4
+    const res = await pool.query(`
+      INSERT INTO work_items (project_id, name) VALUES ($1, 'V1'), ($1, 'V2'), ($1, 'V3'), ($1, 'V4') RETURNING id
+    `, [p1]);
+    const w1 = res.rows[0].id, w2 = res.rows[1].id, w3 = res.rows[2].id, w4 = res.rows[3].id;
+    const tRes = await pool.query(`
+      INSERT INTO tasks (work_item_id, name, duration_days) VALUES ($1, 'V1', 1), ($2, 'V2', 1), ($3, 'V3', 1), ($4, 'V4', 1) RETURNING id
+    `, [w1, w2, w3, w4]);
+    const v1 = tRes.rows[0].id, v2 = tRes.rows[1].id, v3 = tRes.rows[2].id, v4 = tRes.rows[3].id;
+
+    // Gieo vòng cũ
+    await pool.query("INSERT INTO dependencies (predecessor_id, successor_id) VALUES ($1, $2), ($2, $1)", [v1, v2]);
+
+    const beforeCount = await pool.query("SELECT count(*) FROM dependencies");
+
+    // Khai V3 -> V4
+    const apiRes = await request(app).post(`/api/projects/${p1}/dependencies`).set("Cookie", cookieA).send({
+      predecessor_id: v3,
+      successor_id: v4,
+    });
+    
+    expect(apiRes.status).toBe(201);
+    const afterCount = await pool.query("SELECT count(*) FROM dependencies");
+    expect(Number(afterCount.rows[0].count)).toBe(Number(beforeCount.rows[0].count) + 1);
+  });
+
+  it("b) Vòng cũ V1<->V2 có sẵn; đã có 3->4 và 4->5; khai quan hệ 5->3: kỳ vọng 422", async () => {
+    // Tạo V1, V2, V3, V4, V5
+    const res = await pool.query(`
+      INSERT INTO work_items (project_id, name) VALUES ($1, 'V1'), ($1, 'V2'), ($1, 'V3'), ($1, 'V4'), ($1, 'V5') RETURNING id
+    `, [p1]);
+    const w1 = res.rows[0].id, w2 = res.rows[1].id, w3 = res.rows[2].id, w4 = res.rows[3].id, w5 = res.rows[4].id;
+    const tRes = await pool.query(`
+      INSERT INTO tasks (work_item_id, name, duration_days) VALUES ($1, 'V1', 1), ($2, 'V2', 1), ($3, 'V3', 1), ($4, 'V4', 1), ($5, 'V5', 1) RETURNING id
+    `, [w1, w2, w3, w4, w5]);
+    const v1 = tRes.rows[0].id, v2 = tRes.rows[1].id, v3 = tRes.rows[2].id, v4 = tRes.rows[3].id, v5 = tRes.rows[4].id;
+
+    // Gieo vòng cũ và 3->4, 4->5
+    await pool.query("INSERT INTO dependencies (predecessor_id, successor_id) VALUES ($1, $2), ($2, $1), ($3, $4), ($4, $5)", [v1, v2, v3, v4, v5]);
+
+    const beforeCount = await pool.query("SELECT count(*) FROM dependencies");
+
+    // Khai 5->3
+    const apiRes = await request(app).post(`/api/projects/${p1}/dependencies`).set("Cookie", cookieA).send({
+      predecessor_id: v5,
+      successor_id: v3,
+    });
+    
+    expect(apiRes.status).toBe(422);
+    expect(apiRes.body.code).toBe("DEPENDENCY_CYCLE");
+    expect(apiRes.body.cycleIds).toEqual([v3, v5, v4]);
+    expect(apiRes.body.cyclePath).toBe("V3 → V5 → V4 → V3");
+    
+    const afterCount = await pool.query("SELECT count(*) FROM dependencies");
+    expect(Number(afterCount.rows[0].count)).toBe(Number(beforeCount.rows[0].count));
+  });
+
+  it("c) Không có vòng cũ; chuỗi 5 việc N1->N2->N3->N4->N5 đã lưu; khai N5->N1: kỳ vọng 422", async () => {
+    const res = await pool.query(`
+      INSERT INTO work_items (project_id, name) VALUES ($1, 'N1'), ($1, 'N2'), ($1, 'N3'), ($1, 'N4'), ($1, 'N5') RETURNING id
+    `, [p1]);
+    const w = res.rows.map(r => r.id);
+    const tRes = await pool.query(`
+      INSERT INTO tasks (work_item_id, name, duration_days) VALUES ($1, 'N1', 1), ($2, 'N2', 1), ($3, 'N3', 1), ($4, 'N4', 1), ($5, 'N5', 1) RETURNING id
+    `, w);
+    const n = tRes.rows.map(r => r.id);
+
+    await pool.query("INSERT INTO dependencies (predecessor_id, successor_id) VALUES ($1, $2), ($2, $3), ($3, $4), ($4, $5)", [n[0], n[1], n[2], n[3], n[4]]);
+
+    const beforeCount = await pool.query("SELECT count(*) FROM dependencies");
+
+    const apiRes = await request(app).post(`/api/projects/${p1}/dependencies`).set("Cookie", cookieA).send({
+      predecessor_id: n[4],
+      successor_id: n[0],
+    });
+    
+    expect(apiRes.status).toBe(422);
+    expect(apiRes.body.code).toBe("DEPENDENCY_CYCLE");
+    expect(apiRes.body.cyclePath).toBe("N1 → N5 → N4 → N3 → N2 → N1");
+    
+    const afterCount = await pool.query("SELECT count(*) FROM dependencies");
+    expect(Number(afterCount.rows[0].count)).toBe(Number(beforeCount.rows[0].count));
+  });
 });

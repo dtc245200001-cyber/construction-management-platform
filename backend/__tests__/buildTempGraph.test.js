@@ -1,4 +1,4 @@
-const { buildTempGraph, rotateCycleToStartWith } = require("../utils/buildTempGraph");
+const { buildTempGraph, rotateCycleToStartWith, cycleContainsEdge, findCycleThroughEdge } = require("../utils/buildTempGraph");
 const { detectCycle } = require("../algorithms/cpm");
 
 describe("buildTempGraph utility", () => {
@@ -163,5 +163,80 @@ describe("rotateCycleToStartWith utility", () => {
     const cycle = [3, 2, 1];
     const rotated = rotateCycleToStartWith(cycle, 99);
     expect(rotated).toEqual([3, 2, 1]);
+  });
+});
+
+describe("cycleContainsEdge utility", () => {
+  it("nên trả về true khi cặp (S,P) kề nhau theo thứ tự chờ", () => {
+    // S chờ P, tức S đứng trước P trong mảng cycleIds, P đứng ngay sau S.
+    expect(cycleContainsEdge([1, 2, 3], 2, 1)).toBe(true);
+    expect(cycleContainsEdge([1, 2, 3], 3, 2)).toBe(true);
+  });
+
+  it("nên trả về true khi S ở cuối mảng và P ở đầu (vòng quanh)", () => {
+    expect(cycleContainsEdge([1, 2, 3], 1, 3)).toBe(true);
+  });
+
+  it("nên trả về false khi cặp không kề", () => {
+    expect(cycleContainsEdge([1, 2, 3, 4], 3, 1)).toBe(false);
+  });
+
+  it("nên trả về false khi sai chiều", () => {
+    expect(cycleContainsEdge([1, 2, 3], 1, 2)).toBe(false);
+  });
+
+  it("nên trả về false với mảng rỗng", () => {
+    expect(cycleContainsEdge([], 1, 2)).toBe(false);
+    expect(cycleContainsEdge(null, 1, 2)).toBe(false);
+  });
+});
+
+describe("findCycleThroughEdge utility", () => {
+  it("đồ thị 1->2, 2->3, cạnh mới P=3, S=1 thì trả [1,3,2]", () => {
+    const items = [{ id: 1 }, { id: 2 }, { id: 3 }];
+    const deps = [
+      { predecessor_id: 1, successor_id: 2 },
+      { predecessor_id: 2, successor_id: 3 }
+    ];
+    // Không thêm cạnh mới vào đồ thị để test đúng logic tìm đường cũ từ S->P
+    const graph = buildTempGraph(items, deps, null);
+    
+    // P=3, S=1. Muốn tìm đường từ 1 -> 3 qua đồ thị.
+    // Kết quả mong muốn: [1, 3, 2]
+    expect(findCycleThroughEdge(graph, 3, 1)).toEqual([1, 3, 2]);
+  });
+
+  it("đồ thị 3 nút không có đường từ S về P thì trả []", () => {
+    const items = [{ id: 1 }, { id: 2 }, { id: 3 }];
+    const deps = [
+      { predecessor_id: 1, successor_id: 2 }
+    ]; // Không có đường từ 1 tới 3
+    const graph = buildTempGraph(items, deps, null);
+    
+    expect(findCycleThroughEdge(graph, 3, 1)).toEqual([]);
+  });
+
+  it("đồ thị có vòng cũ 1<->2 rời xa và cạnh mới 3->4 không liên quan thì trả []", () => {
+    const items = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }];
+    const deps = [
+      { predecessor_id: 1, successor_id: 2 },
+      { predecessor_id: 2, successor_id: 1 }
+    ];
+    const graph = buildTempGraph(items, deps, null);
+    
+    expect(findCycleThroughEdge(graph, 3, 4)).toEqual([]);
+  });
+
+  it("nhiều việc trung gian: đã có 1->2, 2->3, 3->4, 4->5; cạnh mới P=5, S=1 thì trả [1,5,4,3,2]", () => {
+    const items = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }];
+    const deps = [
+      { predecessor_id: 1, successor_id: 2 },
+      { predecessor_id: 2, successor_id: 3 },
+      { predecessor_id: 3, successor_id: 4 },
+      { predecessor_id: 4, successor_id: 5 }
+    ];
+    const graph = buildTempGraph(items, deps, null);
+    
+    expect(findCycleThroughEdge(graph, 5, 1)).toEqual([1, 5, 4, 3, 2]);
   });
 });

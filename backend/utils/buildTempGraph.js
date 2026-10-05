@@ -68,7 +68,63 @@ function rotateCycleToStartWith(cycleIds, startNodeId) {
   return [...cycleIds];
 }
 
+/**
+ * Kiểm tra xem vòng lặp có chứa trực tiếp quan hệ mới tạo không.
+ * @param {Array} cycleIds Mảng ID các công việc tạo thành vòng lặp
+ * @param {number} predecessorId ID của công việc trước (P)
+ * @param {number} successorId ID của công việc sau (S)
+ * @returns {boolean}
+ */
+function cycleContainsEdge(cycleIds, predecessorId, successorId) {
+  if (!cycleIds || cycleIds.length === 0) return false;
+  const n = cycleIds.length;
+  for (let i = 0; i < n; i++) {
+    if (cycleIds[i] === successorId && cycleIds[(i + 1) % n] === predecessorId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Tìm vòng phụ thuộc đi qua quan hệ mới bằng thuật toán BFS.
+ * Duyệt trên đồ thị từ successorId tìm đường về predecessorId.
+ * @param {Object} graph Đồ thị
+ * @param {number} predecessorId ID của công việc trước
+ * @param {number} successorId ID của công việc sau
+ * @returns {Array} Mảng các ID tạo thành vòng đi qua quan hệ mới (hoặc [] nếu không có)
+ */
+function findCycleThroughEdge(graph, predecessorId, successorId) {
+  const adj = graph.adjList;
+  if (!adj[successorId] || !adj[predecessorId]) return [];
+  
+  const queue = [[successorId]];
+  const visited = new Set([successorId]);
+  
+  while (queue.length > 0) {
+    const path = queue.shift();
+    const current = path[path.length - 1];
+    
+    if (current === predecessorId) {
+      return [successorId, ...path.slice(1).reverse()];
+    }
+    
+    const edges = adj[current] || [];
+    for (const edge of edges) {
+      const neighbor = edge.target;
+      if (!visited.has(neighbor)) {
+        visited.add(neighbor);
+        queue.push([...path, neighbor]);
+      }
+    }
+  }
+  
+  return [];
+}
+
 module.exports = {
   buildTempGraph,
   rotateCycleToStartWith,
+  cycleContainsEdge,
+  findCycleThroughEdge
 };

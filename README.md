@@ -119,3 +119,4 @@ curl -X POST http://localhost:3000/api/projects/PID/dependencies \
     "lead_lag_days": 0
   }'
 ```
+g) Lưu ý: hệ thống chỉ chặn khi chính quan hệ mới nằm trên một vòng; nếu dữ liệu cũ đã có vòng ở chỗ khác thì quan hệ không liên quan vẫn lưu được, và vòng cũ sẽ được báo ở màn hình tính tiến độ.
