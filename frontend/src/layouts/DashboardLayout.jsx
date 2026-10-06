@@ -28,6 +28,7 @@ const navItems = [
   { label: "Tổng quan", icon: Home, path: "/dashboard" },
   { label: "Cơ cấu công việc (WBS)", icon: Network, path: "/wbs" },
   { label: "Tiến độ & Đường găng", icon: TrendingUp, path: "/schedule" },
+  { label: "Tiến độ thi công", icon: CalendarDays, path: "/gantt" },
   { label: "Hiện trường & Giao việc", icon: Camera, path: "/field" },
   { label: "Nhật ký thi công", icon: FileText, path: "/diary" },
   { label: "Nghiệm thu khối lượng", icon: CheckSquare, path: "/acceptance" },
@@ -40,6 +41,11 @@ export default function DashboardLayout({ user, setUser }) {
   const location = useLocation();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  React.useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
 
   // In a real app, this should come from context or API based on localStorage.getItem('currentProjectId')
   const currentProjectId = localStorage.getItem('currentProjectId') || 1; 
@@ -68,8 +74,22 @@ export default function DashboardLayout({ user, setUser }) {
 
   return (
     <div className="flex min-h-screen bg-background">
+      {/* Mobile Overlay */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className={`sticky top-0 hidden h-screen shrink-0 flex-col bg-sidebar py-6 text-sidebar-foreground lg:flex transition-all duration-300 ${isSidebarCollapsed ? 'w-[80px] items-center px-2' : 'w-[280px] px-5'}`}>
+      <aside 
+        className={`fixed inset-y-0 left-0 z-50 flex-col bg-sidebar py-6 text-sidebar-foreground transition-all duration-300 lg:sticky lg:top-0 lg:h-screen lg:flex shrink-0
+          ${isMobileMenuOpen ? 'translate-x-0 w-[280px] px-5 flex' : '-translate-x-full lg:translate-x-0'}
+          ${isSidebarCollapsed ? 'lg:w-[80px] lg:items-center lg:px-2' : 'lg:w-[280px] lg:px-5'}
+          ${!isMobileMenuOpen ? 'hidden lg:flex' : ''}
+        `}
+      >
         <div className={`flex items-center gap-3 w-full ${isSidebarCollapsed ? 'justify-center' : ''}`}>
           <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground">
             <ShieldCheck className="size-6" />
@@ -111,7 +131,7 @@ export default function DashboardLayout({ user, setUser }) {
                 key={item.label}
                 title={item.label}
                 onClick={() => {
-                  if (item.path === '/dashboard' || item.path === '/wbs' || item.path === '/members' || item.path === '/schedule') {
+                  if (item.path === '/dashboard' || item.path === '/wbs' || item.path === '/members' || item.path === '/schedule' || item.path === '/gantt') {
                     navigate(item.path);
                   } else {
                     alert("Tính năng này sẽ được phát triển trong các Sprint tiếp theo.");
@@ -159,7 +179,13 @@ export default function DashboardLayout({ user, setUser }) {
         {/* Topbar */}
         <header className="sticky top-0 z-10 flex flex-wrap items-center gap-4 border-b border-border bg-card px-6 py-4">
           <button 
-            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+            onClick={() => {
+              if (window.innerWidth < 1024) {
+                setIsMobileMenuOpen(!isMobileMenuOpen);
+              } else {
+                setIsSidebarCollapsed(!isSidebarCollapsed);
+              }
+            }} 
             className="p-2 -ml-2 text-muted-foreground hover:bg-accent/50 rounded-xl transition-colors outline-none cursor-pointer"
           >
             <Menu className="size-5 shrink-0" />

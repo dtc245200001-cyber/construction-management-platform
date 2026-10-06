@@ -488,9 +488,9 @@ const visibleItems = useMemo(() => {
 
   return (
     <div className="flex-1 min-h-screen bg-[#F3F6FB] text-[#0F1B3D] flex flex-col overflow-hidden">
-      <div className="flex-1 flex overflow-hidden p-6 gap-6 max-w-[1672px] mx-auto w-full">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden p-4 sm:p-6 gap-6 max-w-[1672px] mx-auto w-full">
         {/* Main Content */}
-        <div className="flex-1 flex flex-col gap-6 overflow-hidden">
+        <div className="flex-1 flex flex-col gap-6 overflow-hidden min-w-0">
           
           {/* Hero Banner */}
           <div className="relative h-[115px] rounded-2xl overflow-hidden shrink-0 flex items-center p-6 shadow-sm">
@@ -508,8 +508,8 @@ const visibleItems = useMemo(() => {
           </div>
 
           {/* Toolbar */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="relative w-[290px]">
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <div className="relative w-full sm:w-[290px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-[#64748B]" />
               <input 
                 type="text" 
@@ -543,8 +543,8 @@ const visibleItems = useMemo(() => {
           </div>
 
           {/* WBS Table Card */}
-          <div className="flex-1 bg-white rounded-2xl border border-[#E6EBF3] shadow-[0_1px_2px_rgba(16,24,40,.04),0_4px_12px_rgba(16,24,40,.04)] flex flex-col overflow-hidden">
-            <div className="overflow-auto flex-1">
+          <div className="flex-1 bg-white rounded-2xl border border-[#E6EBF3] shadow-[0_1px_2px_rgba(16,24,40,.04),0_4px_12px_rgba(16,24,40,.04)] flex flex-col overflow-hidden min-w-0">
+            <div className="overflow-x-auto flex-1 min-w-0">
               <table className="w-full text-left border-collapse min-w-[900px]">
                 <thead className="bg-white sticky top-0 z-10 shadow-sm">
                   <tr>
@@ -571,9 +571,9 @@ const visibleItems = useMemo(() => {
           </div>
         </div>
 
-        {/* Right Panel (320px) */}
+        {/* Right Panel */}
         {showRightPanel && (
-        <div className="w-[320px] shrink-0 flex flex-col gap-5 overflow-y-auto pr-1 pb-4">
+        <div className="w-full lg:w-[320px] shrink-0 flex flex-col gap-5 lg:overflow-y-auto pr-1 pb-4">
           
           {/* Tổng quan dự án (đã bỏ trạng thái / tiến độ, giữ tổng số công việc) */}
           <div className="bg-white rounded-2xl border border-[#E6EBF3] p-5 shadow-[0_1px_2px_rgba(16,24,40,.04),0_4px_12px_rgba(16,24,40,.04)]">

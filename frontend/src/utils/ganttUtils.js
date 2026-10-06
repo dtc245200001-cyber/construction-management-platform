@@ -1,4 +1,4 @@
-import { differenceInCalendarDays, parseISO } from 'date-fns';
+import { differenceInCalendarDays, parseISO, addDays, format } from 'date-fns';
 
 /**
  * Chuyển đổi một ngày (date) thành toạ độ X (pixel) trên trục thời gian.
@@ -36,4 +36,40 @@ export function mapScheduleToGantt(tasks, projectStartDate, pixelsPerDay, rowHei
       height: rowHeight * 0.6
     };
   }).filter(Boolean);
+}
+
+/**
+ * Sinh danh sách các vạch và nhãn trên trục thời gian.
+ * @param {string|Date} projectStartDate 
+ * @param {number} totalDays - Tổng số ngày dự kiến cần vẽ
+ * @param {string} viewMode - 'day' hoặc 'week'
+ * @param {number} pixelsPerDay 
+ * @returns {Array} Mảng các mốc thời gian { x, label, type }
+ */
+export function generateTimelineTicks(projectStartDate, totalDays, viewMode, pixelsPerDay) {
+  if (!projectStartDate) return [];
+  const startObj = typeof projectStartDate === 'string' ? parseISO(projectStartDate) : projectStartDate;
+  const ticks = [];
+  
+  if (viewMode === 'day') {
+    for (let i = 0; i <= totalDays; i++) {
+      const date = addDays(startObj, i);
+      ticks.push({
+        x: i * pixelsPerDay,
+        label: format(date, 'dd/MM/yyyy'),
+        type: 'day'
+      });
+    }
+  } else if (viewMode === 'week') {
+    for (let i = 0; i <= totalDays; i += 7) {
+      const date = addDays(startObj, i);
+      ticks.push({
+        x: i * pixelsPerDay,
+        label: `T${Math.floor(i / 7) + 1} (${format(date, 'dd/MM/yyyy')})`,
+        type: 'week'
+      });
+    }
+  }
+  
+  return ticks;
 }

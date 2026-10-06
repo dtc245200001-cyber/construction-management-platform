@@ -23,6 +23,7 @@ import NotFoundPage from './pages/NotFoundPage';
 import ComingSoonPage from './pages/ComingSoonPage';
 import InvitationAcceptPage from './pages/InvitationAcceptPage';
 import SchedulePage from './pages/SchedulePage';
+import GanttPage from './pages/GanttPage';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -88,6 +89,7 @@ function App() {
           <Route path="/dashboard" element={<LandingPage user={user} setUser={setUser} />} />
           <Route path="/wbs" element={<WBSPage user={user} />} />
           <Route path="/schedule" element={<SchedulePage user={user} />} />
+          <Route path="/gantt" element={<GanttPage />} />
           <Route path="/members" element={<MembersPage user={user} />} />
         </Route>
 

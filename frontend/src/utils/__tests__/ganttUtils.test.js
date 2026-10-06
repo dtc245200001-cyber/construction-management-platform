@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dateToX, mapScheduleToGantt } from '../ganttUtils';
+import { dateToX, mapScheduleToGantt, generateTimelineTicks } from '../ganttUtils';
 
 describe('ganttUtils', () => {
   describe('dateToX', () => {
@@ -51,6 +51,27 @@ describe('ganttUtils', () => {
     it('loại bỏ các task thiếu ngày', () => {
       const res = mapScheduleToGantt([{ id: 1, early_start: null, early_finish: null }], '2026-10-02', 20);
       expect(res).toHaveLength(0);
+    });
+  });
+
+  describe('generateTimelineTicks', () => {
+    it('chế độ ngày: sinh đủ số ngày', () => {
+      const ticks = generateTimelineTicks('2026-10-02', 10, 'day', 20);
+      expect(ticks).toHaveLength(11); // 0 đến 10 là 11 mốc
+      expect(ticks[0].label).toBe('02/10/2026');
+      expect(ticks[0].x).toBe(0);
+      expect(ticks[10].label).toBe('12/10/2026');
+      expect(ticks[10].x).toBe(200);
+    });
+
+    it('chế độ tuần: sinh các mốc mỗi 7 ngày', () => {
+      const ticks = generateTimelineTicks('2026-10-02', 30, 'week', 5); // pixelsPerDay = 5
+      // 30 ngày / 7 = 4, cộng mốc 0 là 5 mốc (0, 7, 14, 21, 28)
+      expect(ticks).toHaveLength(5);
+      expect(ticks[0].label).toContain('T1');
+      expect(ticks[0].x).toBe(0);
+      expect(ticks[1].label).toContain('T2');
+      expect(ticks[1].x).toBe(35); // 7 * 5
     });
   });
 });
