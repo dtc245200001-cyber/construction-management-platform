@@ -137,3 +137,17 @@ g) Lưu ý: hệ thống chỉ chặn khi chính quan hệ mới nằm trên m�
 1. Cả SVG và Canvas đều đạt FPS tối đa (~60 FPS) khi cuộn ngang, ngay cả khi CPU bị bóp nghẹt 4 lần (mô phỏng điện thoại tầm trung).
 2. Thời gian render ban đầu của Canvas nhanh hơn ở CPU bình thường, nhưng khi throttle 4x thì cả hai đều ngang ngửa nhau (~960ms). Với 500 DOM nodes (của SVG), trình duyệt hiện đại hoàn toàn có thể xử lý mượt mà.
 3. Việc dùng SVG với React giúp code dễ bảo trì hơn, hỗ trợ tốt các tương tác (onClick, hover, tooltip, styling CSS) so với Canvas. Bù đắp cho việc tăng một chút xíu thời gian render lần đầu.
+
+## 8. Bộ ca kiểm thử tiến độ (S-10)
+
+Tệp `backend/__tests__/fixtures/k01-expected.json` là nơi chứa đáp án tính tay của K-01, hai mạng T-23 và năm ca từng loại quan hệ.
+Ý nghĩa các trường `calculatedBy`/`calculatedDate`/`verifiedBy`/`verifiedDate`: dùng để ghi nhận con người đã tính toán và kiểm tra chéo các con số (không tự động điền bằng máy).
+Quy tắc: "đáp án không được sinh từ chính mã", mọi con số phải do người tính tay và nhập vào JSON. Người không viết mã chỉ cần đọc JSON này để đối chiếu.
+
+Cách chạy bộ ca:
+```bash
+cd backend
+npx jest __tests__/scheduleAlgorithms
+```
+
+Cách thêm một mạng mới: thêm một phần tử vào mảng `networks` theo cấu trúc hiện có.

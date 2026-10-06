@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import api from "../lib/api";
 import { format, parseISO } from "date-fns";
 import {
@@ -27,34 +27,39 @@ export default function SchedulePage() {
   const [search, setSearch] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [hoveredRowId, setHoveredRowId] = useState(null);
 
   const currentProjectId = localStorage.getItem("currentProjectId") || 1;
 
-  const fetchSchedule = async (onlyCritical = criticalOnly) => {
+  const fetchSchedule = async () => {
     try {
       setLoading(true);
       setErrorMessage("");
-      const queryParam = onlyCritical ? "?critical=true" : "";
+
       const res = await api.get(
-        `/projects/${currentProjectId}/schedule-results${queryParam}`
+        `/projects/${currentProjectId}/schedule-results`
       );
+
       const rows = res.data.data || [];
       setScheduleData(rows);
 
-      // Có việc nhưng chưa có mốc nào => chưa từng tính (hoặc tính không được).
-      // Thử tính một lần để phát hiện vòng và báo ngay khi mở trang.
+      // Có việc nhưng chưa có mốc nào => chưa từng tính
+      // hoặc chưa tính được. Thử tính một lần để phát hiện vòng.
       const neverCalculated =
         rows.length > 0 && rows.every((r) => !r.early_start);
 
-      if (neverCalculated && !onlyCritical) {
+      if (neverCalculated) {
         try {
-          await api.post(`/projects/${currentProjectId}/schedule/recalculate`);
+          await api.post(
+            `/projects/${currentProjectId}/schedule/recalculate`
+          );
+
           const again = await api.get(
             `/projects/${currentProjectId}/schedule-results`
           );
+
           setScheduleData(again.data.data || []);
         } catch (calcErr) {
-          // Chỉ báo khi là lỗi vòng; lỗi khác (vd thiếu ngày bắt đầu) để im
           if (calcErr.response?.data?.code === "DEPENDENCY_CYCLE") {
             setErrorMessage(calcErr.response.data.message);
           }
@@ -62,8 +67,12 @@ export default function SchedulePage() {
       }
     } catch (err) {
       console.error("Lỗi tải tiến độ CPM:", err);
+
       setErrorMessage(
-        getErrorText(err, "Không thể tải dữ liệu tiến độ & đường găng.")
+        getErrorText(
+          err,
+          "Không thể tải dữ liệu tiến độ & đường găng."
+        )
       );
     } finally {
       setLoading(false);
@@ -71,26 +80,34 @@ export default function SchedulePage() {
   };
 
   useEffect(() => {
-    fetchSchedule(criticalOnly);
+    fetchSchedule();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentProjectId, criticalOnly]);
+  }, [currentProjectId]);
 
   const handleRecalculate = async () => {
     try {
       setRecalculating(true);
       setErrorMessage("");
       setSuccessMessage("");
+
       const res = await api.post(
         `/projects/${currentProjectId}/schedule/recalculate`
       );
+
       setSuccessMessage(
-        res.data?.message || "Đã tính toán lại tiến độ CPM thành công."
+        res.data?.message ||
+          "Đã tính toán lại tiến độ CPM thành công."
       );
-      await fetchSchedule(criticalOnly);
+
+      await fetchSchedule();
     } catch (err) {
       console.error("Lỗi tính toán lại tiến độ:", err);
+
       setErrorMessage(
-        getErrorText(err, "Lỗi khi chạy thuật toán tính tiến độ CPM.")
+        getErrorText(
+          err,
+          "Lỗi khi chạy thuật toán tính tiến độ CPM."
+        )
       );
     } finally {
       setRecalculating(false);
@@ -99,6 +116,7 @@ export default function SchedulePage() {
 
   const formatDate = (dateStr) => {
     if (!dateStr) return "--";
+
     try {
       return format(parseISO(dateStr), "dd/MM/yyyy");
     } catch {
@@ -106,20 +124,37 @@ export default function SchedulePage() {
     }
   };
 
-  // Lọc theo từ khóa tìm kiếm
+  // Lọc theo từ khóa tìm kiếm + chỉ việc găng
   const filteredData = scheduleData.filter((item) => {
+    if (criticalOnly && !item.is_critical) return false;
+
     if (!search.trim()) return true;
+
     const term = search.toLowerCase();
     const taskName = (item.name || "").toLowerCase();
-    const workItemName = (item.work_item_name || "").toLowerCase();
-    return taskName.includes(term) || workItemName.includes(term);
+    const workItemName = (
+      item.work_item_name || ""
+    ).toLowerCase();
+
+    return (
+      taskName.includes(term) ||
+      workItemName.includes(term)
+    );
   });
 
   // Thống kê nhanh
   const totalTasks = scheduleData.length;
-  const criticalTasksCount = scheduleData.filter((i) => i.is_critical).length;
+
+  const criticalTasksCount = scheduleData.filter(
+    (item) => item.is_critical
+  ).length;
+
   const criticalPercent =
-    totalTasks > 0 ? Math.round((criticalTasksCount / totalTasks) * 100) : 0;
+    totalTasks > 0
+      ? Math.round(
+          (criticalTasksCount / totalTasks) * 100
+        )
+      : 0;
 
   return (
     <div className="flex-1 min-h-screen bg-[#F3F6FB] text-[#0F1B3D] flex flex-col overflow-hidden">
@@ -132,37 +167,48 @@ export default function SchedulePage() {
               backgroundImage:
                 "url('https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&q=80')",
             }}
-          ></div>
-          <div className="absolute inset-0 bg-gradient-to-r from-[#0B3FA8] to-[#1F63E0]/80 opacity-95"></div>
+          />
+
+          <div className="absolute inset-0 bg-gradient-to-r from-[#0B3FA8] to-[#1F63E0]/80 opacity-95" />
+
           <div className="relative z-10 flex items-center justify-between w-full">
             <div className="flex items-center gap-5">
               <div className="size-[60px] bg-[#1F63E0] rounded-xl flex items-center justify-center shadow-lg border border-white/20">
                 <TrendingUp className="size-8 text-white" />
               </div>
+
               <div>
                 <h1 className="text-white text-[28px] font-bold leading-tight">
                   Tiến độ & Đường găng (CPM)
                 </h1>
+
                 <p className="text-white/90 text-[14px] mt-1">
-                  Phương pháp đường găng (Critical Path Method) theo chuẩn hạt công việc (T-26 / T-27 / T-28)
+                  Phương pháp đường găng
+                  (Critical Path Method) theo chuẩn
+                  hạt công việc
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleRecalculate}
-                disabled={recalculating}
-                className="h-11 px-5 flex items-center gap-2 bg-white text-[#0B3FA8] hover:bg-white/90 font-semibold rounded-[10px] text-[14px] shadow transition-all cursor-pointer disabled:opacity-60"
-              >
-                <RefreshCw className={`size-4 ${recalculating ? "animate-spin" : ""}`} />
-                {recalculating ? "Đang tính toán..." : "Tính lại tiến độ (CPM)"}
-              </button>
-            </div>
+            <button
+              onClick={handleRecalculate}
+              disabled={recalculating}
+              className="h-11 px-5 flex items-center gap-2 bg-white text-[#0B3FA8] hover:bg-white/90 font-semibold rounded-[10px] text-[14px] shadow transition-all cursor-pointer disabled:opacity-60"
+            >
+              <RefreshCw
+                className={`size-4 ${
+                  recalculating ? "animate-spin" : ""
+                }`}
+              />
+
+              {recalculating
+                ? "Đang tính toán..."
+                : "Tính lại tiến độ (CPM)"}
+            </button>
           </div>
         </div>
 
-        {/* Thông báo lỗi / thành công */}
+        {/* Thông báo lỗi */}
         {errorMessage && (
           <div
             role="alert"
@@ -172,6 +218,8 @@ export default function SchedulePage() {
             <span>{errorMessage}</span>
           </div>
         )}
+
+        {/* Thông báo thành công */}
         {successMessage && (
           <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-sm">
             <CheckCircle2 className="size-5 shrink-0 text-emerald-600" />
@@ -179,27 +227,42 @@ export default function SchedulePage() {
           </div>
         )}
 
-        {/* Thẻ thống kê KPI */}
+        {/* KPI */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 shrink-0">
           <div className="bg-white rounded-2xl border border-[#E6EBF3] p-5 shadow-sm flex items-center gap-4">
             <div className="size-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
               <Layers className="size-6" />
             </div>
+
             <div>
-              <p className="text-xs text-muted-foreground font-medium">Tổng số công việc</p>
-              <p className="text-2xl font-bold text-[#0F1B3D] mt-0.5">{totalTasks}</p>
+              <p className="text-xs text-muted-foreground font-medium">
+                Tổng số công việc
+              </p>
+
+              <p className="text-2xl font-bold text-[#0F1B3D] mt-0.5">
+                {totalTasks}
+              </p>
             </div>
           </div>
 
           <div className="bg-white rounded-2xl border border-[#E6EBF3] p-5 shadow-sm flex items-center gap-4">
             <div className="size-12 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0">
-              <TrendingUp className="size-6" />
+              <AlertTriangle className="size-6" />
             </div>
+
             <div>
-              <p className="text-xs text-muted-foreground font-medium">Công việc đường găng</p>
+              <p className="text-xs text-muted-foreground font-medium">
+                Công việc đường găng
+              </p>
+
               <div className="flex items-baseline gap-2 mt-0.5">
-                <span className="text-2xl font-bold text-red-600">{criticalTasksCount}</span>
-                <span className="text-xs font-semibold text-red-500">({criticalPercent}% tổng số)</span>
+                <span className="text-2xl font-bold text-red-600">
+                  {criticalTasksCount}
+                </span>
+
+                <span className="text-xs font-semibold text-red-500">
+                  ({criticalPercent}% tổng số)
+                </span>
               </div>
             </div>
           </div>
@@ -208,19 +271,26 @@ export default function SchedulePage() {
             <div className="size-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
               <Clock className="size-6" />
             </div>
+
             <div>
-              <p className="text-xs text-muted-foreground font-medium">Độ trễ dự phòng (Total Float)</p>
+              <p className="text-xs text-muted-foreground font-medium">
+                Độ trễ dự phòng (Total Float)
+              </p>
+
               <p className="text-sm font-semibold text-[#0F1B3D] mt-1">
-                {criticalTasksCount > 0 ? "Float = 0 ngày trên đường găng" : "Chưa có đường găng"}
+                {criticalTasksCount > 0
+                  ? "Float = 0 ngày trên đường găng"
+                  : "Chưa có đường găng"}
               </p>
             </div>
           </div>
         </div>
 
-        {/* Toolbar & Filter */}
+        {/* Toolbar */}
         <div className="flex items-center gap-3 shrink-0">
           <div className="relative w-[320px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-[#64748B]" />
+
             <input
               type="text"
               placeholder="Tìm kiếm công việc, hạng mục..."
@@ -241,6 +311,7 @@ export default function SchedulePage() {
             >
               Tất cả công việc ({totalTasks})
             </button>
+
             <button
               onClick={() => setCriticalOnly(true)}
               className={`h-9 px-4 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
@@ -255,53 +326,70 @@ export default function SchedulePage() {
           </div>
         </div>
 
-        {/* Bảng kết quả tiến độ CPM */}
-        <div className="flex-1 bg-white rounded-2xl border border-[#E6EBF3] shadow-sm flex flex-col overflow-hidden">
+        {/* Bảng tiến độ */}
+        <div className="flex-1 bg-white rounded-2xl border border-[#E6EBF3] shadow-[0_1px_2px_rgba(16,24,40,.04),0_4px_12px_rgba(16,24,40,.04)] flex flex-col overflow-hidden">
           <div className="overflow-auto flex-1">
             <table className="w-full text-left border-collapse min-w-[960px]">
-              <thead className="bg-[#FAFBFD] sticky top-0 z-10 border-b border-[#E6EBF3]">
+              <thead className="bg-white sticky top-0 z-10 shadow-sm">
                 <tr>
-                  <th className="px-4 py-3.5 text-[13px] font-semibold text-[#475569] min-w-[220px]">
+                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] min-w-[220px] whitespace-nowrap">
                     Công việc
                   </th>
-                  <th className="px-4 py-3.5 text-[13px] font-semibold text-[#475569] min-w-[160px]">
+
+                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] min-w-[160px] whitespace-nowrap">
                     Hạng mục
                   </th>
-                  <th className="px-4 py-3.5 text-[13px] font-semibold text-[#475569] text-center w-[120px]">
+
+                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[150px] whitespace-nowrap">
                     Bắt đầu sớm (ES)
                   </th>
-                  <th className="px-4 py-3.5 text-[13px] font-semibold text-[#475569] text-center w-[120px]">
+
+                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[150px] whitespace-nowrap">
                     Kết thúc sớm (EF)
                   </th>
-                  <th className="px-4 py-3.5 text-[13px] font-semibold text-[#475569] text-center w-[120px]">
+
+                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[150px] whitespace-nowrap">
                     Bắt đầu muộn (LS)
                   </th>
-                  <th className="px-4 py-3.5 text-[13px] font-semibold text-[#475569] text-center w-[120px]">
+
+                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[150px] whitespace-nowrap">
                     Kết thúc muộn (LF)
                   </th>
-                  <th className="px-4 py-3.5 text-[13px] font-semibold text-[#475569] text-center w-[110px]">
+
+                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[130px] whitespace-nowrap">
                     Dự phòng (Float)
                   </th>
-                  <th className="px-4 py-3.5 text-[13px] font-semibold text-[#475569] text-center w-[140px]">
+
+                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[140px] whitespace-nowrap">
                     Trạng thái
                   </th>
                 </tr>
               </thead>
+
               <tbody className="divide-y divide-[#EEF2F7]">
                 {loading ? (
                   <tr>
-                    <td colSpan="8" className="p-12 text-center text-gray-500">
+                    <td
+                      colSpan="8"
+                      className="p-12 text-center text-gray-500"
+                    >
                       <div className="flex items-center justify-center gap-2">
                         <RefreshCw className="size-5 animate-spin text-[#1F63E0]" />
-                        <span>Đang tải tiến độ đường găng...</span>
+                        <span>
+                          Đang tải tiến độ đường găng...
+                        </span>
                       </div>
                     </td>
                   </tr>
                 ) : filteredData.length === 0 ? (
                   <tr>
-                    <td colSpan="8" className="p-16 text-center text-gray-500">
+                    <td
+                      colSpan="8"
+                      className="p-16 text-center text-gray-500"
+                    >
                       <div className="flex flex-col items-center justify-center gap-2">
                         <Calendar className="size-8 text-gray-300" />
+
                         <p className="font-medium text-gray-600">
                           {criticalOnly
                             ? "Không có công việc nào trên đường găng (hoặc chưa tính toán CPM)."
@@ -314,35 +402,159 @@ export default function SchedulePage() {
                   filteredData.map((row) => (
                     <tr
                       key={row.id}
+                      data-testid={`schedule-row-${row.id}`}
+                      data-critical={
+                        row.is_critical ? "true" : "false"
+                      }
+                      onMouseEnter={() =>
+                        setHoveredRowId(row.id)
+                      }
+                      onMouseLeave={() =>
+                        setHoveredRowId(null)
+                      }
                       className={`h-[50px] transition-colors ${
-                        row.is_critical ? "bg-red-50/40 hover:bg-red-50/70" : "hover:bg-slate-50"
+                        row.is_critical
+                          ? "bg-red-50/50 hover:bg-red-50"
+                          : "hover:bg-slate-50"
                       }`}
                     >
-                      <td className="px-4 py-2 font-medium text-[14px] text-[#0F1B3D]">
+                      <td
+                        className={`relative px-4 py-2 font-medium text-[14px] text-[#0F1B3D] ${
+                          row.is_critical
+                            ? "border-l-4 border-l-red-600"
+                            : "border-l-4 border-l-transparent"
+                        }`}
+                      >
                         <div className="flex items-center gap-2">
+                          {row.is_critical ? (
+                            <AlertTriangle
+                              aria-label="Việc găng"
+                              className="size-4 shrink-0 text-red-600"
+                            />
+                          ) : (
+                            <span className="size-2 rounded-full shrink-0 bg-slate-300" />
+                          )}
+
                           <span
-                            className={`size-2 rounded-full shrink-0 ${
-                              row.is_critical ? "bg-red-500 ring-4 ring-red-100" : "bg-slate-300"
-                            }`}
-                          />
-                          <span>{row.name}</span>
+                            className={
+                              row.is_critical
+                                ? "font-bold text-red-800"
+                                : ""
+                            }
+                          >
+                            {row.name}
+                          </span>
                         </div>
+
+                        {/* T-33: tooltip khi trỏ vào việc */}
+                        {hoveredRowId === row.id && (
+                          <div
+                            role="tooltip"
+                            className="pointer-events-none absolute left-4 top-full z-50 mt-1 w-[480px] rounded-xl border border-slate-200 bg-white p-4 shadow-xl"
+                          >
+                            <div className="mb-3 flex items-center gap-2">
+                              {row.is_critical && (
+                                <AlertTriangle className="size-4 text-red-600" />
+                              )}
+
+                              <span className="font-bold text-[#0F1B3D]">
+                                {row.name}
+                              </span>
+
+                              {row.is_critical && (
+                                <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">
+                                  Việc găng
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-5 gap-2 text-center text-xs">
+                              <div>
+                                <p className="font-semibold text-slate-500">
+                                  ES
+                                </p>
+                                <p>
+                                  {formatDate(
+                                    row.early_start
+                                  )}
+                                </p>
+                              </div>
+
+                              <div>
+                                <p className="font-semibold text-slate-500">
+                                  EF
+                                </p>
+                                <p>
+                                  {formatDate(
+                                    row.early_finish
+                                  )}
+                                </p>
+                              </div>
+
+                              <div>
+                                <p className="font-semibold text-slate-500">
+                                  LS
+                                </p>
+                                <p>
+                                  {formatDate(
+                                    row.late_start
+                                  )}
+                                </p>
+                              </div>
+
+                              <div>
+                                <p className="font-semibold text-slate-500">
+                                  LF
+                                </p>
+                                <p>
+                                  {formatDate(
+                                    row.late_finish
+                                  )}
+                                </p>
+                              </div>
+
+                              <div>
+                                <p className="font-semibold text-slate-500">
+                                  Float
+                                </p>
+
+                                <p
+                                  className={
+                                    row.total_float === 0
+                                      ? "font-bold text-red-600"
+                                      : ""
+                                  }
+                                >
+                                  {row.total_float != null
+                                    ? `${row.total_float} ngày`
+                                    : "--"}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </td>
+
                       <td className="px-4 py-2 text-[13px] text-[#64748B]">
                         {row.work_item_name || "--"}
                       </td>
+
                       <td className="px-4 py-2 text-center text-[13px] font-mono text-[#0F1B3D]">
                         {formatDate(row.early_start)}
                       </td>
+
                       <td className="px-4 py-2 text-center text-[13px] font-mono text-[#0F1B3D]">
                         {formatDate(row.early_finish)}
                       </td>
+
                       <td className="px-4 py-2 text-center text-[13px] font-mono text-[#475569]">
                         {formatDate(row.late_start)}
                       </td>
+
                       <td className="px-4 py-2 text-center text-[13px] font-mono text-[#475569]">
                         {formatDate(row.late_finish)}
                       </td>
+
                       <td className="px-4 py-2 text-center text-[13px] font-mono font-medium">
                         <span
                           className={`px-2 py-0.5 rounded text-xs ${
@@ -351,12 +563,16 @@ export default function SchedulePage() {
                               : "bg-slate-100 text-slate-700"
                           }`}
                         >
-                          {row.total_float != null ? `${row.total_float} ngày` : "--"}
+                          {row.total_float != null
+                            ? `${row.total_float} ngày`
+                            : "--"}
                         </span>
                       </td>
+
                       <td className="px-4 py-2 text-center">
                         {row.is_critical ? (
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 whitespace-nowrap">
+                            <AlertTriangle className="size-3" />
                             Đường găng
                           </span>
                         ) : (
