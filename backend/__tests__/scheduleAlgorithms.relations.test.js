@@ -76,5 +76,49 @@ describe("Kiểm tra cấu trúc tệp dữ liệu fixture", () => {
     });
   });
 
+  fixture.networks.forEach(network => {
+    it(`Chống giá trị giả cho mạng ${network.id}`, () => {
+      const { calculatedBy, calculatedDate, verifiedBy, verifiedDate } = network;
+      const nameRegex = /^(tên người|\[|\.\.\.|null|todo|xxx)/i;
+      
+      if (calculatedBy !== null) {
+        expect(typeof calculatedBy).toBe("string");
+        expect(calculatedBy.length).toBeGreaterThanOrEqual(2);
+        expect(calculatedBy).not.toMatch(nameRegex);
+      }
+      
+      if (verifiedBy !== null) {
+        expect(typeof verifiedBy).toBe("string");
+        expect(verifiedBy.length).toBeGreaterThanOrEqual(2);
+        expect(verifiedBy).not.toMatch(nameRegex);
+        expect(verifiedBy).not.toBe(calculatedBy);
+        expect(verifiedDate).not.toBeNull();
+      }
+      
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      const todayStr = `${yyyy}-${mm}-${dd}`;
+
+      if (calculatedDate !== null) {
+        expect(calculatedDate).toMatch(dateRegex);
+        expect(isNaN(new Date(calculatedDate).getTime())).toBe(false);
+        expect(calculatedDate <= todayStr).toBe(true);
+      }
+      
+      if (verifiedDate !== null) {
+        expect(verifiedDate).toMatch(dateRegex);
+        expect(isNaN(new Date(verifiedDate).getTime())).toBe(false);
+        expect(verifiedDate <= todayStr).toBe(true);
+      }
+      
+      if (calculatedDate !== null && verifiedDate !== null) {
+        expect(verifiedDate >= calculatedDate).toBe(true);
+      }
+    });
+  });
+
   test.todo("T-23: điền calculatedBy/calculatedDate và verifiedBy/verifiedDate vào fixture.networks sau khi người thứ hai tính lại độc lập");
 });

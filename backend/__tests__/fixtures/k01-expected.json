@@ -242,10 +242,10 @@
       "name": "Đủ bốn loại quan hệ và độ trễ âm",
       "kind": "t23",
       "description": "Mạng 7 việc dùng đủ bốn loại quan hệ FS, SS, FF, SF và một độ trễ âm (FS lag -1). Việc F xong ngày 8 trong khi G chỉ bắt đầu được ngày 11 nên F có độ trễ cho phép 3 ngày; các việc A, B, C, D, E, G đều găng, hai nhánh qua B và qua C cùng găng.",
-      "calculatedBy": "Tên người tính",
-      "calculatedDate": "2026-10-07",
-      "verifiedBy": "Tên người kiểm chéo",
-      "verifiedDate": "2026-10-08",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
       "projectStart": 0,
       "tasks": [
         {
@@ -416,10 +416,10 @@
       "name": "Hai nhánh song song lệch nhau 3 ngày",
       "kind": "t23",
       "description": "nhánh ngắn C-E xong ngày 9, F bắt đầu ngày 12, nên độ trễ cho phép của nhánh ngắn = 12 - 9 = 3.",
-      "calculatedBy": "Tên người tính",
-      "calculatedDate": "2026-10-07",
-      "verifiedBy": "Tên người kiểm chéo",
-      "verifiedDate": "2026-10-08",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
       "projectStart": 0,
       "tasks": [
         {
@@ -562,10 +562,10 @@
       "name": "REL-FS",
       "kind": "single-relation",
       "description": "B bắt đầu sau A kết thúc nên ES(B) = EF(A) + 0 = 3",
-      "calculatedBy": "Tên người tính",
-      "calculatedDate": "2026-10-07",
-      "verifiedBy": "Tên người kiểm chéo",
-      "verifiedDate": "2026-10-08",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
       "projectStart": 0,
       "tasks": [
         {
@@ -620,10 +620,10 @@
       "name": "REL-SS",
       "kind": "single-relation",
       "description": "B bắt đầu sau A bắt đầu 2 ngày nên ES(B)=0+2=2",
-      "calculatedBy": "Tên người tính",
-      "calculatedDate": "2026-10-07",
-      "verifiedBy": "Tên người kiểm chéo",
-      "verifiedDate": "2026-10-08",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
       "projectStart": 0,
       "tasks": [
         {
@@ -678,10 +678,10 @@
       "name": "REL-FF",
       "kind": "single-relation",
       "description": "B kết thúc sau A kết thúc 1 ngày nên EF(B)=5+1=6, ES(B)=6-2=4",
-      "calculatedBy": "Tên người tính",
-      "calculatedDate": "2026-10-07",
-      "verifiedBy": "Tên người kiểm chéo",
-      "verifiedDate": "2026-10-08",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
       "projectStart": 0,
       "tasks": [
         {
@@ -736,10 +736,10 @@
       "name": "REL-SF",
       "kind": "single-relation",
       "description": "B kết thúc sau A bắt đầu 4 ngày nên EF(B)=0+4=4, ES(B)=4-2=2",
-      "calculatedBy": "Tên người tính",
-      "calculatedDate": "2026-10-07",
-      "verifiedBy": "Tên người kiểm chéo",
-      "verifiedDate": "2026-10-08",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
       "projectStart": 0,
       "tasks": [
         {
@@ -794,10 +794,10 @@
       "name": "REL-LAGAM",
       "kind": "single-relation",
       "description": "B bắt đầu trước khi A kết thúc 2 ngày nên ES(B)=4-2=2",
-      "calculatedBy": "Tên người tính",
-      "calculatedDate": "2026-10-07",
-      "verifiedBy": "Tên người kiểm chéo",
-      "verifiedDate": "2026-10-08",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
       "projectStart": 0,
       "tasks": [
         {
