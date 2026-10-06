@@ -519,6 +519,59 @@ router.delete(
       });
     }
 
+    /*
+     * 1. Kiểm tra hạng mục có tồn tại trong project hay không.
+     */
+    const itemResult = await db.query(
+      `
+        SELECT id, name
+        FROM work_items
+        WHERE id = $1
+          AND project_id = $2
+      `,
+      [id, projectId]
+    );
+
+    if (itemResult.rows.length === 0) {
+      return res.status(404).json({
+        message: "Không tìm thấy hạng mục",
+      });
+    }
+
+    const itemName = itemResult.rows[0].name;
+
+    /*
+     * 2. Kiểm tra hạng mục con.
+     *
+     * Nếu parent đang có child thì không được xóa.
+     * Trả 409 ngay, không thực hiện DELETE.
+     */
+    const childResult = await db.query(
+      `
+        SELECT id
+        FROM work_items
+        WHERE parent_id = $1
+          AND project_id = $2
+        LIMIT 1
+      `,
+      [id, projectId]
+    );
+
+    if (childResult.rows.length > 0) {
+      return res.status(409).json({
+        message:
+          `Không thể xóa hạng mục "${itemName}" ` +
+          "vì đang chứa các hạng mục con.",
+      });
+    }
+
+    /*
+     * 3. Kiểm tra task trong subtree.
+     *
+     * Hiện tại không có child nên thực tế đây là task
+     * thuộc chính hạng mục này, nhưng vẫn dùng helper
+     * countTasksInSubtree để giữ nguyên logic hiện tại.
+     */
     const { countTasksInSubtree } = require("../queries/workItemTree");
 
     const taskCount = await countTasksInSubtree(
@@ -528,21 +581,6 @@ router.delete(
     );
 
     if (taskCount > 0) {
-      const item = await db.query(
-        `
-          SELECT name
-          FROM work_items
-          WHERE id = $1
-            AND project_id = $2
-        `,
-        [id, projectId]
-      );
-
-      const itemName =
-        item.rows[0]
-          ? item.rows[0].name
-          : "Hạng mục";
-
       return res.status(409).json({
         message:
           `Không thể xóa hạng mục "${itemName}" ` +
@@ -550,6 +588,9 @@ router.delete(
       });
     }
 
+    /*
+     * 4. Không có child và không có task -> thực hiện DELETE.
+     */
     try {
       const result = await db.query(
         `
@@ -574,21 +615,12 @@ router.delete(
         success: true,
       });
     } catch (err) {
+      /*
+       * Bảo vệ thêm trong trường hợp có race condition:
+       * child được tạo sau lúc kiểm tra ở bước 2 nhưng
+       * trước khi DELETE.
+       */
       if (err.code === "23503") {
-        const item = await db.query(
-          `
-            SELECT name
-            FROM work_items
-            WHERE id = $1
-          `,
-          [id]
-        );
-
-        const itemName =
-          item.rows[0]
-            ? item.rows[0].name
-            : "Hạng mục";
-
         return res.status(409).json({
           message:
             `Không thể xóa hạng mục "${itemName}" ` +

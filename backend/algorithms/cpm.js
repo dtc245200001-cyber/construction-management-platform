@@ -33,7 +33,9 @@ async function buildGraph(projectId, pool) {
         t.id,
         t.work_item_id,
         t.name,
-        t.duration_days AS duration
+        t.duration_days AS duration,
+        t.scheduling_mode,
+        t.manual_start_date
       FROM tasks t
       JOIN work_items wi
         ON wi.id = t.work_item_id
@@ -81,6 +83,8 @@ async function buildGraph(projectId, pool) {
       workItemId: row.work_item_id,
       name: row.name,
       duration: Number(row.duration),
+      schedulingMode: row.scheduling_mode,
+      manualStartDate: row.manual_start_date,
     };
 
     adjList[id] = [];

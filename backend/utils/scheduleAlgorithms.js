@@ -123,6 +123,10 @@ function forwardPass(tasks, dependencies, topologicalOrder, projectStart = 0) {
       if (possibleES > ES) ES = possibleES;
     }
 
+    if (task.schedulingMode === 'manual' && task.manualOffset !== undefined) {
+      ES = task.manualOffset;
+    }
+
     const EF = ES + duration;
     results[taskId] = { ES, EF };
   }
@@ -187,6 +191,10 @@ function backwardPass(tasks, dependencies, topologicalOrder, earlyResults) {
       });
 
       LF = Math.min(...candidateLFs);
+    }
+
+    if (task.schedulingMode === 'manual' && task.manualOffset !== undefined) {
+      LF = earlyResults[taskId].EF; // Force LF to match EF for manual tasks
     }
 
     results[taskId] = {

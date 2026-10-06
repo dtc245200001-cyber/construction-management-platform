@@ -27,6 +27,8 @@ router.post(
     const workItemId = Number(req.body.work_item_id);
     const durationDays = Number(req.body.duration_days);
     const rawName = req.body.name;
+    const schedulingMode = req.body.scheduling_mode === 'manual' ? 'manual' : 'auto';
+    const manualStartDate = req.body.manual_start_date || null;
 
     if (!Number.isInteger(projectId) || projectId <= 0) {
       return res.status(400).json({
@@ -94,11 +96,11 @@ router.post(
       // Thêm task mới
       const insertResult = await client.query(
         `
-          INSERT INTO tasks (work_item_id, name, duration_days)
-          VALUES ($1, $2, $3)
-          RETURNING id, work_item_id, name, duration_days, created_at, updated_at
+          INSERT INTO tasks (work_item_id, name, duration_days, scheduling_mode, manual_start_date)
+          VALUES ($1, $2, $3, $4, $5)
+          RETURNING id, work_item_id, name, duration_days, scheduling_mode, manual_start_date, created_at, updated_at
         `,
-        [workItemId, name, durationDays]
+        [workItemId, name, durationDays, schedulingMode, manualStartDate]
       );
 
       // Đánh dấu lịch cần tính toán lại
@@ -143,10 +145,12 @@ router.put(
 
     const hasDuration = req.body.duration_days !== undefined;
     const hasName = req.body.name !== undefined;
+    const hasSchedulingMode = req.body.scheduling_mode !== undefined;
+    const hasManualStartDate = req.body.manual_start_date !== undefined;
 
-    if (!hasDuration && !hasName) {
+    if (!hasDuration && !hasName && !hasSchedulingMode && !hasManualStartDate) {
       return res.status(400).json({
-        message: "Cần cung cấp ít nhất name hoặc duration_days để cập nhật",
+        message: "Cần cung cấp ít nhất 1 trường để cập nhật",
       });
     }
 
@@ -181,7 +185,9 @@ router.put(
             t.id,
             t.work_item_id,
             t.name,
-            t.duration_days
+            t.duration_days,
+            t.scheduling_mode,
+            t.manual_start_date
           FROM tasks t
           JOIN work_items wi
             ON wi.id = t.work_item_id
@@ -202,20 +208,28 @@ router.put(
       const oldTask = taskResult.rows[0];
       const targetName = hasName ? name : oldTask.name;
       const targetDuration = hasDuration ? durationDays : oldTask.duration_days;
+      const targetSchedulingMode = hasSchedulingMode ? (req.body.scheduling_mode === 'manual' ? 'manual' : 'auto') : oldTask.scheduling_mode;
+      // Handle Date comparison by converting to ISO string (format YYYY-MM-DD or full) for string comparison, but PostgreSQL returns Date objects.
+      // Easiest is to just pass whatever is given. If it's a date object, we might want to compare timestamps.
+      // But let's just let postgres update it and mark schedule dirty if it changes.
+      const targetManualStartDate = hasManualStartDate ? (req.body.manual_start_date || null) : oldTask.manual_start_date;
 
       const updateResult = await client.query(
         `
           UPDATE tasks
           SET name = $1,
               duration_days = $2,
+              scheduling_mode = $3,
+              manual_start_date = $4,
               updated_at = CURRENT_TIMESTAMP
-          WHERE id = $3
-          RETURNING id, work_item_id, name, duration_days, updated_at
+          WHERE id = $5
+          RETURNING id, work_item_id, name, duration_days, scheduling_mode, manual_start_date, updated_at
         `,
-        [targetName, targetDuration, taskId]
+        [targetName, targetDuration, targetSchedulingMode, targetManualStartDate, taskId]
       );
 
-      const durationChanged = oldTask.duration_days !== targetDuration;
+      // A simple equality check might fail for Date objects, but it's safe to mark it dirty anyway if they send the field.
+      const durationChanged = oldTask.duration_days !== targetDuration || oldTask.scheduling_mode !== targetSchedulingMode || hasManualStartDate;
       if (durationChanged) {
         await markProjectScheduleDirty(projectId, client);
       }
