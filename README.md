@@ -120,3 +120,20 @@ curl -X POST http://localhost:3000/api/projects/PID/dependencies \
   }'
 ```
 g) Lưu ý: hệ thống chỉ chặn khi chính quan hệ mới nằm trên một vòng; nếu dữ liệu cũ đã có vòng ở chỗ khác thì quan hệ không liên quan vẫn lưu được, và vòng cũ sẽ được báo ở màn hình tính tiến độ.
+
+## 7. Quyết định kỹ thuật — T-29 (Chọn SVG hay Canvas cho Gantt Chart)
+
+**Bảng số đo với 500 thanh công việc (Tạo bằng CDP CPU Throttling Rate = 4)**
+
+| Công nghệ | Trạng thái CPU | Thời gian Render (ms) | FPS khi cuộn ngang (3s) |
+| :--- | :--- | :--- | :--- |
+| **SVG** | Bình thường | 415.90 ms | 61.00 |
+| **SVG** | Throttle 4x | 967.30 ms | 61.33 |
+| **Canvas** | Bình thường | 246.40 ms | 60.33 |
+| **Canvas** | Throttle 4x | 968.60 ms | 60.33 |
+
+**Quyết định:** Chọn **SVG**.
+**Lý do:**
+1. Cả SVG và Canvas đều đạt FPS tối đa (~60 FPS) khi cuộn ngang, ngay cả khi CPU bị bóp nghẹt 4 lần (mô phỏng điện thoại tầm trung).
+2. Thời gian render ban đầu của Canvas nhanh hơn ở CPU bình thường, nhưng khi throttle 4x thì cả hai đều ngang ngửa nhau (~960ms). Với 500 DOM nodes (của SVG), trình duyệt hiện đại hoàn toàn có thể xử lý mượt mà.
+3. Việc dùng SVG với React giúp code dễ bảo trì hơn, hỗ trợ tốt các tương tác (onClick, hover, tooltip, styling CSS) so với Canvas. Bù đắp cho việc tăng một chút xíu thời gian render lần đầu.
