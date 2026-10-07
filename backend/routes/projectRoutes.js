@@ -88,6 +88,20 @@ router.post(
         ]
       );
       const newProject = projectResult.rows[0];
+      await client.query(
+        `INSERT INTO calendars (
+          project_id,
+          monday,
+          tuesday,
+          wednesday,
+          thursday,
+          friday,
+          saturday,
+          sunday
+        )
+         VALUES ($1, true, true, true, true, true, true, false)`,
+        [newProject.id]
+      );
 
       await client.query(
         `INSERT INTO project_members (project_id, user_id, role) 
