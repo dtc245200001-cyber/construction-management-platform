@@ -7,7 +7,7 @@ const pool = require("../../config/db");
 const { ROLES } = require("../../utils/constants");
 
 describe("Email Invitation End-to-End Flow (Integration)", () => {
-  let adminCookie;
+  let _adminCookie;
   let projectId;
   let pmUserId;
 

@@ -9,7 +9,7 @@ describe("POST, PUT, DELETE /api/projects/:projectId/tasks - Integration Tests (
   let projectId;
   let leafWorkItemId;
   let parentWorkItemId;
-  let childWorkItemId;
+  let _childWorkItemId;
   let authCookie;
 
   beforeAll(async () => {
@@ -76,7 +76,7 @@ describe("POST, PUT, DELETE /api/projects/:projectId/tasks - Integration Tests (
        RETURNING id`,
       [projectId, parentWorkItemId]
     );
-    childWorkItemId = childRes.rows[0].id;
+    _childWorkItemId = childRes.rows[0].id;
   });
 
   afterAll(async () => {
