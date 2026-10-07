@@ -84,7 +84,23 @@ describe("Projects Integration Tests", () => {
       });
       expect(res.status).toBe(201);
       expect(res.body.project.name).toBe("Admin Project");
-      
+      const { rows: calendarRows } = await pool.query(
+  `SELECT monday, tuesday, wednesday, thursday, friday, saturday, sunday
+   FROM calendars
+   WHERE project_id = $1`,
+  [res.body.project.id]
+);
+
+expect(calendarRows).toHaveLength(1);
+expect(calendarRows[0]).toEqual({
+  monday: true,
+  tuesday: true,
+  wednesday: true,
+  thursday: true,
+  friday: true,
+  saturday: true,
+  sunday: false,
+});
       const { rows } = await pool.query("SELECT role FROM project_members WHERE project_id = $1", [res.body.project.id]);
       expect(rows[0].role).toBe("ban_quan_ly");
     });
