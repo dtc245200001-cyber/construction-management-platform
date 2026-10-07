@@ -50,10 +50,13 @@ function addDays(
  * @returns {Promise<number>} number of persisted results
  */
 async function saveScheduleResults(
+  projectId,
   scheduleResults,
   projectStart,
   calendar = DEFAULT_CALENDAR,
-  holidays = []
+  holidays = [],
+  expectedVersion = null,
+  clockDate = null
 ) {
   const entries = Object.entries(scheduleResults || {});
 
@@ -69,6 +72,27 @@ async function saveScheduleResults(
 
   try {
     await client.query("BEGIN");
+
+    // Lấy version hiện tại
+    const versionRes = await client.query(
+      `SELECT schedule_version FROM projects WHERE id = $1 FOR UPDATE`,
+      [projectId]
+    );
+
+    if (versionRes.rows.length === 0) {
+      throw new Error("Project not found");
+    }
+
+    const currentVersion = versionRes.rows[0].schedule_version;
+    const isStale = expectedVersion !== null && currentVersion !== expectedVersion;
+
+    const taskIds = [];
+    const earlyStarts = [];
+    const earlyFinishes = [];
+    const lateStarts = [];
+    const lateFinishes = [];
+    const totalFloats = [];
+    const isCriticals = [];
 
     for (const [taskId, result] of entries) {
       const duration =
@@ -100,40 +124,66 @@ async function saveScheduleResults(
           ? addWorkingDays(lateStartStr, duration - 1, calendar, holidays)
           : lateStartStr;
 
+      taskIds.push(Number(taskId));
+      earlyStarts.push(new Date(`${earlyStartStr}T00:00:00.000Z`));
+      earlyFinishes.push(new Date(`${earlyFinishStr}T00:00:00.000Z`));
+      lateStarts.push(new Date(`${lateStartStr}T00:00:00.000Z`));
+      lateFinishes.push(new Date(`${lateFinishStr}T00:00:00.000Z`));
+      totalFloats.push(result.float);
+      isCriticals.push(result.critical);
+    }
+
+    const columns = [
+      { name: 'task_id', type: 'int[]' },
+      { name: 'early_start', type: 'timestamp[]' },
+      { name: 'early_finish', type: 'timestamp[]' },
+      { name: 'late_start', type: 'timestamp[]' },
+      { name: 'late_finish', type: 'timestamp[]' },
+      { name: 'total_float', type: 'int[]' },
+      { name: 'is_critical', type: 'boolean[]' }
+    ];
+
+    const unnestArgs = columns.map((c, i) => `$${i + 1}::${c.type}`).join(', ');
+    const asList = columns.map(c => c.name).join(', ');
+    const insertCols = [...columns.map(c => c.name), 'calculated_at', 'needs_recalculation'].join(', ');
+    const selectCols = [...columns.map(c => c.name), 'CURRENT_TIMESTAMP', `$${columns.length + 1}`].join(', ');
+    const updateSets = columns
+      .filter(c => c.name !== 'task_id')
+      .map(c => `${c.name} = EXCLUDED.${c.name}`)
+      .join(',\n        ');
+
+    // Bulk upsert
+    await client.query(
+      `
+      INSERT INTO schedule_results (${insertCols})
+      SELECT ${selectCols} FROM UNNEST(${unnestArgs}) AS t(${asList})
+      ON CONFLICT (task_id)
+      DO UPDATE SET
+        ${updateSets},
+        calculated_at = CURRENT_TIMESTAMP,
+        needs_recalculation = $${columns.length + 1}
+      `,
+      [
+        taskIds,
+        earlyStarts,
+        earlyFinishes,
+        lateStarts,
+        lateFinishes,
+        totalFloats,
+        isCriticals,
+        isStale // Nếu đã có thay đổi (stale), không xóa cờ dirty
+      ]
+    );
+
+    // Cập nhật last_schedule_calculated_date cho dự án nếu không stale
+    if (!isStale) {
       await client.query(
         `
-        INSERT INTO schedule_results (
-          task_id,
-          early_start,
-          early_finish,
-          late_start,
-          late_finish,
-          total_float,
-          is_critical,
-          calculated_at,
-          needs_recalculation
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, false)
-        ON CONFLICT (task_id)
-        DO UPDATE SET
-          early_start = EXCLUDED.early_start,
-          early_finish = EXCLUDED.early_finish,
-          late_start = EXCLUDED.late_start,
-          late_finish = EXCLUDED.late_finish,
-          total_float = EXCLUDED.total_float,
-          is_critical = EXCLUDED.is_critical,
-          calculated_at = CURRENT_TIMESTAMP,
-          needs_recalculation = false
+        UPDATE projects
+        SET last_schedule_calculated_date = $1
+        WHERE id = $2
         `,
-        [
-          Number(taskId),
-          new Date(`${earlyStartStr}T00:00:00.000Z`),
-          new Date(`${earlyFinishStr}T00:00:00.000Z`),
-          new Date(`${lateStartStr}T00:00:00.000Z`),
-          new Date(`${lateFinishStr}T00:00:00.000Z`),
-          result.float,
-          result.critical,
-        ]
+        [clockDate ? new Date(clockDate) : new Date(), projectId]
       );
     }
 

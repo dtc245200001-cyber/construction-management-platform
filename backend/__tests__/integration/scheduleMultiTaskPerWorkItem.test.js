@@ -55,6 +55,7 @@ describe("Schedule Results - Task Grain Multi-Task Test (Integration)", () => {
     await pool.query(
       "TRUNCATE TABLE schedule_results, dependencies, tasks, work_items, projects RESTART IDENTITY CASCADE"
     );
+    await pool.end();
   });
 
   test("calculateAndSaveSchedule phải lưu đủ 2 kết quả cho 2 công việc, không bị ghi đè mất dữ liệu", async () => {

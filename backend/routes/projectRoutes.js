@@ -7,7 +7,7 @@ const { ROLES } = require('../utils/constants');
 const { createEmailLog, processEmailLogs } = require('../lib/emailSender');
 const emailTemplates = require('../lib/emailTemplates');
 const { getScheduleResults } = require("../services/scheduleQuery");
-const { calculateAndSaveSchedule } = require("../services/scheduleCalculation");
+const { calculateAndSaveSchedule, runScheduleJobAsync } = require("../services/scheduleCalculation");
 const { markProjectScheduleDirty } = require("../services/scheduleRecalculation");
 
 const router = createProjectRouter();
@@ -535,6 +535,7 @@ router.post(
 );
 
 
+
 // POST /api/projects/:projectId/schedule/recalculate
 router.post(
   "/:projectId/schedule/recalculate",
@@ -551,11 +552,95 @@ router.post(
         });
       }
 
+      const client = await db.connect();
+      try {
+        await client.query("BEGIN");
+        
+        // Khóa dòng dự án để đồng bộ
+        await client.query("SELECT id FROM projects WHERE id = $1 FOR UPDATE", [projectId]);
+
+        // Check running jobs
+        const runningJobRes = await client.query(
+          `SELECT id FROM schedule_jobs WHERE project_id = $1 AND status IN ('queued', 'running') LIMIT 1`,
+          [projectId]
+        );
+        if (runningJobRes.rows.length > 0) {
+          await client.query("COMMIT");
+          return res.status(202).json({
+            message: "Đã có tác vụ tính toán đang chạy",
+            jobId: runningJobRes.rows[0].id
+          });
+        }
+
+        const taskCountRes = await client.query(
+          `SELECT COUNT(*) FROM tasks t JOIN work_items wi ON wi.id = t.work_item_id WHERE wi.project_id = $1`,
+          [projectId]
+        );
+        const taskCount = Number(taskCountRes.rows[0].count);
+
+        if (taskCount > 200) {
+          // Lấy version dự định
+          const versionRes = await client.query(`SELECT schedule_version FROM projects WHERE id = $1`, [projectId]);
+          const expectedVersion = versionRes.rows[0]?.schedule_version;
+
+          const insertJobRes = await client.query(
+            `INSERT INTO schedule_jobs (project_id, status) VALUES ($1, 'queued') RETURNING id`,
+            [projectId]
+          );
+          const jobId = insertJobRes.rows[0].id;
+          
+          await client.query("COMMIT");
+          
+          // Chạy nền
+          runScheduleJobAsync(jobId, projectId, null, expectedVersion).catch(e => console.error("Background job error:", e));
+
+          return res.status(202).json({
+            message: "Tác vụ tính toán tiến độ đang chạy ngầm",
+            jobId
+          });
+        }
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+
       const result = await calculateAndSaveSchedule(projectId);
 
       return res.json({
         message: "Đã tính và lưu kết quả lịch",
         ...result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /api/projects/:projectId/schedule-jobs/:jobId
+router.get(
+  "/:projectId/schedule-jobs/:jobId",
+  requireAuth,
+  checkProjectAccess,
+  allow(Object.values(ROLES)),
+  async (req, res, next) => {
+    try {
+      const projectId = Number(req.params.projectId);
+      const { jobId } = req.params;
+
+      const jobRes = await db.query(
+        `SELECT id, status, error_details FROM schedule_jobs WHERE id = $1 AND project_id = $2`,
+        [jobId, projectId]
+      );
+
+      if (jobRes.rows.length === 0) {
+        return res.status(404).json({ message: "Không tìm thấy job" });
+      }
+
+      return res.json({
+        job: jobRes.rows[0]
       });
     } catch (error) {
       next(error);

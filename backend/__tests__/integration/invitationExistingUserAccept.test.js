@@ -55,6 +55,7 @@ describe("Invitation Acceptance for Existing User (Integration)", () => {
     await pool.query(
       "TRUNCATE TABLE email_logs, project_members, invitations, projects, users RESTART IDENTITY CASCADE"
     );
+    await pool.end();
   });
 
   test("người dùng đã có tài khoản chấp nhận lời mời thành công và vào project_members với đúng role", async () => {

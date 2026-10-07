@@ -63,7 +63,7 @@ if (EMAIL_PROVIDER === 'memory') {
     }
   });
   // Auto-generate ethereal account if not provided
-  if (!process.env.ETHEREAL_USER) {
+  if (!process.env.ETHEREAL_USER && process.env.NODE_ENV !== 'test') {
     nodemailer.createTestAccount((err, account) => {
       if (err) {
         logger.error('Failed to create a testing account. ' + err.message);

@@ -193,7 +193,7 @@ function backwardPass(tasks, dependencies, topologicalOrder, earlyResults) {
       LF = Math.min(...candidateLFs);
     }
 
-    if (task.schedulingMode === 'manual' && task.manualOffset !== undefined) {
+    if (task.schedulingMode === 'manual' && task.manualOffset !== undefined && !task.isActual) {
       LF = earlyResults[taskId].EF; // Force LF to match EF for manual tasks
     }
 
@@ -216,7 +216,7 @@ function backwardPass(tasks, dependencies, topologicalOrder, earlyResults) {
  * @returns {number} - Độ trễ toàn phần tính theo số nguyên ngày
  */
 function calculateTotalFloat(LS, ES) {
-  return Math.round(Number(LS) - Number(ES));
+  return Math.max(0, Math.round(Number(LS) - Number(ES)));
 }
 
 /**

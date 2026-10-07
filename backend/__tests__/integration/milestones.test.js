@@ -75,6 +75,7 @@ describe("Milestones Integration Tests", () => {
 
   afterAll(async () => {
     // cleanup is done in beforeAll TRUNCATE
+    await pool.end();
   });
 
   it("should create a milestone successfully with BAN_QUAN_LY role", async () => {
