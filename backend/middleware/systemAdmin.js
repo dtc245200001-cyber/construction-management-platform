@@ -11,4 +11,6 @@ function requireSystemAdmin(req, res, next) {
   return next();
 }
 
+requireSystemAdmin.allowedRoles = ['SYSTEM_ADMIN'];
+
 module.exports = requireSystemAdmin;

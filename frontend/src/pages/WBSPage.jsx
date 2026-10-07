@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useOutletContext } from "react-router-dom";
 import api from "../lib/api";
 import TaskForm from "../components/TaskForm";
 import { format, parseISO } from "date-fns";
@@ -110,6 +111,8 @@ function WBSPage() {
   const [expanded, setExpanded] = useState(new Set());
   const [search, setSearch] = useState("");
   const [showRightPanel, setShowRightPanel] = useState(true);
+  const context = useOutletContext();
+  const currentProject = context?.currentProject;
   // =========================
   // T-12 TASK FORM
   // =========================
@@ -337,7 +340,7 @@ const closeTaskForm = () => {
     if (isCategory) {
       return (
         <React.Fragment key={node.id}>
-          <tr className={`h-[52px] ${color.bg} rounded-xl border-b border-white`}>
+          <tr className={`h-[52px] ${color.bg} rounded-xl border-b border-white group`}>
             <td className="px-4 font-bold text-[#0F1B3D]" style={{ paddingLeft: `${indent + 16}px` }}>
               <div className="flex items-center gap-2">
                 <button onClick={() => toggleExpand(node.id)} className="p-1 hover:bg-black/5 rounded">
@@ -355,7 +358,7 @@ const closeTaskForm = () => {
             </td>
             <td className="px-4 text-sm text-[#475569]">{renderDate(node.start_date)}</td>
             <td className="px-4 text-sm text-[#475569]">{renderDate(node.end_date)}</td>
-            <td className="px-4 text-right">
+            <td className={`px-4 text-right sticky right-0 z-10 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] transition-colors ${color.bg}`}>
  <div className="flex items-center justify-end gap-1">
   {/* T-12: Thêm công việc — chỉ hạng mục lá mới được chứa công việc */}
   {isLeafCategory(node) && (
@@ -406,7 +409,7 @@ const closeTaskForm = () => {
       );
     } else {
       return (
-        <tr key={node.id} className="h-[46px] bg-white border-b border-[#EEF2F7] hover:bg-[#F5F8FF] transition-colors">
+        <tr key={node.id} className="h-[46px] bg-white border-b border-[#EEF2F7] hover:bg-[#F5F8FF] transition-colors group">
           <td className="px-4" style={{ paddingLeft: `${indent + 44}px` }}>
             <div className="flex items-center gap-2 text-[14px]">
               <span className="text-xs text-[#64748B] font-medium">{indexStr}</span>
@@ -424,7 +427,7 @@ const closeTaskForm = () => {
           </td>
           <td className="px-4 text-sm text-[#475569]">{renderDate(node.start_date)}</td>
           <td className="px-4 text-sm text-[#475569]">{renderDate(node.end_date)}</td>
-          <td className="px-4 text-right">
+          <td className="px-4 text-right sticky right-0 bg-white group-hover:bg-[#F5F8FF] z-10 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] transition-colors">
             <div className="flex items-center justify-end gap-1">
               <button
                 onClick={() => openEditTaskForm (node)}
@@ -487,7 +490,7 @@ const visibleItems = useMemo(() => {
 }, [rolledItems, search]);
 
   return (
-    <div className="flex-1 min-h-screen bg-[#F3F6FB] text-[#0F1B3D] flex flex-col overflow-hidden">
+    <div className="flex-1 h-[calc(100vh-73px)] bg-[#F3F6FB] text-[#0F1B3D] flex flex-col overflow-hidden">
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden p-4 sm:p-6 gap-6 max-w-[1672px] mx-auto w-full">
         {/* Main Content */}
         <div className="flex-1 flex flex-col gap-6 overflow-hidden min-w-0">
@@ -502,7 +505,7 @@ const visibleItems = useMemo(() => {
               </div>
               <div>
                 <h1 className="text-white text-[30px] font-bold leading-tight">Cơ cấu công việc (WBS)</h1>
-                <p className="text-white/90 text-[15px] mt-1">Quản lý cấu trúc hạng mục phân cấp của dự án</p>
+                <p className="text-white/90 text-[18px] font-medium mt-1.5">{currentProject ? `Dự án: ${currentProject.name}` : 'Quản lý cấu trúc hạng mục phân cấp của dự án'}</p>
               </div>
             </div>
           </div>
@@ -544,7 +547,7 @@ const visibleItems = useMemo(() => {
 
           {/* WBS Table Card */}
           <div className="flex-1 bg-white rounded-2xl border border-[#E6EBF3] shadow-[0_1px_2px_rgba(16,24,40,.04),0_4px_12px_rgba(16,24,40,.04)] flex flex-col overflow-hidden min-w-0">
-            <div className="overflow-x-auto flex-1 min-w-0">
+            <div className="overflow-x-auto overflow-y-auto flex-1 min-w-0">
               <table className="w-full text-left border-collapse min-w-[900px]">
                 <thead className="bg-white sticky top-0 z-10 shadow-sm">
                   <tr>
@@ -552,7 +555,7 @@ const visibleItems = useMemo(() => {
                     <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[110px] whitespace-nowrap">Loại</th>
                     <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[120px] whitespace-nowrap">Bắt đầu</th>
                     <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[120px] whitespace-nowrap">Kết thúc</th>
-                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[50px]"></th>
+                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[50px] sticky right-0 bg-white z-20 shadow-[-4px_0_12px_rgba(0,0,0,0.05)]"></th>
                   </tr>
                 </thead>
                 <tbody>

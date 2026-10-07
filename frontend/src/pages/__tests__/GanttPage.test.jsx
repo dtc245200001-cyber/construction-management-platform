@@ -93,12 +93,12 @@ describe(
 
         expect(bar).toHaveAttribute(
           "stroke",
-          "#991b1b"
+          "#dc2626"
         );
 
         expect(bar).toHaveAttribute(
           "stroke-width",
-          "3"
+          "1.5"
         );
 
         expect(

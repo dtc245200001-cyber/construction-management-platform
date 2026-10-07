@@ -124,6 +124,37 @@ router.post(
   }
 );
 
+// DELETE /api/projects/:projectId - Xóa dự án
+router.delete(
+  "/:projectId",
+  requireSystemAdmin,
+  createAuditMiddleware('DELETE_PROJECT', 'projects'),
+  async (req, res, next) => {
+    const { projectId } = req.params;
+    
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      
+      const project = await client.query("SELECT id FROM projects WHERE id = $1", [projectId]);
+      if (project.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Dự án không tồn tại" });
+      }
+
+      await client.query("DELETE FROM projects WHERE id = $1", [projectId]);
+      
+      await client.query("COMMIT");
+      return res.json({ message: "Đã xoá dự án thành công" });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      next(error);
+    } finally {
+      client.release();
+    }
+  }
+);
+
 // PUT /api/projects/:projectId - Cập nhật dự án
 router.put(
   "/:projectId",

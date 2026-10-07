@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import api from "../lib/api";
 import {
   Home,
@@ -14,7 +14,8 @@ import {
   UsersRound,
   LayoutGrid,
   Plus,
-  Shield
+  Shield,
+  Trash2
 } from "lucide-react";
 
 export default function ProjectsPage({ user, setUser }) {
@@ -28,6 +29,10 @@ export default function ProjectsPage({ user, setUser }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createData, setCreateData] = useState({ name: '', code: '', location: '', start_date: '', sprint_length_weeks: 1 });
   const [createError, setCreateError] = useState('');
+
+  // Modal Edit
+  const [editProjectData, setEditProjectData] = useState(null);
+  const [editError, setEditError] = useState('');
 
   const isSystemAdmin = user?.is_system_admin === true;
 
@@ -83,10 +88,38 @@ export default function ProjectsPage({ user, setUser }) {
     }
   };
 
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    setEditError('');
+    try {
+      const res = await api.put(`/projects/${editProjectData.id}`, editProjectData);
+      setProjects(projects.map(p => p.id === editProjectData.id ? { ...p, ...res.data.project } : p));
+      setEditProjectData(null);
+    } catch (error) {
+      setEditError(error.response?.data?.message || error.message || 'Lỗi cập nhật dự án');
+    }
+  };
+
+
+  const handleDeleteProject = async (e, id, name) => {
+    e.stopPropagation(); // Ngăn sự kiện click lan ra card
+    if (!window.confirm(`Bạn có chắc chắn muốn xoá dự án "${name}" không? Hành động này không thể hoàn tác!`)) {
+      return;
+    }
+    
+    try {
+      await api.delete(`/projects/${id}`);
+      fetchProjects();
+    } catch (err) {
+      alert("Lỗi khi xoá dự án: " + (err.response?.data?.message || err.message));
+    }
+  };
+
   const statusColors = {
-    "Đang thực hiện": "bg-site-primary/10 text-site-primary",
-    "Chuẩn bị": "bg-site-baseline/10 text-site-baseline",
-    "Hoàn thành": "bg-site-success/10 text-site-success",
+    "Đang thi công": "bg-blue-100 text-blue-700 border border-blue-200 shadow-sm font-semibold",
+    "Chuẩn bị": "bg-amber-100 text-amber-700 border border-amber-300 shadow-sm font-semibold",
+    "Hoàn thành": "bg-emerald-100 text-emerald-700 border border-emerald-200 shadow-sm font-semibold",
+    "Tạm dừng": "bg-rose-100 text-rose-700 border border-rose-200 shadow-sm font-semibold",
   };
 
   const formatDate = (d) => {
@@ -158,13 +191,17 @@ export default function ProjectsPage({ user, setUser }) {
       </header>
 
       {/* Breadcrumb */}
-      <div className="border-b border-site-border bg-site-surface px-6 py-3 flex items-center gap-2 text-sm text-site-baseline">
-        <Home className="size-4" />
+      <nav aria-label="Breadcrumb" className="border-b border-site-border bg-site-surface px-6 py-3 flex items-center gap-2 text-sm text-site-baseline">
+        <Link 
+          to="/" 
+          aria-label="Về trang chủ"
+          className="cursor-pointer hover:text-site-dark transition-colors outline-none focus-visible:ring-2 focus-visible:ring-site-primary rounded"
+        >
+          <Home className="size-4" />
+        </Link>
         <ChevronRight className="size-3.5" />
-        <span className="cursor-pointer hover:text-site-dark transition-colors">Dự án</span>
-        <ChevronRight className="size-3.5" />
-        <span className="font-semibold text-site-dark">Chọn dự án</span>
-      </div>
+        <span className="font-semibold text-site-dark" aria-current="page">Chọn dự án</span>
+      </nav>
 
       {/* Main content */}
       <main className="flex-1 p-6 md:p-8 max-w-7xl mx-auto w-full">
@@ -215,10 +252,32 @@ export default function ProjectsPage({ user, setUser }) {
                         <p className="text-xs text-site-baseline truncate">{proj.code || 'No code'}</p>
                       </div>
                     </div>
-                    <span className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${statusColors[proj.status] || statusColors["Chuẩn bị"]}`}>
-                      <span className="size-1.5 rounded-full bg-current"></span>
-                      {proj.status || 'Chuẩn bị'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${statusColors[proj.status] || statusColors["Chuẩn bị"]}`}>
+                        <span className="size-1.5 rounded-full bg-current"></span>
+                        {proj.status || 'Chuẩn bị'}
+                      </span>
+                      {isSystemAdmin && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setEditProjectData(proj); }}
+                            className="p-1.5 text-site-baseline hover:text-site-primary hover:bg-site-primary/10 rounded-lg transition-colors"
+                            title="Sửa dự án"
+                          >
+                            <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={(e) => handleDeleteProject(e, proj.id, proj.name)}
+                            className="p-1.5 text-site-baseline hover:text-site-critical hover:bg-site-critical/10 rounded-lg transition-colors"
+                            title="Xoá dự án"
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-3 gap-3 my-5 py-4 border-y border-site-border/60">
@@ -328,6 +387,56 @@ export default function ProjectsPage({ user, setUser }) {
             <div className="px-6 py-4 bg-site-bg border-t border-site-border flex items-center justify-end gap-3">
               <button type="button" onClick={() => setShowCreateModal(false)} className="px-4 py-2 text-sm font-medium rounded-lg hover:bg-site-border/50 transition-colors">Hủy</button>
               <button type="submit" className="px-4 py-2 text-sm font-medium bg-site-primary text-white rounded-lg hover:bg-site-primary/90 transition-colors">Tạo dự án</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Modal Edit */}
+      {editProjectData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-site-dark/50 p-4">
+          <form onSubmit={handleEditSubmit} className="bg-site-surface rounded-2xl w-full max-w-md overflow-hidden shadow-xl">
+            <div className="px-6 py-4 border-b border-site-border flex items-center justify-between">
+              <h3 className="text-lg font-bold">Chỉnh sửa dự án</h3>
+              <button type="button" onClick={() => setEditProjectData(null)} className="text-site-baseline hover:text-site-dark">✕</button>
+            </div>
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              {editError && <div className="p-3 bg-site-critical/10 text-site-critical rounded-lg text-sm">{editError}</div>}
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Tên dự án *</label>
+                <input required type="text" value={editProjectData.name} onChange={e => setEditProjectData({...editProjectData, name: e.target.value})} className="w-full rounded-lg border border-site-border px-3 py-2 text-sm outline-none focus:border-site-primary" placeholder="Tên dự án" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Mã dự án *</label>
+                <input required type="text" value={editProjectData.code} onChange={e => setEditProjectData({...editProjectData, code: e.target.value})} className="w-full rounded-lg border border-site-border px-3 py-2 text-sm outline-none focus:border-site-primary" placeholder="VD: APC-2026-01" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Địa điểm</label>
+                <input type="text" value={editProjectData.location || ''} onChange={e => setEditProjectData({...editProjectData, location: e.target.value})} className="w-full rounded-lg border border-site-border px-3 py-2 text-sm outline-none focus:border-site-primary" placeholder="Địa điểm" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1.5">Trạng thái</label>
+                  <select value={editProjectData.status || 'Chuẩn bị'} onChange={e => setEditProjectData({...editProjectData, status: e.target.value})} className="w-full rounded-lg border border-site-border px-3 py-2 text-sm outline-none focus:border-site-primary bg-white">
+                    <option value="Chuẩn bị">Chuẩn bị</option>
+                    <option value="Đang thi công">Đang thi công</option>
+                    <option value="Hoàn thành">Hoàn thành</option>
+                    <option value="Tạm dừng">Tạm dừng</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1.5">Sprint (tuần)</label>
+                  <input type="number" min="1" value={editProjectData.sprint_length_weeks} onChange={e => setEditProjectData({...editProjectData, sprint_length_weeks: parseInt(e.target.value)})} className="w-full rounded-lg border border-site-border px-3 py-2 text-sm outline-none focus:border-site-primary" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Ngày khởi công</label>
+                <input type="date" value={editProjectData.start_date ? editProjectData.start_date.split('T')[0] : ''} onChange={e => setEditProjectData({...editProjectData, start_date: e.target.value})} className="w-full rounded-lg border border-site-border px-3 py-2 text-sm outline-none focus:border-site-primary" />
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-site-bg border-t border-site-border flex items-center justify-end gap-3">
+              <button type="button" onClick={() => setEditProjectData(null)} className="px-4 py-2 text-sm font-medium rounded-lg hover:bg-site-border/50 transition-colors">Hủy</button>
+              <button type="submit" className="px-4 py-2 text-sm font-medium bg-site-primary text-white rounded-lg hover:bg-site-primary/90 transition-colors">Lưu thay đổi</button>
             </div>
           </form>
         </div>

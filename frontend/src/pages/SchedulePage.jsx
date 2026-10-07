@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useOutletContext } from "react-router-dom";
 import api from "../lib/api";
 import { format, parseISO } from "date-fns";
 import {
@@ -23,6 +24,8 @@ export default function SchedulePage() {
   const [scheduleData, setScheduleData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [recalculating, setRecalculating] = useState(false);
+  const context = useOutletContext();
+  const currentProject = context?.currentProject;
   const [criticalOnly, setCriticalOnly] = useState(false);
   const [search, setSearch] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -165,11 +168,11 @@ export default function SchedulePage() {
             className="absolute inset-0 bg-cover bg-center"
             style={{
               backgroundImage:
-                "url('https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&q=80')",
+                "url('https://images.unsplash.com/photo-1541888086425-d81bb19240f5?auto=format&fit=crop&q=80')",
             }}
           />
 
-          <div className="absolute inset-0 bg-gradient-to-r from-[#0B3FA8] to-[#1F63E0]/80 opacity-95" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#0B3FA8] to-transparent opacity-95" />
 
           <div className="relative z-10 flex items-center justify-between w-full">
             <div className="flex items-center gap-5">
@@ -178,14 +181,12 @@ export default function SchedulePage() {
               </div>
 
               <div>
-                <h1 className="text-white text-[28px] font-bold leading-tight">
+                <h1 className="text-white text-[30px] font-bold leading-tight">
                   Bảng đường găng (CPM)
                 </h1>
 
-                <p className="text-white/90 text-[14px] mt-1">
-                  Phương pháp đường găng
-                  (Critical Path Method) theo chuẩn
-                  hạt công việc
+                <p className="text-white/90 text-[18px] font-medium mt-1.5">
+                  {currentProject ? `Dự án: ${currentProject.name}` : 'Phương pháp đường găng (Critical Path Method)'}
                 </p>
               </div>
             </div>
@@ -402,137 +403,13 @@ export default function SchedulePage() {
                   filteredData.map((row) => (
                     <tr
                       key={row.id}
-                      data-testid={`schedule-row-${row.id}`}
-                      data-critical={
-                        row.is_critical ? "true" : "false"
-                      }
-                      onMouseEnter={() =>
-                        setHoveredRowId(row.id)
-                      }
-                      onMouseLeave={() =>
-                        setHoveredRowId(null)
-                      }
-                      className={`h-[50px] transition-colors ${
-                        row.is_critical
-                          ? "bg-red-50/50 hover:bg-red-50"
-                          : "hover:bg-slate-50"
-                      }`}
+                      className="h-[50px] transition-colors hover:bg-slate-50"
                     >
-                      <td
-                        className={`relative px-4 py-2 font-medium text-[14px] text-[#0F1B3D] ${
-                          row.is_critical
-                            ? "border-l-4 border-l-red-600"
-                            : "border-l-4 border-l-transparent"
-                        }`}
-                      >
+                      <td className="px-4 py-2 font-medium text-[14px] text-[#0F1B3D]">
                         <div className="flex items-center gap-2">
-                          {row.is_critical ? (
-                            <AlertTriangle
-                              aria-label="Việc găng"
-                              className="size-4 shrink-0 text-red-600"
-                            />
-                          ) : (
-                            <span className="size-2 rounded-full shrink-0 bg-slate-300" />
-                          )}
-
-                          <span
-                            className={
-                              row.is_critical
-                                ? "font-bold text-red-800"
-                                : ""
-                            }
-                          >
-                            {row.name}
-                          </span>
+                          <span>{row.name}</span>
                         </div>
 
-                        {/* T-33: tooltip khi trỏ vào việc */}
-                        {hoveredRowId === row.id && (
-                          <div
-                            role="tooltip"
-                            className="pointer-events-none absolute left-4 top-full z-50 mt-1 w-[480px] rounded-xl border border-slate-200 bg-white p-4 shadow-xl"
-                          >
-                            <div className="mb-3 flex items-center gap-2">
-                              {row.is_critical && (
-                                <AlertTriangle className="size-4 text-red-600" />
-                              )}
-
-                              <span className="font-bold text-[#0F1B3D]">
-                                {row.name}
-                              </span>
-
-                              {row.is_critical && (
-                                <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">
-                                  Việc găng
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="grid grid-cols-5 gap-2 text-center text-xs">
-                              <div>
-                                <p className="font-semibold text-slate-500">
-                                  ES
-                                </p>
-                                <p>
-                                  {formatDate(
-                                    row.early_start
-                                  )}
-                                </p>
-                              </div>
-
-                              <div>
-                                <p className="font-semibold text-slate-500">
-                                  EF
-                                </p>
-                                <p>
-                                  {formatDate(
-                                    row.early_finish
-                                  )}
-                                </p>
-                              </div>
-
-                              <div>
-                                <p className="font-semibold text-slate-500">
-                                  LS
-                                </p>
-                                <p>
-                                  {formatDate(
-                                    row.late_start
-                                  )}
-                                </p>
-                              </div>
-
-                              <div>
-                                <p className="font-semibold text-slate-500">
-                                  LF
-                                </p>
-                                <p>
-                                  {formatDate(
-                                    row.late_finish
-                                  )}
-                                </p>
-                              </div>
-
-                              <div>
-                                <p className="font-semibold text-slate-500">
-                                  Float
-                                </p>
-
-                                <p
-                                  className={
-                                    row.total_float === 0
-                                      ? "font-bold text-red-600"
-                                      : ""
-                                  }
-                                >
-                                  {row.total_float != null
-                                    ? `${row.total_float} ngày`
-                                    : "--"}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        )}
                       </td>
 
                       <td className="px-4 py-2 text-[13px] text-[#64748B]">
