@@ -20,7 +20,6 @@ export default function GanttPage() {
   const [tasks, setTasks] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [isPolling, setIsPolling] = useState(false);
   const [viewMode, setViewMode] = useState("day");
   const context = useOutletContext();
   const currentProject = context?.currentProject;
@@ -38,67 +37,27 @@ export default function GanttPage() {
 
   const fetchData = async () => {
     try {
-      if (tasks.length === 0) setLoading(true);
+      setLoading(true);
       setError(null);
 
-      let calcErrObj = null;
-      let shouldFetchResults = true;
-
       try {
-        const calcRes = await api.post(`/projects/${currentProjectId}/schedule/recalculate`);
-        
-        if (calcRes.status === 202 && calcRes.data?.jobId) {
-          setIsPolling(true);
-          let jobStatus = 'queued';
-          let currentDelay = 1000;
-          let jobErrorDetails = null;
-
-          while (jobStatus === 'queued' || jobStatus === 'running') {
-            await new Promise(r => setTimeout(r, currentDelay));
-            try {
-              const jobRes = await api.get(`/projects/${currentProjectId}/schedule-jobs/${calcRes.data.jobId}`);
-              jobStatus = jobRes.data.job.status;
-              if (jobStatus === 'failed') {
-                jobErrorDetails = jobRes.data.job.error_details ? JSON.parse(jobRes.data.job.error_details) : { message: 'Lỗi không xác định' };
-              }
-              currentDelay = Math.min(currentDelay * 1.5, 5000);
-            } catch (pollErr) {
-              jobStatus = 'failed';
-              jobErrorDetails = { message: 'Lỗi khi kiểm tra trạng thái' };
-            }
-          }
-          setIsPolling(false);
-
-          if (jobStatus === 'failed') {
-            if (jobErrorDetails?.code === 'DEPENDENCY_CYCLE') {
-              calcErrObj = jobErrorDetails.message;
-            } else {
-              calcErrObj = jobErrorDetails?.message || 'Lỗi tính toán lịch ngầm';
-            }
-            shouldFetchResults = false;
-          }
-        }
+        await api.post(`/projects/${currentProjectId}/schedule/recalculate`);
       } catch (calcErr) {
         if (calcErr.response?.data?.code === "DEPENDENCY_CYCLE") {
-          calcErrObj = calcErr.response.data.message;
-          shouldFetchResults = false;
+          setError(calcErr.response.data.message);
+          return;
         }
       }
 
-      if (calcErrObj) {
-        setError(calcErrObj);
-        return;
-      }
+      const res = await api.get(
+        `/projects/${currentProjectId}/schedule-results`,
+      );
 
-      if (shouldFetchResults) {
-        const res = await api.get(`/projects/${currentProjectId}/schedule-results`);
-        setTasks(res.data.data || []);
-      }
+      setTasks(res.data.data || []);
     } catch (err) {
       setError(err.response?.data?.message || "Lỗi tải tiến độ dự án");
     } finally {
       setLoading(false);
-      setIsPolling(false);
     }
   };
 
@@ -215,17 +174,9 @@ export default function GanttPage() {
         <div className="flex-1 flex flex-col bg-white overflow-hidden rounded-2xl border border-[#E6EBF3] shadow-sm">
           {/* Toolbar */}
           <div className="min-h-[56px] h-auto py-2 border-b border-[#E6EBF3] bg-slate-50/50 flex flex-wrap items-center justify-between px-4 shrink-0 gap-3">
-            <div className="flex items-center gap-4">
-              <h1 className="font-bold text-gray-800 text-[15px] md:text-base hidden md:block">
-                Sơ đồ thanh ngang
-              </h1>
-              {isPolling && (
-                <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 px-3 py-1 rounded-full font-medium">
-                  <RefreshCw className="size-4 animate-spin" />
-                  Đang tính lại tiến độ...
-                </div>
-              )}
-            </div>
+            <h1 className="font-bold text-gray-800 text-[15px] md:text-base hidden md:block">
+              Sơ đồ thanh ngang
+            </h1>
 
             <div className="flex items-center gap-2">
               <button
