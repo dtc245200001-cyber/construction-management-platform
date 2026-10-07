@@ -6,8 +6,12 @@ async function getScheduleResults(projectId, criticalOnly = null) {
       SELECT
         t.id,
         t.name,
+        t.duration_days,
         t.work_item_id,
         wi.name AS work_item_name,
+        to_char(t.actual_start_date, 'YYYY-MM-DD') AS actual_start_date,
+        to_char(t.actual_end_date, 'YYYY-MM-DD') AS actual_end_date,
+        COALESCE(t.percent_complete, 0) AS percent_complete,
         sr.early_start,
         sr.early_finish,
         sr.late_start,

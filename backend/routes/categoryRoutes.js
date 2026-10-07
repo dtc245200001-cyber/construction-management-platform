@@ -128,6 +128,9 @@ router.get(
             t.work_item_id,
             t.name,
             t.duration_days,
+            t.actual_start_date,
+            t.actual_end_date,
+            t.percent_complete,
             sr.early_start,
             sr.early_finish,
             sr.is_critical
@@ -148,19 +151,26 @@ router.get(
     }
 
     // Node công việc chỉ dùng hiển thị, id phân biệt rõ ràng không trùng work_item.id
-    const taskNodes = taskRows.map((t) => ({
-      id: `task-${t.id}`,
-      task_id: t.id,
-      name: t.name,
-      parent_id: t.work_item_id,
-      type: "task",
-      duration_days: t.duration_days,
-      start_date: t.early_start || null,
-      end_date: t.early_finish || null,
-      status: "Chưa bắt đầu",
-      progress: 0,
-      is_critical: t.is_critical || false,
-    }));
+    const taskNodes = taskRows.map((t) => {
+      const isDone = Boolean(t.actual_end_date || t.percent_complete === 100);
+      const isDoing = Boolean(t.actual_start_date || (t.percent_complete && t.percent_complete > 0));
+      return {
+        id: `task-${t.id}`,
+        task_id: t.id,
+        name: t.name,
+        parent_id: t.work_item_id,
+        type: "task",
+        duration_days: t.duration_days,
+        actual_start_date: t.actual_start_date || null,
+        actual_end_date: t.actual_end_date || null,
+        percent_complete: t.percent_complete ?? 0,
+        start_date: t.early_start || null,
+        end_date: t.early_finish || null,
+        status: isDone ? "Hoàn thành" : (isDoing ? "Đang thực hiện" : "Chưa bắt đầu"),
+        progress: t.percent_complete ?? 0,
+        is_critical: t.is_critical || false,
+      };
+    });
 
     return res.json([...result.rows, ...taskNodes]);
   })

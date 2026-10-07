@@ -2,8 +2,9 @@ import React, { useState, useEffect } from "react";
 import { useOutletContext } from "react-router-dom";
 import api from "../lib/api";
 import { mapScheduleToGantt, generateTimelineTicks } from "../utils/ganttUtils";
-import { AlertTriangle, RefreshCw, CalendarRange } from "lucide-react";
+import { AlertTriangle, RefreshCw, CalendarRange, Edit3 } from "lucide-react";
 import { differenceInCalendarDays, parseISO, format } from "date-fns";
+import TaskProgressModal from "../components/TaskProgressModal";
 
 function formatDate(dateStr) {
   if (!dateStr) return "--";
@@ -25,6 +26,8 @@ export default function GanttPage() {
 
   // T-33: thanh đang được hover / focus / click
   const [activeBar, setActiveBar] = useState(null);
+  // T-35: công việc được chọn để cập nhật tiến độ thực tế
+  const [selectedTaskForProgress, setSelectedTaskForProgress] = useState(null);
 
   const PIXELS_PER_DAY = viewMode === "day" ? 30 : 5;
 
@@ -32,34 +35,35 @@ export default function GanttPage() {
 
   const currentProjectId = localStorage.getItem("currentProjectId") || 13;
 
-  useEffect(() => {
-    async function fetchData() {
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
       try {
-        setLoading(true);
-        setError(null);
-
-        try {
-          await api.post(`/projects/${currentProjectId}/schedule/recalculate`);
-        } catch (calcErr) {
-          if (calcErr.response?.data?.code === "DEPENDENCY_CYCLE") {
-            setError(calcErr.response.data.message);
-            return;
-          }
+        await api.post(`/projects/${currentProjectId}/schedule/recalculate`);
+      } catch (calcErr) {
+        if (calcErr.response?.data?.code === "DEPENDENCY_CYCLE") {
+          setError(calcErr.response.data.message);
+          return;
         }
-
-        const res = await api.get(
-          `/projects/${currentProjectId}/schedule-results`,
-        );
-
-        setTasks(res.data.data || []);
-      } catch (err) {
-        setError(err.response?.data?.message || "Lỗi tải tiến độ dự án");
-      } finally {
-        setLoading(false);
       }
-    }
 
+      const res = await api.get(
+        `/projects/${currentProjectId}/schedule-results`,
+      );
+
+      setTasks(res.data.data || []);
+    } catch (err) {
+      setError(err.response?.data?.message || "Lỗi tải tiến độ dự án");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProjectId]);
 
   if (error) {
@@ -237,9 +241,22 @@ export default function GanttPage() {
                           <span className="size-1.5 rounded-full bg-slate-300" />
                         )}
                       </div>
-                      <div className="truncate lg:whitespace-nowrap">
+                      <div className="truncate lg:whitespace-nowrap flex-1">
                         {bar.name}
                       </div>
+
+                      <button
+                        type="button"
+                        aria-label={`Cập nhật tiến độ: ${bar.name}`}
+                        title="Cập nhật tiến độ thực tế"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedTaskForProgress(bar);
+                        }}
+                        className="opacity-70 hover:opacity-100 hover:text-blue-600 p-0.5 text-slate-400 cursor-pointer shrink-0"
+                      >
+                        <Edit3 className="size-3.5" />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -287,6 +304,7 @@ export default function GanttPage() {
 
                   {ganttBars.map((bar) => {
                     const barColor = bar.is_critical ? "#ef4444" : "#3b82f6";
+                    const progressPercent = Math.min(100, Math.max(0, bar.percent_complete || 0));
                     return (
                       <g key={bar.id}>
                         {/* nền của dòng */}
@@ -302,7 +320,7 @@ export default function GanttPage() {
                           strokeWidth="1"
                         />
 
-                        {/* T-32 + T-33:
+                        {/* T-32 + T-33 + T-35:
                         - việc găng có viền riêng
                         - có ký hiệu !
                         - có hover/click/touch/focus */}
@@ -336,8 +354,23 @@ export default function GanttPage() {
                           onClick={() =>
                             setActiveBar(activeBar?.id === bar.id ? null : bar)
                           }
+                          onDoubleClick={() => setSelectedTaskForProgress(bar)}
                           onTouchStart={() => setActiveBar(bar)}
                         />
+
+                        {/* Phần trăm hoàn thành thực tế hiển thị trên thanh Gantt */}
+                        {progressPercent > 0 && (
+                          <rect
+                            x={bar.x}
+                            y={bar.y + (ROW_HEIGHT - bar.height) / 2}
+                            width={(bar.width * progressPercent) / 100}
+                            height={bar.height}
+                            fill="#0f172a"
+                            opacity="0.25"
+                            rx={4}
+                            pointerEvents="none"
+                          />
+                        )}
 
                         {/* T-32: ký hiệu riêng cho việc găng */}
                         {bar.is_critical && (
@@ -385,11 +418,11 @@ export default function GanttPage() {
                   })}
                 </svg>
 
-                {/* T-33: Tooltip chi tiết */}
+                {/* T-33 + T-35: Tooltip chi tiết kèm nút mở form cập nhật tiến độ */}
                 {activeBar && (
                   <div
                     role="tooltip"
-                    className="pointer-events-none absolute z-50 w-[390px] rounded-xl border border-slate-200 bg-white p-4 shadow-2xl"
+                    className="pointer-events-auto absolute z-50 w-[390px] rounded-xl border border-slate-200 bg-white p-4 shadow-2xl"
                     style={{
                       left: activeBar.x + 10,
                       top: 80 + activeBar.y + ROW_HEIGHT,
@@ -458,12 +491,50 @@ export default function GanttPage() {
                         </div>
                       </div>
                     </div>
+
+                    {/* T-35: Cập nhật tiến độ thực tế từ sơ đồ */}
+                    <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <div className="text-xs text-slate-500">
+                        Tiến độ thực tế:{" "}
+                        <strong className="text-blue-600 font-bold">
+                          {activeBar.percent_complete ?? 0}%
+                        </strong>
+                      </div>
+
+                      <button
+                        type="button"
+                        aria-label={`Cập nhật tiến độ: ${activeBar.name}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedTaskForProgress(activeBar);
+                        }}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Edit3 className="size-3.5" />
+                        <span>Cập nhật tiến độ</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
             </div>
           </div>
         </div>
+
+        {/* Modal form cập nhật tiến độ (T-35 / S-15) */}
+        {selectedTaskForProgress && (
+          <TaskProgressModal
+            projectId={currentProjectId}
+            task={selectedTaskForProgress}
+            isOpen={Boolean(selectedTaskForProgress)}
+            onClose={() => setSelectedTaskForProgress(null)}
+            onSuccess={async () => {
+              setSelectedTaskForProgress(null);
+              setActiveBar(null);
+              await fetchData();
+            }}
+          />
+        )}
       </div>
     </div>
   );

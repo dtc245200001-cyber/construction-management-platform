@@ -9,6 +9,7 @@ import {
 import {
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 
 import userEvent from "@testing-library/user-event";
@@ -17,6 +18,7 @@ vi.mock("../../lib/api", () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),
+    patch: vi.fn(),
   },
 }));
 
@@ -206,6 +208,59 @@ describe(
         expect(
           tooltip
         ).toHaveTextContent("LF");
+      }
+    );
+
+    test(
+      "T-35: mở form và cập nhật ba giá trị tiến độ thực tế từ sơ đồ",
+      async () => {
+        api.patch.mockResolvedValue({
+          data: {
+            message: "Cập nhật tiến độ thành công",
+            task: { ...rows[0], percent_complete: 50, actual_start_date: "2026-10-10", actual_end_date: "2026-10-12" },
+          },
+        });
+
+        render(<GanttPage />);
+
+        const bar = await screen.findByRole("button", {
+          name: /Đào móng - Việc găng/i,
+        });
+
+        // Click vào thanh trên sơ đồ để hiện tooltip có nút cập nhật
+        await userEvent.click(bar);
+
+        const openModalBtn = await screen.findByRole("button", {
+          name: /Cập nhật tiến độ: Đào móng/i,
+        });
+        await userEvent.click(openModalBtn);
+
+        // Modal mở ra với 3 trường thực tế
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+        expect(screen.getByText("Cập nhật tiến độ")).toBeInTheDocument();
+
+        const startInput = screen.getByLabelText(/Ngày bắt đầu thực tế/);
+        const endInput = screen.getByLabelText(/Ngày kết thúc thực tế/);
+        const percentInput = screen.getByLabelText(/Phần trăm hoàn thành/);
+
+        await userEvent.type(startInput, "2026-10-10");
+        await userEvent.type(endInput, "2026-10-12");
+        await userEvent.clear(percentInput);
+        await userEvent.type(percentInput, "50");
+
+        const saveBtn = screen.getByRole("button", { name: /Lưu tiến độ/i });
+        await userEvent.click(saveBtn);
+
+        await waitFor(() => {
+          expect(api.patch).toHaveBeenCalledWith(
+            "/projects/4/tasks/1/progress",
+            {
+              actual_start_date: "2026-10-10",
+              actual_end_date: "2026-10-12",
+              percent_complete: 50,
+            }
+          );
+        });
       }
     );
   }

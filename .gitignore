@@ -26,3 +26,8 @@ fix_data_binding.js
 
 # Tai lieu ban giao noi bo
 BAN-GIAO*.md
+
+# Keys and credentials
+server_key.txt
+*.key
+*.pem
