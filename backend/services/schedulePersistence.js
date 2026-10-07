@@ -147,7 +147,7 @@ async function saveScheduleResults(
         calculated_at,
         needs_recalculation
       )
-      SELECT task_id, early_start, early_finish, late_start, late_finish, total_float, is_critical, CURRENT_TIMESTAMP, $8 FROM UNNEST(
+      SELECT * FROM UNNEST(
         $1::int[], $2::timestamp[], $3::timestamp[], $4::timestamp[],
         $5::timestamp[], $6::int[], $7::boolean[]
       ) AS t(task_id, early_start, early_finish, late_start, late_finish, total_float, is_critical)
