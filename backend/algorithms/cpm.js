@@ -35,10 +35,7 @@ async function buildGraph(projectId, pool) {
         t.name,
         t.duration_days AS duration,
         t.scheduling_mode,
-        t.manual_start_date,
-        t.actual_start_date,
-        t.actual_end_date,
-        t.percent_complete
+        t.manual_start_date
       FROM tasks t
       JOIN work_items wi
         ON wi.id = t.work_item_id
@@ -88,9 +85,6 @@ async function buildGraph(projectId, pool) {
       duration: Number(row.duration),
       schedulingMode: row.scheduling_mode,
       manualStartDate: row.manual_start_date,
-      actualStartDate: row.actual_start_date,
-      actualEndDate: row.actual_end_date,
-      percentComplete: row.percent_complete !== null ? Number(row.percent_complete) : 0,
     };
 
     adjList[id] = [];
