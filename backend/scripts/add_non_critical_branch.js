@@ -11,7 +11,7 @@ async function run() {
     const res = await client.query(`SELECT id, name FROM tasks WHERE work_item_id IN (24, 25)`);
     const tasks = res.rows;
     const tBetongSanT1 = tasks.find(t => t.name === 'Đổ bê tông sàn tầng 1').id;
-    const tXayTuongT1 = tasks.find(t => t.name === 'Xây tường tầng 1').id;
+    const _txayTuongT1 = tasks.find(t => t.name === 'Xây tường tầng 1').id;
     const tTratTuong = tasks.find(t => t.name === 'Trát tường').id;
     
     // 2. Thêm task "Lắp đặt điện nước tầng 1" (thời gian 2 ngày) vào "Hạng mục Phần thân" (id 24)

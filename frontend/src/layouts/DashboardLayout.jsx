@@ -21,8 +21,12 @@ import {
   Building2,
   ShieldCheck,
   Pencil,
-  Menu
+  Menu,
+  Check,
+  ChevronsUpDown
 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
+import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "../components/ui/command";
 
 const navItems = [
   { label: "Tổng quan", icon: Home, path: "/dashboard" },
@@ -61,14 +65,39 @@ export default function DashboardLayout({ user, setUser }) {
   };
 
   const [currentProject, setCurrentProject] = useState(null);
+  const [projects, setProjects] = useState([]);
+  const [openSwitcher, setOpenSwitcher] = useState(false);
 
   React.useEffect(() => {
+    // Fetch all projects for the switcher
+    api.get('/projects').then(res => setProjects(res.data.projects || [])).catch(console.error);
+
     if (currentProjectId) {
       api.get(`/projects/${currentProjectId}`)
         .then(res => setCurrentProject(res.data.project))
         .catch(err => console.error(err));
     }
   }, [currentProjectId]);
+
+  const handleSwitchProject = async (id) => {
+    if (id.toString() === currentProjectId.toString()) {
+      setOpenSwitcher(false);
+      return;
+    }
+    
+    if (!window.confirm("Chuyển sang dự án khác sẽ tải lại trang. Các thay đổi chưa lưu có thể bị mất. Tiếp tục?")) {
+      return;
+    }
+
+    try {
+      await api.post(`/projects/${id}/open`);
+      localStorage.setItem('currentProjectId', id);
+      setOpenSwitcher(false);
+      window.location.reload();
+    } catch (err) {
+      alert("Không thể chuyển dự án: " + (err.response?.data?.message || err.message));
+    }
+  };
 
   const currentNav = navItems.find(item => item.path === location.pathname) || navItems[0];
 
@@ -103,23 +132,65 @@ export default function DashboardLayout({ user, setUser }) {
         </div>
 
         {!isSidebarCollapsed && (
-          <div className="mt-6 rounded-xl bg-sidebar-accent p-4 w-full">
-            <div className="flex items-start gap-3 [&>div]:min-w-0">
-              <Building2 className="mt-0.5 size-5 shrink-0 text-sidebar-muted" />
-              <div className="min-w-0">
-                <p className="text-xs text-sidebar-muted">Dự án đang làm việc</p>
-                <p className="truncate text-sm font-semibold">{currentProject ? currentProject.name : 'Đang tải...'}</p>
-                <p className="mt-1 flex items-center gap-1.5 text-xs text-sidebar-muted">
-                  {currentProject ? currentProject.code : '...'} ·
-                  <span 
-                    onClick={() => navigate('/projects')}
-                    className="inline-flex items-center gap-1 underline cursor-pointer hover:text-sidebar-foreground transition-colors shrink-0"
-                  >
-                    <Pencil className="size-3" /> Đổi dự án
-                  </span>
-                </p>
-              </div>
-            </div>
+          <div className="mt-6 w-full rounded-xl">
+            <Popover open={openSwitcher} onOpenChange={setOpenSwitcher}>
+              <PopoverTrigger asChild>
+                <button
+                  role="combobox"
+                  aria-expanded={openSwitcher}
+                  className="flex w-full items-center justify-between rounded-xl bg-sidebar-accent p-3 text-left transition-colors hover:bg-sidebar-accent/80 outline-none border border-transparent hover:border-sidebar-border"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary/10 text-sidebar-primary">
+                      <Building2 className="size-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] font-semibold text-sidebar-muted uppercase tracking-wider mb-0.5">Dự án đang làm việc</p>
+                      <p className="truncate text-sm font-bold text-sidebar-foreground">
+                        {currentProject ? currentProject.name : 'Đang tải...'}
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronsUpDown className="ml-2 size-4 shrink-0 text-sidebar-muted" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[240px] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Tìm dự án..." />
+                  <CommandList>
+                    <CommandEmpty>Không tìm thấy dự án.</CommandEmpty>
+                    <CommandGroup heading="Dự án của bạn">
+                      {projects.map((project) => (
+                        <CommandItem
+                          key={project.id}
+                          value={project.name}
+                          onSelect={() => handleSwitchProject(project.id)}
+                          className="flex items-center justify-between cursor-pointer py-2"
+                        >
+                          <div className="flex flex-col min-w-0">
+                            <span className="truncate font-medium">{project.name}</span>
+                            {project.status && (
+                              <span className="text-[11px] text-muted-foreground">{project.status}</span>
+                            )}
+                          </div>
+                          {currentProjectId.toString() === project.id.toString() && (
+                            <Check className="size-4 text-primary shrink-0 ml-2" />
+                          )}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                  <div className="border-t p-2">
+                    <button 
+                      onClick={() => { setOpenSwitcher(false); navigate('/projects'); }}
+                      className="w-full text-center text-xs font-medium text-muted-foreground hover:text-primary transition-colors py-1.5 rounded hover:bg-accent"
+                    >
+                      Xem tất cả dự án →
+                    </button>
+                  </div>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
         )}
 
@@ -177,7 +248,7 @@ export default function DashboardLayout({ user, setUser }) {
       {/* Main Container */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Topbar */}
-        <header className="sticky top-0 z-10 flex flex-wrap items-center gap-4 border-b border-border bg-card px-6 py-4">
+        <header className="sticky top-0 z-50 flex flex-wrap items-center gap-4 border-b border-border bg-card px-6 py-4">
           <button 
             onClick={() => {
               if (window.innerWidth < 1024) {
@@ -240,7 +311,7 @@ export default function DashboardLayout({ user, setUser }) {
         </header>
 
         {/* Dynamic Page Content */}
-        <Outlet />
+        <Outlet context={{ currentProject }} />
       </div>
     </div>
   );
