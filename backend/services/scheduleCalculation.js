@@ -6,6 +6,7 @@ const {
 } = require("../algorithms/cpm");
 const { calculateSchedule } = require("../utils/scheduleAlgorithms");
 const { saveScheduleResults } = require("./schedulePersistence");
+const { evaluateMilestoneWarnings } = require("./milestoneWarnings");
 
 /**
  * Calculate and persist schedule results for a project.
@@ -141,6 +142,9 @@ async function calculateAndSaveSchedule(projectId) {
     scheduleByTask,
     project.start_date
   );
+
+  // T-44: Evaluate milestone warnings using the newly calculated schedule results
+  await evaluateMilestoneWarnings(projectId);
 
   return {
     projectId,

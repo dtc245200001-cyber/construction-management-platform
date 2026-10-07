@@ -24,6 +24,7 @@ import ComingSoonPage from './pages/ComingSoonPage';
 import InvitationAcceptPage from './pages/InvitationAcceptPage';
 import SchedulePage from './pages/SchedulePage';
 import GanttPage from './pages/GanttPage';
+import WarningsPage from './pages/WarningsPage';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -90,6 +91,7 @@ function App() {
           <Route path="/wbs" element={<WBSPage user={user} />} />
           <Route path="/schedule" element={<SchedulePage user={user} />} />
           <Route path="/gantt" element={<GanttPage />} />
+          <Route path="/warnings" element={<WarningsPage user={user} />} />
           <Route path="/members" element={<MembersPage user={user} />} />
         </Route>
 

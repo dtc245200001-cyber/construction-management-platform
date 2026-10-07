@@ -179,6 +179,8 @@ setInvitationLimiter(invitationLimiter);
 
 app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicApiLimiter, publicRoutes);
+const milestoneRoutes = require("./routes/milestoneRoutes");
+app.use("/api/projects", milestoneRoutes);
 
 // â”€â”€â”€ ERROR HANDLERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(notFoundHandler);

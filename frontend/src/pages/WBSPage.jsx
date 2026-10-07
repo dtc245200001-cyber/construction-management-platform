@@ -7,7 +7,7 @@ import {
   Search, Plus, List, LayoutGrid,
   ChevronRight, ChevronDown, FolderOpen, FileText, 
   Lightbulb, X, FileSpreadsheet, Download, Network,
-  Maximize2, Minimize2, Pencil, Trash2, PlusCircle, FolderPlus, CalendarRange
+  Maximize2, Minimize2, Pencil, Trash2, PlusCircle, FolderPlus, CalendarRange, Flag
 } from "lucide-react";
 
 function buildTree(data) {
@@ -113,6 +113,16 @@ function WBSPage() {
   const [showRightPanel, setShowRightPanel] = useState(true);
   const context = useOutletContext();
   const currentProject = context?.currentProject;
+
+  // T-43: Milestones
+  const [milestones, setMilestones] = useState({});
+  const [milestoneModalConfig, setMilestoneModalConfig] = useState({
+    isOpen: false,
+    workItem: null,
+    date: "",
+    error: ""
+  });
+
   // =========================
   // T-12 TASK FORM
   // =========================
@@ -181,6 +191,15 @@ const closeTaskForm = () => {
       const roots = buildTree(res.data);
       setItems(roots);
       
+      try {
+        const msRes = await api.get(`/projects/${projectId}/milestones`);
+        const msMap = {};
+        msRes.data.forEach(m => msMap[m.work_item_id] = m);
+        setMilestones(msMap);
+      } catch (err) {
+        console.error("Failed to load milestones:", err);
+      }
+      
       const initExpanded = new Set();
       const traverse = (node, level) => {
         // T-09: Mặc định mở rộng tầng 1 và tầng 2, thu gọn từ tầng 3 trở xuống
@@ -241,6 +260,38 @@ const closeTaskForm = () => {
       code: node.code || "",
       error: "",
     });
+  };
+
+  const openMilestoneModal = (node) => {
+    setMilestoneModalConfig({
+      isOpen: true,
+      workItem: node,
+      date: milestones[node.id] ? milestones[node.id].required_date.split('T')[0] : "",
+      error: ""
+    });
+  };
+
+  const handleMilestoneSubmit = async (e) => {
+    e.preventDefault();
+    if (!milestoneModalConfig.date) {
+      setMilestoneModalConfig(prev => ({ ...prev, error: "Vui lòng chọn ngày bắt buộc" }));
+      return;
+    }
+    try {
+      setModalLoading(true);
+      await api.post(`/projects/${projectId}/work-items/${milestoneModalConfig.workItem.id}/milestones`, {
+        required_date: milestoneModalConfig.date
+      });
+      setMilestoneModalConfig(prev => ({ ...prev, isOpen: false, error: "" }));
+      await fetchWBS();
+    } catch (err) {
+      setMilestoneModalConfig(prev => ({
+        ...prev,
+        error: err.response?.data?.message || err.message || "Lỗi khi lưu mốc"
+      }));
+    } finally {
+      setModalLoading(false);
+    }
   };
 
   const closeModal = () => {
@@ -351,6 +402,12 @@ const closeTaskForm = () => {
                 </div>
                 {isExpanded ? <FolderOpen className={`size-4 ${color.text}`} /> : <FolderOpen className={`size-4 ${color.text}`} />}
                 <span className="text-[14px]">{node.name}</span>
+                {milestones[node.id] && (
+                  <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-red-100 text-red-600" title="Mốc bàn giao bắt buộc">
+                    <Flag className="size-3" />
+                    {renderDate(milestones[node.id].required_date)}
+                  </span>
+                )}
               </div>
             </td>
             <td className="px-4">
@@ -360,6 +417,16 @@ const closeTaskForm = () => {
             <td className="px-4 text-sm text-[#475569]">{renderDate(node.end_date)}</td>
             <td className={`px-4 text-right sticky right-0 z-10 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] transition-colors ${color.bg}`}>
  <div className="flex items-center justify-end gap-1">
+  {/* T-43: Đặt mốc */}
+  <button
+    type="button"
+    onClick={() => openMilestoneModal(node)}
+    title="Đặt mốc bàn giao"
+    className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors cursor-pointer"
+  >
+    <Flag className="size-4" />
+  </button>
+
   {/* T-12: Thêm công việc — chỉ hạng mục lá mới được chứa công việc */}
   {isLeafCategory(node) && (
   <button
@@ -674,6 +741,73 @@ const visibleItems = useMemo(() => {
 )}
 
       </div>
+
+      {/* T-43: Modal Đặt Mốc Bàn Giao */}
+      {milestoneModalConfig.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl border border-[#E6EBF3] animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-4 border-b border-[#EEF2F7]">
+              <div className="flex items-center gap-3">
+                <div className="size-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center">
+                  <Flag className="size-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-[#0F1B3D] text-[16px]">Đặt mốc bàn giao</h3>
+                  <p className="text-xs text-[#64748B]">
+                    Hạng mục: <span className="font-semibold text-[#0F1B3D]">{milestoneModalConfig.workItem?.name}</span>
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setMilestoneModalConfig(prev => ({ ...prev, isOpen: false, error: "" }))}
+                className="size-8 rounded-lg text-[#64748B] hover:bg-slate-100 flex items-center justify-center cursor-pointer"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            {milestoneModalConfig.error && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl">
+                {milestoneModalConfig.error}
+              </div>
+            )}
+
+            <form onSubmit={handleMilestoneSubmit} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#0F1B3D] mb-1.5">
+                  Ngày bàn giao bắt buộc <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={milestoneModalConfig.date}
+                  onChange={(e) => setMilestoneModalConfig(prev => ({ ...prev, date: e.target.value }))}
+                  className="w-full h-11 px-3.5 rounded-xl border border-[#E6EBF3] text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                  disabled={modalLoading}
+                  required
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#EEF2F7] mt-6">
+                <button
+                  type="button"
+                  onClick={() => setMilestoneModalConfig(prev => ({ ...prev, isOpen: false, error: "" }))}
+                  className="h-10 px-4 rounded-xl text-sm font-semibold text-[#64748B] hover:bg-slate-100 transition-colors"
+                  disabled={modalLoading}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={modalLoading}
+                  className="h-10 px-6 rounded-xl text-sm font-semibold bg-red-600 text-white hover:bg-red-700 shadow-sm transition-colors flex items-center gap-2"
+                >
+                  {modalLoading ? "Đang xử lý..." : "Lưu mốc"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal Thêm / Sửa Hạng mục & Công việc theo bố cục chuẩn T-05 / Design System */}
       {modalConfig.isOpen && (
