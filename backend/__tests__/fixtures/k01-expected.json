@@ -884,7 +884,10 @@
         "endDate": "2026-01-09",
         "n": 3,
         "holidays": [
-          { "holiday_date": "2026-01-07", "name": "Nghỉ lễ giữa tuần" }
+          {
+            "holiday_date": "2026-01-07",
+            "name": "Nghỉ lễ giữa tuần"
+          }
         ],
         "expectedAdd": "2026-01-09",
         "expectedCount": 4,
@@ -898,7 +901,10 @@
         "n": 1,
         "addFrom": "2026-01-10",
         "holidays": [
-          { "holiday_date": "2026-01-11", "name": "Lễ trùng Chủ nhật" }
+          {
+            "holiday_date": "2026-01-11",
+            "name": "Lễ trùng Chủ nhật"
+          }
         ],
         "expectedAdd": "2026-01-12",
         "expectedCount": 7,
@@ -911,7 +917,10 @@
         "endDate": "2026-01-20",
         "n": 12,
         "holidays": [
-          { "holiday_date": "2026-01-08", "name": "Nghỉ lễ" }
+          {
+            "holiday_date": "2026-01-08",
+            "name": "Nghỉ lễ"
+          }
         ],
         "expectedAdd": "2026-01-20",
         "expectedCount": 13,
@@ -923,8 +932,14 @@
         "startDate": "2026-01-01",
         "endDate": "2026-01-15",
         "holidays": [
-          { "holiday_date": "2026-01-01", "name": "Tết Dương Lịch" },
-          { "holiday_date": "2026-01-11", "name": "Lễ trùng Chủ nhật" }
+          {
+            "holiday_date": "2026-01-01",
+            "name": "Tết Dương Lịch"
+          },
+          {
+            "holiday_date": "2026-01-11",
+            "name": "Lễ trùng Chủ nhật"
+          }
         ],
         "expectedCount": 12,
         "explanation": "Khoảng 01/01 đến 15/01 có 15 ngày lịch. Ngày nghỉ: 01/01 (lễ), 04/01 (CN), 11/01 (CN trùng lễ - trừ 1 lần). Tổng nghỉ = 3. Số ngày làm việc = 15 - 3 = 12 ngày."
@@ -936,7 +951,10 @@
         "endDate": "2026-01-11",
         "n": 0,
         "holidays": [
-          { "holiday_date": "2026-01-11", "name": "Lễ trùng Chủ nhật" }
+          {
+            "holiday_date": "2026-01-11",
+            "name": "Lễ trùng Chủ nhật"
+          }
         ],
         "expectedAdd": "2026-01-11",
         "expectedCount": 0,
@@ -969,5 +987,83 @@
         "explanation": "Xử lý chính xác các trường hợp biên tại điểm mốc ngày nghỉ và n=0."
       }
     ]
-  }
+  },
+  "actualScenarios": [
+    {
+      "id": "ca1_viec_gang_tre_3",
+      "today": null,
+      "actuals": {
+        "D": {
+          "actualStart": 7,
+          "actualEnd": 15,
+          "percent": 100
+        }
+      },
+      "calculatedBy": "<tên bạn>",
+      "calculatedDate": "<yyyy-mm-dd>",
+      "expected": [],
+      "projectFinish": null
+    },
+    {
+      "id": "ca2_khong_gang_tre_it_hon_float",
+      "today": null,
+      "actuals": {
+        "C": {
+          "actualStart": 3,
+          "actualEnd": 6,
+          "percent": 100
+        }
+      },
+      "calculatedBy": "<tên bạn>",
+      "calculatedDate": "<yyyy-mm-dd>",
+      "expected": [],
+      "projectFinish": null
+    },
+    {
+      "id": "ca3_khong_gang_tre_qua_float",
+      "today": null,
+      "actuals": {
+        "E": {
+          "actualStart": 7,
+          "actualEnd": 13,
+          "percent": 100
+        }
+      },
+      "calculatedBy": "<tên bạn>",
+      "calculatedDate": "<yyyy-mm-dd>",
+      "expected": [],
+      "projectFinish": null
+    },
+    {
+      "id": "ca4a_dang_lam_hom_nay_som",
+      "today": 8,
+      "actuals": {
+        "D": {
+          "actualStart": 7,
+          "actualEnd": null,
+          "percent": 40
+        }
+      },
+      "calculatedBy": "<tên bạn>",
+      "calculatedDate": "<yyyy-mm-dd>",
+      "expected": [],
+      "projectFinish": null
+    },
+    {
+      "id": "ca4b_dang_lam_hom_nay_tre",
+      "today": 11,
+      "actuals": {
+        "D": {
+          "actualStart": 7,
+          "actualEnd": null,
+          "percent": 40
+        }
+      },
+      "calculatedBy": "<tên bạn>",
+      "calculatedDate": "<yyyy-mm-dd>",
+      "expected": [],
+      "projectFinish": null
+    }
+  ],
+  "actualScenariosNote": "actualEnd là MỐC EF (offset ngày làm việc, kết thúc xong ở mốc đó), không phải ngày cuối cùng làm việc; today là offset ngày làm việc; \"phần còn lại\" = ceil(thời lượng × (100 − percent) / 100)."
 }
