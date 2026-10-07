@@ -361,22 +361,26 @@ const handleUpdateTask = async (req, res, next) => {
       ]
     );
 
-    const durationChanged =
+    const scheduleDirty =
       oldTask.duration_days !== targetDuration ||
       oldTask.scheduling_mode !== targetSchedulingMode ||
-      hasManualStartDate;
-    if (durationChanged) {
+      hasManualStartDate ||
+      (hasActualStartDate && parseDateOnly(oldTask.actual_start_date) !== targetActualStartDate) ||
+      (hasActualEndDate && parseDateOnly(oldTask.actual_end_date) !== targetActualEndDate) ||
+      (hasPercentComplete && (oldTask.percent_complete ?? 0) !== targetPercentComplete);
+
+    if (scheduleDirty) {
       await markProjectScheduleDirty(projectId, client);
     }
 
     await client.query("COMMIT");
 
     return res.json({
-      message: durationChanged
+      message: scheduleDirty
         ? "Cập nhật công việc và đánh dấu cần tính lại lịch"
         : "Cập nhật công việc thành công",
       task: formatTaskResponse(updateResult.rows[0]),
-      scheduleNeedsRecalculation: durationChanged,
+      scheduleNeedsRecalculation: scheduleDirty,
     });
   } catch (error) {
     await client.query("ROLLBACK");
