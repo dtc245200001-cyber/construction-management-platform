@@ -12,7 +12,9 @@ import {
   Clock,
   Filter,
   Search,
+  Edit3,
 } from "lucide-react";
+import TaskProgressModal from "../components/TaskProgressModal";
 
 // Server đã dựng sẵn câu "A chờ B, B chờ C, C chờ A" trong message,
 // nên frontend dùng luôn, không tự ghép lại.
@@ -31,6 +33,7 @@ export default function SchedulePage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [hoveredRowId, setHoveredRowId] = useState(null);
+  const [selectedTaskForProgress, setSelectedTaskForProgress] = useState(null);
 
   const currentProjectId = localStorage.getItem("currentProjectId") || 1;
 
@@ -364,6 +367,14 @@ export default function SchedulePage() {
                   <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[140px] whitespace-nowrap">
                     Trạng thái
                   </th>
+
+                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[160px] whitespace-nowrap">
+                    Tiến độ thực tế
+                  </th>
+
+                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[110px] whitespace-nowrap">
+                    Thao tác
+                  </th>
                 </tr>
               </thead>
 
@@ -371,7 +382,7 @@ export default function SchedulePage() {
                 {loading ? (
                   <tr>
                     <td
-                      colSpan="8"
+                      colSpan="10"
                       className="p-12 text-center text-gray-500"
                     >
                       <div className="flex items-center justify-center gap-2">
@@ -385,7 +396,7 @@ export default function SchedulePage() {
                 ) : filteredData.length === 0 ? (
                   <tr>
                     <td
-                      colSpan="8"
+                      colSpan="10"
                       className="p-16 text-center text-gray-500"
                     >
                       <div className="flex flex-col items-center justify-center gap-2">
@@ -409,7 +420,6 @@ export default function SchedulePage() {
                         <div className="flex items-center gap-2">
                           <span>{row.name}</span>
                         </div>
-
                       </td>
 
                       <td className="px-4 py-2 text-[13px] text-[#64748B]">
@@ -458,6 +468,56 @@ export default function SchedulePage() {
                           </span>
                         )}
                       </td>
+
+                      {/* Tiến độ thực tế (T-35) */}
+                      <td className="px-4 py-2 text-center text-[13px]">
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="font-semibold text-slate-800 text-xs">
+                            {row.percent_complete ?? 0}%
+                          </span>
+                          <div className="w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full ${
+                                (row.percent_complete || 0) === 100
+                                  ? "bg-emerald-500"
+                                  : (row.percent_complete || 0) > 0
+                                    ? "bg-blue-600"
+                                    : "bg-slate-300"
+                              }`}
+                              style={{
+                                width: `${Math.min(
+                                  100,
+                                  Math.max(0, row.percent_complete || 0)
+                                )}%`,
+                              }}
+                            />
+                          </div>
+                          {(row.actual_start_date || row.actual_end_date) && (
+                            <span className="text-[10px] text-slate-500 font-mono">
+                              {row.actual_start_date
+                                ? formatDate(row.actual_start_date)
+                                : "--"}
+                              {" → "}
+                              {row.actual_end_date
+                                ? formatDate(row.actual_end_date)
+                                : "..."}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Thao tác mở form cập nhật tiến độ (T-35) */}
+                      <td className="px-4 py-2 text-center">
+                        <button
+                          type="button"
+                          aria-label={`Cập nhật tiến độ: ${row.name}`}
+                          onClick={() => setSelectedTaskForProgress(row)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-colors cursor-pointer"
+                        >
+                          <Edit3 className="size-3.5" />
+                          <span>Cập nhật</span>
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -465,6 +525,21 @@ export default function SchedulePage() {
             </table>
           </div>
         </div>
+
+        {/* Modal cập nhật tiến độ thực tế (T-35 / S-15) */}
+        {selectedTaskForProgress && (
+          <TaskProgressModal
+            projectId={currentProjectId}
+            task={selectedTaskForProgress}
+            isOpen={Boolean(selectedTaskForProgress)}
+            onClose={() => setSelectedTaskForProgress(null)}
+            onSuccess={async () => {
+              setSelectedTaskForProgress(null);
+              setSuccessMessage("Cập nhật tiến độ thực tế thành công.");
+              await fetchSchedule();
+            }}
+          />
+        )}
       </div>
     </div>
   );

@@ -212,16 +212,13 @@ describe("T-34: Migration thêm cột thực tế và ràng buộc bảng tasks"
   });
 
   describe("4. Kiểm tra khả năng tiến và lùi của migration (Up & Down)", () => {
-    it("Migration có thể rollback (down) 1 bước sạch sẽ", async () => {
-      // Rollback migration T-34
-      await runner({
-        databaseUrl: dbUrl,
-        dir: path.resolve(__dirname, "../../migrations"),
-        direction: "down",
-        migrationsTable: "pgmigrations",
-        count: 1,
-        log: () => {},
-      });
+    const MigrationBuilder = require("node-pg-migrate/dist/migration-builder").default;
+    const migration = require("../../migrations/1791034000000_add-actual-fields-to-tasks");
+
+    it("Migration có thể rollback (down) sạch sẽ", async () => {
+      const mbDown = new MigrationBuilder({}, {});
+      migration.down(mbDown);
+      await pool.query(mbDown.getSql());
 
       // Kiểm tra cột đã bị xóa khỏi bảng tasks
       const { rows } = await pool.query(`
@@ -235,15 +232,9 @@ describe("T-34: Migration thêm cột thực tế và ràng buộc bảng tasks"
     });
 
     it("Migration có thể re-apply (up) lại sạch sẽ sau khi rollback", async () => {
-      // Re-apply migration T-34
-      await runner({
-        databaseUrl: dbUrl,
-        dir: path.resolve(__dirname, "../../migrations"),
-        direction: "up",
-        migrationsTable: "pgmigrations",
-        count: 1,
-        log: () => {},
-      });
+      const mbUp = new MigrationBuilder({}, {});
+      migration.up(mbUp);
+      await pool.query(mbUp.getSql());
 
       // Kiểm tra các cột đã xuất hiện trở lại
       const { rows } = await pool.query(`

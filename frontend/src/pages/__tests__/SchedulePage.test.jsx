@@ -162,4 +162,26 @@ describe("SchedulePage (T-28 / S-14 / T-32 / T-33)", () => {
     }
   );
 
+  test(
+    "bấm nút Cập nhật mở modal cập nhật tiến độ thực tế",
+    async () => {
+      api.get.mockResolvedValue({
+        data: {
+          data: rows,
+        },
+      });
+
+      render(<SchedulePage />);
+      const btn = await screen.findByRole("button", {
+        name: /Cập nhật tiến độ: Đào móng/i,
+      });
+      await userEvent.click(btn);
+
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(screen.getByText("Cập nhật tiến độ")).toBeInTheDocument();
+      expect(screen.getByLabelText(/Ngày bắt đầu thực tế/)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Ngày kết thúc thực tế/)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Phần trăm hoàn thành/)).toBeInTheDocument();
+    }
+  );
 });
