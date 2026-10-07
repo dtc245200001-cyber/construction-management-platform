@@ -233,27 +233,43 @@ async function calculateAndSaveSchedule(projectId, clockDate = null, expectedVer
   };
 }
 
+const activeJobs = new Set();
+
 async function runScheduleJobAsync(jobId, projectId, clockDate = null, expectedVersion = null) {
+  const jobPromise = (async () => {
+    try {
+      await pool.query(`UPDATE schedule_jobs SET status = 'running', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [jobId]);
+      await calculateAndSaveSchedule(projectId, clockDate, expectedVersion);
+      await pool.query(`UPDATE schedule_jobs SET status = 'done', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [jobId]);
+    } catch (error) {
+      const errorDetails = {
+        message: error.message,
+        code: error.code || 'UNKNOWN_ERROR',
+        cycleNodes: error.cycleNodes || null,
+        cycleNames: error.cycleNames || null,
+        cyclePath: error.cyclePath || null
+      };
+      await pool.query(
+        `UPDATE schedule_jobs SET status = 'failed', error_details = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+        [JSON.stringify(errorDetails), jobId]
+      );
+    }
+  })();
+
+  activeJobs.add(jobPromise);
   try {
-    await pool.query(`UPDATE schedule_jobs SET status = 'running', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [jobId]);
-    await calculateAndSaveSchedule(projectId, clockDate, expectedVersion);
-    await pool.query(`UPDATE schedule_jobs SET status = 'done', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [jobId]);
-  } catch (error) {
-    const errorDetails = {
-      message: error.message,
-      code: error.code || 'UNKNOWN_ERROR',
-      cycleNodes: error.cycleNodes || null,
-      cycleNames: error.cycleNames || null,
-      cyclePath: error.cyclePath || null
-    };
-    await pool.query(
-      `UPDATE schedule_jobs SET status = 'failed', error_details = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-      [JSON.stringify(errorDetails), jobId]
-    );
+    await jobPromise;
+  } finally {
+    activeJobs.delete(jobPromise);
   }
+}
+
+async function waitForIdle() {
+  await Promise.allSettled(Array.from(activeJobs));
 }
 
 module.exports = {
   calculateAndSaveSchedule,
   runScheduleJobAsync,
+  waitForIdle
 };

@@ -127,7 +127,7 @@ app.use(
     store: new PgSession({
       pool,
       tableName: "session",
-      pruneSessionInterval: 60, // giÃ¢y â€” dá»n session háº¿t háº¡n má»—i phÃºt
+      pruneSessionInterval: process.env.NODE_ENV === 'test' ? false : 60, // giÃ¢y â€” dá»n session háº¿t háº¡n má»—i phÃºt
     }),
     cookie: {
       httpOnly: true,
@@ -187,3 +187,4 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 module.exports = app;
+

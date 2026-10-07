@@ -61,4 +61,8 @@ describe("T-44 Milestone Warnings Tests", () => {
     // Logic: required_date < today and schedule was supposed to be fine, but still late
     expect(true).toBe(true);
   });
+
+  afterAll(async () => {
+    await db.end();
+  });
 });

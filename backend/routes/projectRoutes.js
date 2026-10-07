@@ -552,42 +552,59 @@ router.post(
         });
       }
 
-      // Check running jobs
-      const runningJobRes = await db.query(
-        `SELECT id FROM schedule_jobs WHERE project_id = $1 AND status IN ('queued', 'running') LIMIT 1`,
-        [projectId]
-      );
-      if (runningJobRes.rows.length > 0) {
-        return res.status(202).json({
-          message: "Đã có tác vụ tính toán đang chạy",
-          jobId: runningJobRes.rows[0].id
-        });
-      }
+      const client = await db.connect();
+      try {
+        await client.query("BEGIN");
+        
+        // Khóa dòng dự án để đồng bộ
+        await client.query("SELECT id FROM projects WHERE id = $1 FOR UPDATE", [projectId]);
 
-      const taskCountRes = await db.query(
-        `SELECT COUNT(*) FROM tasks t JOIN work_items wi ON wi.id = t.work_item_id WHERE wi.project_id = $1`,
-        [projectId]
-      );
-      const taskCount = Number(taskCountRes.rows[0].count);
-
-      if (taskCount > 200) {
-        // Lấy version dự định
-        const versionRes = await db.query(`SELECT schedule_version FROM projects WHERE id = $1`, [projectId]);
-        const expectedVersion = versionRes.rows[0]?.schedule_version;
-
-        const insertJobRes = await db.query(
-          `INSERT INTO schedule_jobs (project_id, status) VALUES ($1, 'queued') RETURNING id`,
+        // Check running jobs
+        const runningJobRes = await client.query(
+          `SELECT id FROM schedule_jobs WHERE project_id = $1 AND status IN ('queued', 'running') LIMIT 1`,
           [projectId]
         );
-        const jobId = insertJobRes.rows[0].id;
-        
-        // Chạy nền
-        runScheduleJobAsync(jobId, projectId, null, expectedVersion).catch(e => console.error("Background job error:", e));
+        if (runningJobRes.rows.length > 0) {
+          await client.query("COMMIT");
+          return res.status(202).json({
+            message: "Đã có tác vụ tính toán đang chạy",
+            jobId: runningJobRes.rows[0].id
+          });
+        }
 
-        return res.status(202).json({
-          message: "Tác vụ tính toán tiến độ đang chạy ngầm",
-          jobId
-        });
+        const taskCountRes = await client.query(
+          `SELECT COUNT(*) FROM tasks t JOIN work_items wi ON wi.id = t.work_item_id WHERE wi.project_id = $1`,
+          [projectId]
+        );
+        const taskCount = Number(taskCountRes.rows[0].count);
+
+        if (taskCount > 200) {
+          // Lấy version dự định
+          const versionRes = await client.query(`SELECT schedule_version FROM projects WHERE id = $1`, [projectId]);
+          const expectedVersion = versionRes.rows[0]?.schedule_version;
+
+          const insertJobRes = await client.query(
+            `INSERT INTO schedule_jobs (project_id, status) VALUES ($1, 'queued') RETURNING id`,
+            [projectId]
+          );
+          const jobId = insertJobRes.rows[0].id;
+          
+          await client.query("COMMIT");
+          
+          // Chạy nền
+          runScheduleJobAsync(jobId, projectId, null, expectedVersion).catch(e => console.error("Background job error:", e));
+
+          return res.status(202).json({
+            message: "Tác vụ tính toán tiến độ đang chạy ngầm",
+            jobId
+          });
+        }
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
       }
 
       const result = await calculateAndSaveSchedule(projectId);

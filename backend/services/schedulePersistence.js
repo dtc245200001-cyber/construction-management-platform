@@ -133,34 +133,35 @@ async function saveScheduleResults(
       isCriticals.push(result.critical);
     }
 
+    const columns = [
+      { name: 'task_id', type: 'int[]' },
+      { name: 'early_start', type: 'timestamp[]' },
+      { name: 'early_finish', type: 'timestamp[]' },
+      { name: 'late_start', type: 'timestamp[]' },
+      { name: 'late_finish', type: 'timestamp[]' },
+      { name: 'total_float', type: 'int[]' },
+      { name: 'is_critical', type: 'boolean[]' }
+    ];
+
+    const unnestArgs = columns.map((c, i) => `$${i + 1}::${c.type}`).join(', ');
+    const asList = columns.map(c => c.name).join(', ');
+    const insertCols = [...columns.map(c => c.name), 'calculated_at', 'needs_recalculation'].join(', ');
+    const selectCols = [...columns.map(c => c.name), 'CURRENT_TIMESTAMP', `$${columns.length + 1}`].join(', ');
+    const updateSets = columns
+      .filter(c => c.name !== 'task_id')
+      .map(c => `${c.name} = EXCLUDED.${c.name}`)
+      .join(',\n        ');
+
     // Bulk upsert
     await client.query(
       `
-      INSERT INTO schedule_results (
-        task_id,
-        early_start,
-        early_finish,
-        late_start,
-        late_finish,
-        total_float,
-        is_critical,
-        calculated_at,
-        needs_recalculation
-      )
-      SELECT * FROM UNNEST(
-        $1::int[], $2::timestamp[], $3::timestamp[], $4::timestamp[],
-        $5::timestamp[], $6::int[], $7::boolean[]
-      ) AS t(task_id, early_start, early_finish, late_start, late_finish, total_float, is_critical)
+      INSERT INTO schedule_results (${insertCols})
+      SELECT ${selectCols} FROM UNNEST(${unnestArgs}) AS t(${asList})
       ON CONFLICT (task_id)
       DO UPDATE SET
-        early_start = EXCLUDED.early_start,
-        early_finish = EXCLUDED.early_finish,
-        late_start = EXCLUDED.late_start,
-        late_finish = EXCLUDED.late_finish,
-        total_float = EXCLUDED.total_float,
-        is_critical = EXCLUDED.is_critical,
+        ${updateSets},
         calculated_at = CURRENT_TIMESTAMP,
-        needs_recalculation = $8
+        needs_recalculation = $${columns.length + 1}
       `,
       [
         taskIds,

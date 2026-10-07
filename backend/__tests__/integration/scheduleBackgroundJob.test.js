@@ -4,6 +4,7 @@ const request = require("supertest");
 const app = require("../../app");
 const pool = require("../../config/db");
 const argon2 = require("argon2");
+const { waitForIdle } = require("../../services/scheduleCalculation");
 
 describe("T-36: Background Job and Progress Integration", () => {
   let projectId;
@@ -47,6 +48,7 @@ describe("T-36: Background Job and Progress Integration", () => {
   });
 
   afterAll(async () => {
+    await waitForIdle();
     await pool.end();
   });
 
@@ -134,8 +136,9 @@ describe("T-36: Background Job and Progress Integration", () => {
         request(app).post(`/api/projects/${projectId}/schedule/recalculate`).set("Cookie", authCookie)
       ]);
 
-      expect([res1.status, res2.status].includes(429)).toBe(true);
-      expect([res1.status, res2.status].includes(202)).toBe(true);
+      expect(res1.status).toBe(202);
+      expect(res2.status).toBe(202);
+      expect(res1.body.jobId).toEqual(res2.body.jobId);
     });
   });
 });
