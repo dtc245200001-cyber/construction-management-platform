@@ -145,6 +145,20 @@ describe("Projects Integration Tests", () => {
       );
       expect(hOther.rows).toHaveLength(1);
     });
+
+    it("Rollbacks transaction cleanly when project creation encounters an error", async () => {
+      // Duplicate code will trigger error and rollback
+      const duplicateRes = await request(app).post("/api/projects").set("Cookie", cookieAdmin).send({
+        name: "Duplicate APJ Project",
+        code: "APJ",
+        location: "Danang"
+      });
+      expect(duplicateRes.status).toBe(400);
+
+      // Verify no orphan project or calendar exists for the failed name
+      const { rows: pRows } = await pool.query("SELECT id FROM projects WHERE name = 'Duplicate APJ Project'");
+      expect(pRows).toHaveLength(0);
+    });
   });
 
   describe("GET /api/projects", () => {
