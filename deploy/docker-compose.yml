@@ -51,6 +51,7 @@ services:
       - ./backups:/backups
       - ./backup.sh:/usr/local/bin/backup.sh:ro
       - ./backup-cron.sh:/usr/local/bin/backup-cron.sh:ro
+      - ./restore.sh:/usr/local/bin/restore.sh:ro
     entrypoint: ["sh", "/usr/local/bin/backup-cron.sh"]
     depends_on:
       - postgres

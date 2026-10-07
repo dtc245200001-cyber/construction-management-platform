@@ -151,3 +151,44 @@ npx jest __tests__/scheduleAlgorithms
 ```
 
 Cách thêm một mạng mới: thêm một phần tử vào mảng `networks` theo cấu trúc hiện có.
+
+## Khôi phục khi mất dữ liệu
+
+Hệ thống hỗ trợ khôi phục PostgreSQL từ file backup `.dump` được tạo bởi cơ chế backup định kỳ.
+
+### Điều kiện
+
+- Backup được lưu trong thư mục `/backups` của backup container.
+- Chỉ khôi phục vào một database rỗng, không phải database đang được ứng dụng sử dụng.
+- Không khôi phục trực tiếp vào database `construction_db`.
+
+### Thực hiện khôi phục
+
+Tạo hoặc sử dụng một database đích rỗng và chạy:
+
+```bash
+docker exec construction_db_backup_staging \
+  sh /usr/local/bin/restore.sh construction_restore_test
+```
+
+Script sẽ:
+
+1. Chọn file backup mới nhất.
+2. Kiểm tra database đích.
+3. Từ chối nếu database đích là database đang chạy của ứng dụng.
+4. Từ chối nếu database đích đã có dữ liệu.
+5. Restore backup bằng `pg_restore`.
+6. In số lượng bản ghi của từng bảng sau khi restore.
+
+### Kiểm tra sau khi khôi phục
+
+Trong quá trình kiểm thử T-47, kết quả sau khi restore khớp với database nguồn:
+
+| Bảng | Database nguồn | Database restore |
+|---|---:|---:|
+| `users` | 3 | 3 |
+| `projects` | 2 | 2 |
+| `project_members` | 4 | 4 |
+| `roles` | 6 | 6 |
+
+Việc kiểm thử cũng xác nhận rằng script từ chối restore trực tiếp vào database đang chạy của ứng dụng.
