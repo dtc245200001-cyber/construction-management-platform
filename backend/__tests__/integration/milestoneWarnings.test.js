@@ -3,16 +3,13 @@
 const request = require("supertest");
 const app = require("../../app");
 const db = require("../../config/db");
-const { getTestToken } = require("../helpers/authHelper");
 const { ROLES } = require("../../utils/constants");
 const { evaluateMilestoneWarnings, calculateWorkingDays } = require("../../services/milestoneWarnings");
 
 describe("T-44 Milestone Warnings Tests", () => {
-  let projectManagerToken;
   let projectId;
 
   beforeAll(async () => {
-    projectManagerToken = await getTestToken(ROLES.BAN_QUAN_LY);
     const projectRes = await db.query("SELECT id FROM projects LIMIT 1");
     if (projectRes.rows.length > 0) {
       projectId = projectRes.rows[0].id;
