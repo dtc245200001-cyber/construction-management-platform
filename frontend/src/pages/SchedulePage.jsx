@@ -56,9 +56,35 @@ export default function SchedulePage() {
 
       if (neverCalculated) {
         try {
-          await api.post(
+          const calcRes = await api.post(
             `/projects/${currentProjectId}/schedule/recalculate`
           );
+
+          if (calcRes.status === 202 && calcRes.data?.jobId) {
+            setRecalculating(true);
+            let jobStatus = 'queued';
+            let currentDelay = 1000;
+            let jobErrorDetails = null;
+
+            while (jobStatus === 'queued' || jobStatus === 'running') {
+              await new Promise(r => setTimeout(r, currentDelay));
+              try {
+                const jobRes = await api.get(`/projects/${currentProjectId}/schedule-jobs/${calcRes.data.jobId}`);
+                jobStatus = jobRes.data.job.status;
+                if (jobStatus === 'failed') {
+                  jobErrorDetails = jobRes.data.job.error_details ? JSON.parse(jobRes.data.job.error_details) : { message: 'Lỗi không xác định' };
+                }
+                currentDelay = Math.min(currentDelay * 1.5, 5000);
+              } catch (pollErr) {
+                jobStatus = 'failed';
+                jobErrorDetails = { message: 'Lỗi khi kiểm tra trạng thái' };
+              }
+            }
+            if (jobStatus === 'failed') {
+              throw { response: { data: jobErrorDetails } };
+            }
+            setRecalculating(false);
+          }
 
           const again = await api.get(
             `/projects/${currentProjectId}/schedule-results`
@@ -66,7 +92,8 @@ export default function SchedulePage() {
 
           setScheduleData(again.data.data || []);
         } catch (calcErr) {
-          if (calcErr.response?.data?.code === "DEPENDENCY_CYCLE") {
+          setRecalculating(false);
+          if (calcErr.response?.data?.code === "DEPENDENCY_CYCLE" || calcErr.response?.data?.message) {
             setErrorMessage(calcErr.response.data.message);
           }
         }
@@ -100,12 +127,37 @@ export default function SchedulePage() {
         `/projects/${currentProjectId}/schedule/recalculate`
       );
 
+      if (res.status === 202 && res.data?.jobId) {
+        let jobStatus = 'queued';
+        let currentDelay = 1000;
+        let jobErrorDetails = null;
+
+        while (jobStatus === 'queued' || jobStatus === 'running') {
+          await new Promise(r => setTimeout(r, currentDelay));
+          try {
+            const jobRes = await api.get(`/projects/${currentProjectId}/schedule-jobs/${res.data.jobId}`);
+            jobStatus = jobRes.data.job.status;
+            if (jobStatus === 'failed') {
+              jobErrorDetails = jobRes.data.job.error_details ? JSON.parse(jobRes.data.job.error_details) : { message: 'Lỗi không xác định' };
+            }
+            currentDelay = Math.min(currentDelay * 1.5, 5000);
+          } catch (pollErr) {
+            jobStatus = 'failed';
+            jobErrorDetails = { message: 'Lỗi khi kiểm tra trạng thái' };
+          }
+        }
+        if (jobStatus === 'failed') {
+          throw { response: { data: jobErrorDetails } };
+        }
+      }
+
       setSuccessMessage(
-        res.data?.message ||
-          "Đã tính toán lại tiến độ CPM thành công."
+        res.status === 202 ? "Đã tính toán xong tiến độ CPM." : (res.data?.message || "Đã tính toán lại tiến độ CPM thành công.")
       );
 
-      await fetchSchedule();
+      // Reload without setting loading=true to avoid flicker
+      const again = await api.get(`/projects/${currentProjectId}/schedule-results`);
+      setScheduleData(again.data.data || []);
     } catch (err) {
       console.error("Lỗi tính toán lại tiến độ:", err);
 
