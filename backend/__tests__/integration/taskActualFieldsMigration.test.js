@@ -1,5 +1,6 @@
 "use strict";
 
+const fs = require("fs");
 const path = require("path");
 const pool = require("../../config/db");
 const runner = require("node-pg-migrate").default || require("node-pg-migrate");
@@ -213,13 +214,24 @@ describe("T-34: Migration thêm cột thực tế và ràng buộc bảng tasks"
 
   describe("4. Kiểm tra khả năng tiến và lùi của migration (Up & Down)", () => {
     it("Migration có thể rollback (down) 1 bước sạch sẽ", async () => {
+      const migrationsDir = path.resolve(__dirname, "../../migrations");
+      const migrations = fs
+        .readdirSync(migrationsDir)
+        .filter((f) => f.endsWith(".js"))
+        .sort();
+      const targetIdx = migrations.findIndex((f) =>
+        f.includes("add-actual-fields-to-tasks")
+      );
+      const rollbackCount =
+        targetIdx >= 0 ? migrations.length - targetIdx : 1;
+
       // Rollback migration T-34
       await runner({
         databaseUrl: dbUrl,
-        dir: path.resolve(__dirname, "../../migrations"),
+        dir: migrationsDir,
         direction: "down",
         migrationsTable: "pgmigrations",
-        count: 1,
+        count: rollbackCount,
         log: () => {},
       });
 
