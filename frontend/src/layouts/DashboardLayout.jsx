@@ -18,6 +18,7 @@ import {
   ChevronRight,
   ChevronDown,
   CalendarDays,
+  Calendar,
   Building2,
   ShieldCheck,
   Pencil,
@@ -34,6 +35,7 @@ const navItems = [
   { label: "Bảng đường găng (CPM)", icon: TrendingUp, path: "/schedule" },
   { label: "Tiến độ thi công", icon: CalendarDays, path: "/gantt" },
   { label: "Cảnh báo tiến độ", icon: Bell, path: "/warnings" },
+  { label: "Lịch & Ngày nghỉ", icon: Calendar, path: "/calendar" },
   { label: "Hiện trường & Giao việc", icon: Camera, path: "/field" },
   { label: "Nhật ký thi công", icon: FileText, path: "/diary" },
   { label: "Nghiệm thu khối lượng", icon: CheckSquare, path: "/acceptance" },
@@ -203,7 +205,7 @@ export default function DashboardLayout({ user, setUser }) {
                 key={item.label}
                 title={item.label}
                 onClick={() => {
-                  if (item.path === '/dashboard' || item.path === '/wbs' || item.path === '/members' || item.path === '/schedule' || item.path === '/gantt' || item.path === '/warnings') {
+                  if (item.path === '/dashboard' || item.path === '/wbs' || item.path === '/members' || item.path === '/schedule' || item.path === '/gantt' || item.path === '/warnings' || item.path === '/calendar') {
                     navigate(item.path);
                   } else {
                     alert("Tính năng này sẽ được phát triển trong các Sprint tiếp theo.");

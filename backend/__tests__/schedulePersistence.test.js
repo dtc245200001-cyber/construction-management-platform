@@ -21,15 +21,16 @@ describe("schedulePersistence", () => {
     jest.clearAllMocks();
   });
 
-  test("converts schedule offsets to timestamps", () => {
+  test("converts schedule offsets to timestamps using working days", () => {
     const projectStart = "2026-10-01T00:00:00.000Z";
 
     expect(addDays(projectStart, 0)).toEqual(
       new Date("2026-10-01T00:00:00.000Z")
     );
 
+    // Thu 01 + 5 working days (Sun off) -> Wed 07
     expect(addDays(projectStart, 5)).toEqual(
-      new Date("2026-10-06T00:00:00.000Z")
+      new Date("2026-10-07T00:00:00.000Z")
     );
   });
 
@@ -84,10 +85,10 @@ describe("schedulePersistence", () => {
       expect.stringContaining("INSERT INTO schedule_results"),
       [
         2,
-        new Date("2026-10-06T00:00:00.000Z"),
-        new Date("2026-10-11T00:00:00.000Z"),
-        new Date("2026-10-06T00:00:00.000Z"),
-        new Date("2026-10-11T00:00:00.000Z"),
+        new Date("2026-10-07T00:00:00.000Z"),
+        new Date("2026-10-12T00:00:00.000Z"),
+        new Date("2026-10-07T00:00:00.000Z"),
+        new Date("2026-10-12T00:00:00.000Z"),
         0,
         true,
       ]

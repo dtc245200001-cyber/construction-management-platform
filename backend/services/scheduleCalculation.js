@@ -7,13 +7,18 @@ const {
 const { calculateSchedule } = require("../utils/scheduleAlgorithms");
 const { saveScheduleResults } = require("./schedulePersistence");
 const { evaluateMilestoneWarnings } = require("./milestoneWarnings");
+const {
+  countWorkingDays,
+  parseDate,
+  DEFAULT_CALENDAR,
+} = require("../algorithms/workingDays");
 
 /**
  * Calculate and persist schedule results for a project.
  *
  * Flow:
  * buildGraph -> topologicalSort -> calculateSchedule
- * -> persist schedule results by task_id
+ * -> persist schedule results by task_id using project calendar & holidays
  */
 async function calculateAndSaveSchedule(projectId) {
   const projectResult = await pool.query(
@@ -63,57 +68,79 @@ async function calculateAndSaveSchedule(projectId) {
     throw error;
   }
 
+  // Load project calendar & holidays (T-38 / T-40)
+  const [calRes, holRes] = await Promise.all([
+    pool.query("SELECT * FROM calendars WHERE project_id = $1", [projectId]),
+    pool.query(
+      "SELECT holiday_date FROM holidays WHERE project_id = $1",
+      [projectId]
+    ),
+  ]);
+
+  const calendar = calRes.rows[0] || DEFAULT_CALENDAR;
+  const holidays = holRes.rows.map((r) => r.holiday_date);
+
   const graph = await buildGraph(projectId, pool);
 
   const { sortedOrder, unresolvedNodes } = topologicalSort(graph);
 
   if (unresolvedNodes.length > 0) {
-  const cycleNodes = findCycleNodes(
-    graph,
-    unresolvedNodes
-  );
+    const cycleNodes = findCycleNodes(graph, unresolvedNodes);
 
-  const cycleNames = cycleNodes.map(
-    (id) =>
-      graph.nodes[id]?.name || `#${id}`
-  );
-
-  const waitPairs = [];
-
-  for (let i = 0; i < cycleNames.length; i++) {
-    const current = cycleNames[i];
-    const next =
-      cycleNames[(i + 1) % cycleNames.length];
-
-    waitPairs.push(
-      `${current} chờ ${next}`
+    const cycleNames = cycleNodes.map(
+      (id) => graph.nodes[id]?.name || `#${id}`
     );
+
+    const waitPairs = [];
+
+    for (let i = 0; i < cycleNames.length; i++) {
+      const current = cycleNames[i];
+      const next = cycleNames[(i + 1) % cycleNames.length];
+
+      waitPairs.push(`${current} chờ ${next}`);
+    }
+
+    // Đóng vòng cho giống route tạo quan hệ: A → C → B → A
+    const closedNames = [...cycleNames, cycleNames[0]];
+    const cyclePath = closedNames.join(" → ");
+
+    const error = new Error(
+      `Không thể tính tiến độ vì dữ liệu có vòng phụ thuộc: ${waitPairs.join(", ")}.`
+    );
+
+    error.status = 422;
+    error.code = "DEPENDENCY_CYCLE";
+    error.cycleNodes = cycleNodes;
+    error.cycleNames = closedNames;
+    error.cyclePath = cyclePath;
+
+    throw error;
   }
 
-  // Đóng vòng cho giống route tạo quan hệ: A → C → B → A
-     const closedNames = [...cycleNames, cycleNames[0]];
-     const cyclePath = closedNames.join(" → ");
-
-
-  const error = new Error(
-    `Không thể tính tiến độ vì dữ liệu có vòng phụ thuộc: ` +
-    `${waitPairs.join(", ")}.`
-  );
-
-  error.status = 422;
-  error.code = "DEPENDENCY_CYCLE";
-  error.cycleNodes = cycleNodes;
-  error.cycleNames = closedNames;
-  error.cyclePath = cyclePath;
-
-  throw error;
-}
-
-  const tasks = Object.values(graph.nodes).map(task => {
-    if (task.schedulingMode === 'manual' && task.manualStartDate) {
-      const msPerDay = 1000 * 60 * 60 * 24;
-      const offset = Math.round((new Date(task.manualStartDate) - new Date(project.start_date)) / msPerDay);
-      return { ...task, manualOffset: offset };
+  const tasks = Object.values(graph.nodes).map((task) => {
+    if (task.schedulingMode === "manual" && task.manualStartDate) {
+      let offset = 0;
+      const taskStart = parseDate(task.manualStartDate);
+      const projStart = parseDate(project.start_date);
+      if (taskStart.getTime() >= projStart.getTime()) {
+        offset =
+          countWorkingDays(
+            project.start_date,
+            task.manualStartDate,
+            calendar,
+            holidays
+          ) - 1;
+      } else {
+        offset = -(
+          countWorkingDays(
+            task.manualStartDate,
+            project.start_date,
+            calendar,
+            holidays
+          ) - 1
+        );
+      }
+      return { ...task, manualOffset: Math.max(0, offset) };
     }
     return task;
   });
@@ -140,7 +167,9 @@ async function calculateAndSaveSchedule(projectId) {
 
   const savedCount = await saveScheduleResults(
     scheduleByTask,
-    project.start_date
+    project.start_date,
+    calendar,
+    holidays
   );
 
   // T-44: Evaluate milestone warnings using the newly calculated schedule results

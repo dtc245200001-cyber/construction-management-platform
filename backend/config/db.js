@@ -8,7 +8,10 @@
 //   DB_SSL=true     — bật TLS khi kết nối (Render yêu cầu).
 //   DB_POOL_MAX     — số kết nối tối đa (mặc định 10).
 
-const { Pool } = require("pg");
+const { Pool, types } = require("pg");
+
+// Parse PostgreSQL DATE (OID 1082) as YYYY-MM-DD string instead of Date object to prevent timezone shifts
+types.setTypeParser(1082, (val) => val);
 
 const ssl = process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : false;
 
