@@ -179,7 +179,7 @@ export default function SchedulePage() {
 
               <div>
                 <h1 className="text-white text-[28px] font-bold leading-tight">
-                  Tiến độ & Đường găng (CPM)
+                  Bảng đường găng (CPM)
                 </h1>
 
                 <p className="text-white/90 text-[14px] mt-1">

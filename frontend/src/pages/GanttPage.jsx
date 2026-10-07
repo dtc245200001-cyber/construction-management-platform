@@ -100,13 +100,9 @@ export default function GanttPage() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-gray-50">
-        <RefreshCw className="size-8 text-blue-500 animate-spin mb-4" />
-
-        <p className="text-gray-500">
-          Đang tải và tính toán sơ đồ thanh ngang
-          theo trục thời gian...
-        </p>
+      <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 text-gray-500">
+        <RefreshCw className="size-8 animate-spin mb-4 text-blue-500" />
+        <p>Đang tải dữ liệu tiến độ...</p>
       </div>
     );
   }
@@ -213,70 +209,51 @@ export default function GanttPage() {
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Danh sách tên công việc */}
-        <div className="w-[140px] md:w-[180px] lg:w-max lg:min-w-[250px] lg:max-w-[350px] border-r border-gray-200 bg-white shrink-0 flex flex-col z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-          <div className="h-20 border-b border-gray-200 bg-slate-50 flex items-center px-4 font-semibold text-sm text-gray-600 shrink-0">
-            Tên công việc
-          </div>
-
-          <div className="flex-1 overflow-hidden">
-            {ganttBars.map((bar) => (
-              <div
-                key={bar.id}
-                className={`px-2 md:px-4 text-[12px] md:text-[13px] truncate border-b border-gray-100 flex items-center gap-2 bg-white ${
-                  bar.is_critical
-                    ? "font-bold text-red-700"
-                    : "font-medium text-gray-700"
-                }`}
-                style={{
-                  height: ROW_HEIGHT,
-                }}
-                title={bar.name}
-              >
-                {bar.is_critical && (
-                  <span
-                    aria-label="Việc găng"
-                    className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-red-700 text-[11px] font-black text-white"
-                  >
-                    !
-                  </span>
-                )}
-
-                <span className="truncate lg:whitespace-nowrap">
-                  {bar.name}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Timeline */}
-        <div className="flex-1 overflow-auto bg-slate-50 relative">
-          <div
-            style={{
-              minWidth: svgWidth,
-              height:
-                ganttBars.length *
-                  ROW_HEIGHT +
-                80,
-            }}
-            className="relative"
-          >
-            {/* Header thời gian */}
-            <div className="h-20 border-b border-gray-200 bg-slate-50 sticky top-0 z-10 w-full relative overflow-hidden">
-              {ticks.map((tick) => (
+      <div className="flex-1 overflow-auto bg-slate-50 relative custom-scrollbar">
+        <div className="flex w-max min-w-full">
+          {/* CỘT TRÁI (Sticky Left) */}
+          <div className="sticky left-0 z-20 bg-white border-r border-gray-200 flex flex-col shrink-0 w-[140px] md:w-[180px] lg:w-max lg:min-w-[250px] lg:max-w-[350px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+            {/* Ô GÓC (Sticky Top & Left - Cao nhất) */}
+            <div className="sticky top-0 z-30 h-20 bg-slate-50 border-b border-gray-200 flex items-center px-4 font-semibold text-sm text-gray-600 shrink-0">
+              Tên công việc
+            </div>
+            
+            {/* Dòng tên công việc */}
+            <div className="flex flex-col">
+              {ganttBars.map((bar) => (
                 <div
-                  key={tick.x}
-                  className="absolute h-full flex flex-col justify-end pb-2 border-l border-gray-300 text-[10px] text-gray-500"
-                  style={{
-                    left: tick.x,
-                    width:
-                      PIXELS_PER_DAY *
-                      (viewMode === "week"
-                        ? 7
-                        : 1),
-                  }}
+                  key={bar.id}
+                  className={`px-2 md:px-4 text-[12px] md:text-[13px] truncate border-b border-gray-100 flex items-center gap-2 bg-white ${
+                    bar.is_critical
+                      ? "font-bold text-red-700"
+                      : "font-medium text-gray-700"
+                  }`}
+                  style={{ height: ROW_HEIGHT }}
+                  title={bar.name}
+                >
+                  {bar.is_critical && (
+                    <span
+                      aria-label="Việc găng"
+                      className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-red-700 text-[11px] font-black text-white"
+                    >
+                      !
+                    </span>
+                  )}
+                  <div className="truncate lg:whitespace-nowrap">{bar.name}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* CỘT PHẢI (Timeline & SVG) */}
+          <div className="relative shrink-0" style={{ width: svgWidth }}>
+            {/* HEADER TRỤC THỜI GIAN (Sticky Top) */}
+            <div className="sticky top-0 z-10 h-20 bg-slate-50 border-b border-gray-200 w-full overflow-hidden relative">
+              {ticks.map(tick => (
+                <div 
+                  key={tick.x} 
+                  className="absolute h-full flex flex-col justify-end pb-2 border-l border-gray-300 text-[10px] text-gray-500" 
+                  style={{ left: tick.x, width: PIXELS_PER_DAY * (viewMode === 'week' ? 7 : 1) }}
                 >
                   <span className="whitespace-nowrap -rotate-45 origin-bottom-left ml-2 mb-1">
                     {tick.label}
@@ -285,35 +262,19 @@ export default function GanttPage() {
               ))}
             </div>
 
-            <svg
-              width={svgWidth}
-              height={
-                ganttBars.length *
-                ROW_HEIGHT
-              }
-              className="absolute left-0"
-              style={{ top: 80 }}
-            >
-              {/* Lưới */}
-              {ticks.map((tick) => (
-                <line
-                  key={`line-${tick.x}`}
-                  x1={tick.x}
-                  y1={0}
-                  x2={tick.x}
-                  y2="100%"
-                  stroke="#e2e8f0"
-                  strokeWidth="1"
-                  strokeDasharray="4 4"
+            {/* SVG GANTT BARS */}
+            <svg width={svgWidth} height={ganttBars.length * ROW_HEIGHT} className="block bg-slate-50">
+              {/* Lưới dọc */}
+              {ticks.map(tick => (
+                <line 
+                  key={`line-${tick.x}`} 
+                  x1={tick.x} y1={0} x2={tick.x} y2="100%" 
+                  stroke="#e2e8f0" strokeWidth="1" strokeDasharray="4 4" 
                 />
               ))}
 
               {ganttBars.map((bar) => {
-                const barColor =
-                  bar.is_critical
-                    ? "#ef4444"
-                    : "#3b82f6";
-
+                const barColor = bar.is_critical ? "#ef4444" : "#3b82f6";
                 return (
                   <g key={bar.id}>
                     {/* nền của dòng */}

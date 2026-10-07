@@ -27,7 +27,7 @@ import {
 const navItems = [
   { label: "Tổng quan", icon: Home, path: "/dashboard" },
   { label: "Cơ cấu công việc (WBS)", icon: Network, path: "/wbs" },
-  { label: "Tiến độ & Đường găng", icon: TrendingUp, path: "/schedule" },
+  { label: "Bảng đường găng (CPM)", icon: TrendingUp, path: "/schedule" },
   { label: "Tiến độ thi công", icon: CalendarDays, path: "/gantt" },
   { label: "Hiện trường & Giao việc", icon: Camera, path: "/field" },
   { label: "Nhật ký thi công", icon: FileText, path: "/diary" },

@@ -35,7 +35,7 @@ import heroImage from "../assets/hero-site.jpg";
 const navItems = [
   { label: "Tổng quan", icon: Home, active: true },
   { label: "Cơ cấu công việc (WBS)", icon: Network },
-  { label: "Tiến độ & Đường găng", icon: TrendingUp },
+  { label: "Bảng đường găng (CPM)", icon: TrendingUp },
   { label: "Hiện trường & Giao việc", icon: Camera },
   { label: "Nhật ký thi công", icon: FileText },
   { label: "Nghiệm thu khối lượng", icon: CheckSquare },
