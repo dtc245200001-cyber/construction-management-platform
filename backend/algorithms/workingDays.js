@@ -39,18 +39,7 @@ const DEFAULT_CALENDAR = Object.freeze({
  * @returns {Date}
  */
 function parseDate(dateInput) {
-  if (dateInput instanceof Date) {
-    return new Date(
-      Date.UTC(
-        dateInput.getUTCFullYear(),
-        dateInput.getUTCMonth(),
-        dateInput.getUTCDate()
-      )
-    );
-  }
-
   if (typeof dateInput === "string") {
-    // Tách chuỗi YYYY-MM-DD
     const match = dateInput.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (match) {
       const year = parseInt(match[1], 10);
@@ -60,10 +49,15 @@ function parseDate(dateInput) {
     }
   }
 
+  if (dateInput instanceof Date) {
+    const y = dateInput.getFullYear();
+    const m = dateInput.getMonth();
+    const d = dateInput.getDate();
+    return new Date(Date.UTC(y, m, d));
+  }
+
   const d = new Date(dateInput);
-  return new Date(
-    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
-  );
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
 }
 
 /**

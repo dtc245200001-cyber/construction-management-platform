@@ -1,40 +1,60 @@
 const pool = require("../config/db");
+const {
+  addWorkingDays,
+  parseDate,
+  DEFAULT_CALENDAR,
+} = require("../algorithms/workingDays");
 
 /**
- * Convert a schedule offset (number of days) to a Date.
+ * Convert a schedule offset (number of working days) to a Date.
  *
  * @param {Date|string} projectStart
  * @param {number} offsetDays
+ * @param {Object} [calendar=DEFAULT_CALENDAR]
+ * @param {Array} [holidays=[]]
  * @returns {Date|null}
  */
-function addDays(projectStart, offsetDays) {
+function addDays(
+  projectStart,
+  offsetDays,
+  calendar = DEFAULT_CALENDAR,
+  holidays = []
+) {
   if (projectStart === null || projectStart === undefined) {
     return null;
   }
 
-  const date = new Date(projectStart);
-
-  if (Number.isNaN(date.getTime())) {
+  const parsed = parseDate(projectStart);
+  if (Number.isNaN(parsed.getTime())) {
     throw new Error("Invalid projectStart");
   }
 
-  date.setDate(date.getDate() + Number(offsetDays || 0));
-  return date;
+  const dateStr = addWorkingDays(
+    parsed,
+    Number(offsetDays || 0),
+    calendar,
+    holidays
+  );
+  return new Date(`${dateStr}T00:00:00.000Z`);
 }
 
 /**
- * Persist calculated schedule results into schedule_results.
+ * Persist calculated schedule results into schedule_results using working days calculations.
  *
  * After a successful calculation, needs_recalculation is set to false.
  *
- * ES/EF/LS/LF are calculated by T-21 as day offsets.
- * They are converted to timestamps using projectStart before persistence.
- *
  * @param {Object} scheduleResults
  * @param {Date|string} projectStart
+ * @param {Object} [calendar=DEFAULT_CALENDAR]
+ * @param {Array} [holidays=[]]
  * @returns {Promise<number>} number of persisted results
  */
-async function saveScheduleResults(scheduleResults, projectStart) {
+async function saveScheduleResults(
+  scheduleResults,
+  projectStart,
+  calendar = DEFAULT_CALENDAR,
+  holidays = []
+) {
   const entries = Object.entries(scheduleResults || {});
 
   if (entries.length === 0) {
@@ -51,6 +71,35 @@ async function saveScheduleResults(scheduleResults, projectStart) {
     await client.query("BEGIN");
 
     for (const [taskId, result] of entries) {
+      const duration =
+        result.EF !== undefined && result.ES !== undefined
+          ? Math.max(0, result.EF - result.ES)
+          : 0;
+
+      // Early dates
+      const earlyStartStr = addWorkingDays(
+        projectStart,
+        result.ES || 0,
+        calendar,
+        holidays
+      );
+      const earlyFinishStr =
+        duration > 0
+          ? addWorkingDays(earlyStartStr, duration - 1, calendar, holidays)
+          : earlyStartStr;
+
+      // Late dates
+      const lateStartStr = addWorkingDays(
+        projectStart,
+        result.LS || 0,
+        calendar,
+        holidays
+      );
+      const lateFinishStr =
+        duration > 0
+          ? addWorkingDays(lateStartStr, duration - 1, calendar, holidays)
+          : lateStartStr;
+
       await client.query(
         `
         INSERT INTO schedule_results (
@@ -78,10 +127,10 @@ async function saveScheduleResults(scheduleResults, projectStart) {
         `,
         [
           Number(taskId),
-          addDays(projectStart, result.ES),
-          addDays(projectStart, result.EF),
-          addDays(projectStart, result.LS),
-          addDays(projectStart, result.LF),
+          new Date(`${earlyStartStr}T00:00:00.000Z`),
+          new Date(`${earlyFinishStr}T00:00:00.000Z`),
+          new Date(`${lateStartStr}T00:00:00.000Z`),
+          new Date(`${lateFinishStr}T00:00:00.000Z`),
           result.float,
           result.critical,
         ]
