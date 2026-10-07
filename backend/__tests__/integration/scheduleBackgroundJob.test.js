@@ -134,7 +134,7 @@ describe("T-36: Background Job and Progress Integration", () => {
         request(app).post(`/api/projects/${projectId}/schedule/recalculate`).set("Cookie", authCookie)
       ]);
 
-      expect([res1.status, res2.status].includes(202)).toBe(true);
+      expect([res1.status, res2.status].includes(429)).toBe(true);
       expect([res1.status, res2.status].includes(202)).toBe(true);
     });
   });
