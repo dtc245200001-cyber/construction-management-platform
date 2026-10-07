@@ -8,6 +8,7 @@ const { createEmailLog, processEmailLogs } = require('../lib/emailSender');
 const emailTemplates = require('../lib/emailTemplates');
 const { getScheduleResults } = require("../services/scheduleQuery");
 const { calculateAndSaveSchedule } = require("../services/scheduleCalculation");
+const { markProjectScheduleDirty } = require("../services/scheduleRecalculation");
 
 const router = createProjectRouter();
 
@@ -558,6 +559,311 @@ router.post(
       });
     } catch (error) {
       next(error);
+    }
+  }
+);
+
+// GET /api/projects/:projectId/calendar
+router.get(
+  "/:projectId/calendar",
+  requireAuth,
+  checkProjectAccess,
+  allow(Object.values(ROLES)),
+  async (req, res, next) => {
+    try {
+      const projectId = Number(req.params.projectId);
+      let result = await db.query(
+        `SELECT id, project_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, created_at, updated_at
+         FROM calendars
+         WHERE project_id = $1`,
+        [projectId]
+      );
+
+      if (result.rows.length === 0) {
+        // Create default calendar if missing
+        const insertRes = await db.query(
+          `INSERT INTO calendars (project_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday)
+           VALUES ($1, true, true, true, true, true, true, false)
+           ON CONFLICT (project_id) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+           RETURNING id, project_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, created_at, updated_at`,
+          [projectId]
+        );
+        return res.json({ calendar: insertRes.rows[0] });
+      }
+
+      return res.json({ calendar: result.rows[0] });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// PUT /api/projects/:projectId/calendar
+router.put(
+  "/:projectId/calendar",
+  requireAuth,
+  checkProjectAccess,
+  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU, ROLES.CHI_HUY_TRUONG]),
+  async (req, res, next) => {
+    const projectId = Number(req.params.projectId);
+    const { monday, tuesday, wednesday, thursday, friday, saturday, sunday } = req.body;
+
+    const days = {
+      monday: monday === undefined ? true : Boolean(monday),
+      tuesday: tuesday === undefined ? true : Boolean(tuesday),
+      wednesday: wednesday === undefined ? true : Boolean(wednesday),
+      thursday: thursday === undefined ? true : Boolean(thursday),
+      friday: friday === undefined ? true : Boolean(friday),
+      saturday: saturday === undefined ? true : Boolean(saturday),
+      sunday: sunday === undefined ? false : Boolean(sunday),
+    };
+
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+
+      const result = await client.query(
+        `INSERT INTO calendars (project_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
+         ON CONFLICT (project_id) DO UPDATE SET
+           monday = EXCLUDED.monday,
+           tuesday = EXCLUDED.tuesday,
+           wednesday = EXCLUDED.wednesday,
+           thursday = EXCLUDED.thursday,
+           friday = EXCLUDED.friday,
+           saturday = EXCLUDED.saturday,
+           sunday = EXCLUDED.sunday,
+           updated_at = CURRENT_TIMESTAMP
+         RETURNING *`,
+        [
+          projectId,
+          days.monday,
+          days.tuesday,
+          days.wednesday,
+          days.thursday,
+          days.friday,
+          days.saturday,
+          days.sunday,
+        ]
+      );
+
+      // Đổi lịch thì đánh dấu cần tính lại như T-26
+      await markProjectScheduleDirty(projectId, client);
+
+      await client.query("COMMIT");
+
+      return res.json({
+        message: "Cập nhật lịch làm việc thành công",
+        calendar: result.rows[0],
+      });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      next(error);
+    } finally {
+      client.release();
+    }
+  }
+);
+
+// GET /api/projects/:projectId/holidays
+router.get(
+  "/:projectId/holidays",
+  requireAuth,
+  checkProjectAccess,
+  allow(Object.values(ROLES)),
+  async (req, res, next) => {
+    try {
+      const projectId = Number(req.params.projectId);
+      const result = await db.query(
+        `SELECT id, project_id, holiday_date, name, created_at, updated_at
+         FROM holidays
+         WHERE project_id = $1
+         ORDER BY holiday_date ASC, id ASC`,
+        [projectId]
+      );
+
+      return res.json({
+        holidays: result.rows,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /api/projects/:projectId/holidays
+router.post(
+  "/:projectId/holidays",
+  requireAuth,
+  checkProjectAccess,
+  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU, ROLES.CHI_HUY_TRUONG]),
+  async (req, res, next) => {
+    const projectId = Number(req.params.projectId);
+    const { holiday_date, name } = req.body;
+
+    if (!holiday_date || typeof holiday_date !== "string" || !holiday_date.trim()) {
+      return res.status(400).json({ message: "Ngày nghỉ (holiday_date) là bắt buộc" });
+    }
+
+    if (!name || typeof name !== "string" || !name.trim()) {
+      return res.status(400).json({ message: "Tên ngày nghỉ là bắt buộc" });
+    }
+
+    const dateMatch = holiday_date.trim().match(/^\d{4}-\d{2}-\d{2}$/);
+    if (!dateMatch) {
+      return res.status(400).json({ message: "Ngày nghỉ không đúng định dạng YYYY-MM-DD" });
+    }
+
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Check unique (project_id, holiday_date)
+      const exist = await client.query(
+        `SELECT id FROM holidays WHERE project_id = $1 AND holiday_date = $2`,
+        [projectId, holiday_date.trim()]
+      );
+
+      if (exist.rows.length > 0) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ message: "Ngày nghỉ này đã tồn tại trong dự án" });
+      }
+
+      const result = await client.query(
+        `INSERT INTO holidays (project_id, holiday_date, name)
+         VALUES ($1, $2, $3)
+         RETURNING *`,
+        [projectId, holiday_date.trim(), name.trim()]
+      );
+
+      // Đánh dấu cần tính lại như T-26
+      await markProjectScheduleDirty(projectId, client);
+
+      await client.query("COMMIT");
+
+      return res.status(201).json({
+        message: "Thêm ngày nghỉ thành công",
+        holiday: result.rows[0],
+      });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      if (error.code === "23505") {
+        return res.status(400).json({ message: "Ngày nghỉ này đã tồn tại trong dự án" });
+      }
+      next(error);
+    } finally {
+      client.release();
+    }
+  }
+);
+
+// DELETE /api/projects/:projectId/holidays/:holidayId
+router.delete(
+  "/:projectId/holidays/:holidayId",
+  requireAuth,
+  checkProjectAccess,
+  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU, ROLES.CHI_HUY_TRUONG]),
+  async (req, res, next) => {
+    const projectId = Number(req.params.projectId);
+    const holidayId = Number(req.params.holidayId);
+
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+
+      const exist = await client.query(
+        `SELECT id FROM holidays WHERE id = $1 AND project_id = $2`,
+        [holidayId, projectId]
+      );
+
+      if (exist.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Không tìm thấy ngày nghỉ" });
+      }
+
+      await client.query(
+        `DELETE FROM holidays WHERE id = $1 AND project_id = $2`,
+        [holidayId, projectId]
+      );
+
+      // Đánh dấu cần tính lại như T-26
+      await markProjectScheduleDirty(projectId, client);
+
+      await client.query("COMMIT");
+
+      return res.json({ message: "Đã xoá ngày nghỉ thành công" });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      next(error);
+    } finally {
+      client.release();
+    }
+  }
+);
+
+// PUT /api/projects/:projectId/holidays/:holidayId
+router.put(
+  "/:projectId/holidays/:holidayId",
+  requireAuth,
+  checkProjectAccess,
+  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU, ROLES.CHI_HUY_TRUONG]),
+  async (req, res, next) => {
+    const projectId = Number(req.params.projectId);
+    const holidayId = Number(req.params.holidayId);
+    const { holiday_date, name } = req.body;
+
+    if (!holiday_date || !name) {
+      return res.status(400).json({ message: "Ngày nghỉ và tên ngày nghỉ là bắt buộc" });
+    }
+
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+
+      const exist = await client.query(
+        `SELECT id FROM holidays WHERE id = $1 AND project_id = $2`,
+        [holidayId, projectId]
+      );
+
+      if (exist.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Không tìm thấy ngày nghỉ" });
+      }
+
+      const dup = await client.query(
+        `SELECT id FROM holidays WHERE project_id = $1 AND holiday_date = $2 AND id != $3`,
+        [projectId, holiday_date.trim(), holidayId]
+      );
+
+      if (dup.rows.length > 0) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ message: "Ngày nghỉ này đã tồn tại trong dự án" });
+      }
+
+      const result = await client.query(
+        `UPDATE holidays
+         SET holiday_date = $1, name = $2, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $3 AND project_id = $4
+         RETURNING *`,
+        [holiday_date.trim(), name.trim(), holidayId, projectId]
+      );
+
+      await markProjectScheduleDirty(projectId, client);
+
+      await client.query("COMMIT");
+
+      return res.json({
+        message: "Cập nhật ngày nghỉ thành công",
+        holiday: result.rows[0],
+      });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      if (error.code === "23505") {
+        return res.status(400).json({ message: "Ngày nghỉ này đã tồn tại trong dự án" });
+      }
+      next(error);
+    } finally {
+      client.release();
     }
   }
 );
