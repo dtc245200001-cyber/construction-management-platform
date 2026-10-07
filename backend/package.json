@@ -5,15 +5,15 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "start:migrate": "node -r dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate up && node server.js",
+    "start:migrate": "node -r dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate up --no-check-order && node server.js",
     "dev": "nodemon server.js",
     "lint": "eslint .",
     "build": "node --check server.js app.js routes/authRoutes.js routes/categoryRoutes.js routes/projectRoutes.js middleware/auth.js middleware/projectAccess.js middleware/errorHandler.js config/db.js utils/logger.js utils/asyncHandler.js utils/validators.js && echo 'Syntax check passed'",
     "test": "jest --runInBand --forceExit",
     "test:unit": "cross-env NODE_ENV=test jest --selectProjects unit --runInBand --forceExit",
     "test:integration": "cross-env NODE_ENV=test jest --selectProjects integration --runInBand --forceExit",
-    "migrate:up": "node -r dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate up",
-    "migrate:down": "node -r dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate down"
+    "migrate:up": "node -r dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate up --no-check-order",
+    "migrate:down": "node -r dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate down --no-check-order"
   },
   "dependencies": {
     "argon2": "^0.45.1",

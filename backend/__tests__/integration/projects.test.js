@@ -7,7 +7,7 @@ const pool = require("../../config/db");
 const backendDir = path.join(__dirname, "../..");
 
 function runMigration(direction) {
-  execFileSync("npx", ["node-pg-migrate", direction, "-m", "migrations"], {
+  execFileSync("npx", ["node-pg-migrate", direction, "-m", "migrations", "--no-check-order"], {
     cwd: backendDir,
     env: process.env,
     stdio: "pipe",
