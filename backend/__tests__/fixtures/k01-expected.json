@@ -847,5 +847,127 @@
         "B"
       ]
     }
-  ]
+  ],
+  "workingDaysTestCases": {
+    "metadata": {
+      "source": "T-39 / S-17",
+      "calculatedBy": "Học",
+      "calculatedDate": "2026-10-07",
+      "method": "Tính tay ngày làm việc độc lập với code kiểm thử (Default 6-day calendar: Mon-Sat true, Sun false)",
+      "note": "Bộ 6 ca tính tay kiểm tra hàm cộng ngày làm việc (addWorkingDays) và đếm ngày làm việc (countWorkingDays)"
+    },
+    "defaultCalendar": {
+      "monday": true,
+      "tuesday": true,
+      "wednesday": true,
+      "thursday": true,
+      "friday": true,
+      "saturday": true,
+      "sunday": false
+    },
+    "cases": [
+      {
+        "id": "case1_cross_sunday",
+        "name": "Ca 1: Cộng ngày và đếm ngày chạy qua Chủ nhật",
+        "startDate": "2026-01-09",
+        "endDate": "2026-01-13",
+        "n": 3,
+        "holidays": [],
+        "expectedAdd": "2026-01-13",
+        "expectedCount": 4,
+        "explanation": "09/01 (T6 làm) + 3 ngày làm việc: T7 10/01 (+1), CN 11/01 (nghỉ bỏ qua), T2 12/01 (+2), T3 13/01 (+3) -> đích 13/01. Đếm 09/01 đến 13/01: T6(1), T7(2), CN(0), T2(3), T3(4) -> 4 ngày làm việc."
+      },
+      {
+        "id": "case2_holiday_on_weekday",
+        "name": "Ca 2: Có ngày nghỉ lễ rơi vào ngày làm việc trong tuần",
+        "startDate": "2026-01-05",
+        "endDate": "2026-01-09",
+        "n": 3,
+        "holidays": [
+          { "holiday_date": "2026-01-07", "name": "Nghỉ lễ giữa tuần" }
+        ],
+        "expectedAdd": "2026-01-09",
+        "expectedCount": 4,
+        "explanation": "05/01 (T2 làm) + 3 ngày làm việc: T3 06/01 (+1), T4 07/01 (lễ bỏ qua), T5 08/01 (+2), T6 09/01 (+3) -> đích 09/01. Đếm 05/01 đến 09/01: T2(1), T3(2), T4(lễ 0), T5(3), T6(4) -> 4 ngày làm việc."
+      },
+      {
+        "id": "case3_holiday_on_sunday",
+        "name": "Ca 3: Ngày nghỉ lễ trùng vào ngày Chủ nhật (chỉ trừ 1 lần, không trừ 2 lần)",
+        "startDate": "2026-01-05",
+        "endDate": "2026-01-12",
+        "n": 1,
+        "addFrom": "2026-01-10",
+        "holidays": [
+          { "holiday_date": "2026-01-11", "name": "Lễ trùng Chủ nhật" }
+        ],
+        "expectedAdd": "2026-01-12",
+        "expectedCount": 7,
+        "explanation": "Chủ nhật 11/01 vốn là ngày nghỉ, lễ trùng vào đó chỉ tính là 1 ngày nghỉ, không trừ lặp. 05/01 đến 12/01 gồm 8 ngày lịch trừ 1 ngày CN/lễ -> còn đúng 7 ngày làm việc. 10/01 (T7) + 1 ngày làm việc = 12/01 (T2)."
+      },
+      {
+        "id": "case4_multiple_weeks_and_holidays",
+        "name": "Ca 4: Cộng nhiều ngày làm việc qua nhiều tuần và ngày lễ",
+        "startDate": "2026-01-05",
+        "endDate": "2026-01-20",
+        "n": 12,
+        "holidays": [
+          { "holiday_date": "2026-01-08", "name": "Nghỉ lễ" }
+        ],
+        "expectedAdd": "2026-01-20",
+        "expectedCount": 13,
+        "explanation": "Từ 05/01 + 12 ngày làm việc: Tuần 1 được 4 ngày (T3, T4, T6, T7 - T5 lễ), Tuần 2 được 6 ngày (T2-T7), Tuần 3 được 2 ngày (T2 19/01, T3 20/01) -> Đích 20/01. Đếm 05/01 đến 20/01 gồm 16 ngày lịch - 3 ngày nghỉ (1 lễ + 2 CN) = 13 ngày làm việc."
+      },
+      {
+        "id": "case5_long_range_with_holidays_and_sundays",
+        "name": "Ca 5: Đếm số ngày làm việc khoảng dài có cả Chủ nhật và nhiều ngày lễ",
+        "startDate": "2026-01-01",
+        "endDate": "2026-01-15",
+        "holidays": [
+          { "holiday_date": "2026-01-01", "name": "Tết Dương Lịch" },
+          { "holiday_date": "2026-01-11", "name": "Lễ trùng Chủ nhật" }
+        ],
+        "expectedCount": 12,
+        "explanation": "Khoảng 01/01 đến 15/01 có 15 ngày lịch. Ngày nghỉ: 01/01 (lễ), 04/01 (CN), 11/01 (CN trùng lễ - trừ 1 lần). Tổng nghỉ = 3. Số ngày làm việc = 15 - 3 = 12 ngày."
+      },
+      {
+        "id": "case6_edge_cases_start_end_holiday_sunday",
+        "name": "Ca 6: Các trường hợp biên (Start/End rơi vào ngày Chủ nhật hoặc ngày Lễ, n = 0)",
+        "startDate": "2026-01-11",
+        "endDate": "2026-01-11",
+        "n": 0,
+        "holidays": [
+          { "holiday_date": "2026-01-11", "name": "Lễ trùng Chủ nhật" }
+        ],
+        "expectedAdd": "2026-01-11",
+        "expectedCount": 0,
+        "edgeCases": [
+          {
+            "desc": "Start và End cùng là Chủ nhật/Lễ -> 0 ngày làm việc",
+            "start": "2026-01-11",
+            "end": "2026-01-11",
+            "expectedCount": 0
+          },
+          {
+            "desc": "Start T7, End CN -> 1 ngày làm việc (T7)",
+            "start": "2026-01-10",
+            "end": "2026-01-11",
+            "expectedCount": 1
+          },
+          {
+            "desc": "Start CN, cộng 1 ngày làm việc -> T2",
+            "start": "2026-01-11",
+            "n": 1,
+            "expectedAdd": "2026-01-12"
+          },
+          {
+            "desc": "Cộng 0 ngày làm việc -> giữ nguyên ngày bắt đầu",
+            "start": "2026-01-09",
+            "n": 0,
+            "expectedAdd": "2026-01-09"
+          }
+        ],
+        "explanation": "Xử lý chính xác các trường hợp biên tại điểm mốc ngày nghỉ và n=0."
+      }
+    ]
+  }
 }
