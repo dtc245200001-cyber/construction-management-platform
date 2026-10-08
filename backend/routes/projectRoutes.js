@@ -6,7 +6,6 @@ const { checkProjectAccess, allow, createProjectRouter } = require('../middlewar
 const { ROLES } = require('../utils/constants');
 const { createEmailLog, processEmailLogs } = require('../lib/emailSender');
 const emailTemplates = require('../lib/emailTemplates');
-const { getScheduleResults } = require("../services/scheduleQuery");
 const { calculateAndSaveSchedule, runScheduleJobAsync } = require("../services/scheduleCalculation");
 const { markProjectScheduleDirty } = require("../services/scheduleRecalculation");
 
@@ -211,6 +210,62 @@ router.put(
 );
 
 
+const { getScheduleResults, getPlannedFinish } = require("../services/scheduleQuery");
+const { workingDayDiff, formatDate } = require("../algorithms/workingDays");
+
+/**
+ * @swagger
+ * /api/projects/{projectId}/schedule-results:
+ *   get:
+ *     summary: Lấy kết quả tính toán tiến độ dự án
+ *     tags: [Projects]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: critical
+ *         schema:
+ *           type: boolean
+ *         description: Lọc theo cờ găng (true/false)
+ *     responses:
+ *       200:
+ *         description: Thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 projectId:
+ *                   type: integer
+ *                 count:
+ *                   type: integer
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     currentFinish:
+ *                       type: string
+ *                     plannedFinish:
+ *                       type: string
+ *                     delayWorkingDays:
+ *                       type: integer
+ *                     status:
+ *                       type: string
+ *                       enum: [on_track, late, early]
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       newly_critical:
+ *                         type: boolean
+ *                       planned_early_finish:
+ *                         type: string
+ */
 // GET /api/projects/:projectId/schedule-results
 router.get(
   "/:projectId/schedule-results",
@@ -247,10 +302,40 @@ router.get(
         criticalOnly
       );
 
+      const plannedFinishRaw = await getPlannedFinish(projectId);
+      const currentFinishRes = await db.query(`
+        SELECT MAX(sr.early_finish) as max_finish 
+        FROM schedule_results sr 
+        JOIN tasks t ON t.id = sr.task_id 
+        JOIN work_items wi ON wi.id = t.work_item_id 
+        WHERE wi.project_id = $1
+      `, [projectId]);
+      const currentFinishRaw = currentFinishRes.rows[0]?.max_finish;
+
+      let delayWorkingDays = 0;
+      let status = "on_track";
+
+      if (plannedFinishRaw && currentFinishRaw) {
+        const calRes = await db.query("SELECT * FROM calendars WHERE project_id = $1", [projectId]);
+        const holRes = await db.query("SELECT holiday_date FROM holidays WHERE project_id = $1", [projectId]);
+        const calendar = calRes.rows[0];
+        const holidays = holRes.rows.map(r => r.holiday_date);
+        
+        delayWorkingDays = workingDayDiff(plannedFinishRaw, currentFinishRaw, calendar, holidays);
+        if (delayWorkingDays > 0) status = "late";
+        else if (delayWorkingDays < 0) status = "early";
+      }
+
       return res.json({
         projectId,
         count: results.length,
         data: results,
+        summary: {
+          currentFinish: currentFinishRaw ? formatDate(currentFinishRaw) : null,
+          plannedFinish: plannedFinishRaw ? formatDate(plannedFinishRaw) : null,
+          delayWorkingDays,
+          status
+        }
       });
     } catch (error) {
       next(error);

@@ -5,6 +5,7 @@ const {
   addWorkingDays,
   countWorkingDays,
   isWorkingDay,
+  workingDayDiff,
   DEFAULT_CALENDAR,
 } = require("../algorithms/workingDays");
 
@@ -181,6 +182,38 @@ describe("T-39: Module thuật toán ngày làm việc và ngày nghỉ", () => 
       expect(isWorkingDay("2026-01-05", DEFAULT_CALENDAR, [])).toBe(true); // Monday
       expect(isWorkingDay("2026-01-11", DEFAULT_CALENDAR, [])).toBe(false); // Sunday
       expect(isWorkingDay("2026-01-05", DEFAULT_CALENDAR, ["2026-01-05"])).toBe(false); // Holiday
+    });
+  });
+
+  describe("T-37: Hàm workingDayDiff", () => {
+    it("Đúng kế hoạch (current == planned) => 0", () => {
+      expect(workingDayDiff("2026-01-05", "2026-01-05")).toBe(0);
+    });
+
+    it("Sớm kế hoạch (current < planned) => Âm", () => {
+      // planned: 10/01 (T7). current: 08/01 (T5). count(8, 9, 10) = 3 => diff = -2
+      expect(workingDayDiff("2026-01-10", "2026-01-08")).toBe(-2);
+    });
+
+    it("Chậm kế hoạch (current > planned) => Dương", () => {
+      // planned: 08/01 (T5). current: 10/01 (T7). count = 3 => diff = +2
+      expect(workingDayDiff("2026-01-08", "2026-01-10")).toBe(2);
+    });
+
+    it("Vắt qua Chủ nhật", () => {
+      // planned: 09/01 (T6). current: 12/01 (T2). count: 9(T6), 10(T7), 12(T2) = 3 ngày làm việc. diff = 2
+      expect(workingDayDiff("2026-01-09", "2026-01-12")).toBe(2);
+    });
+
+    it("Có lễ ở giữa", () => {
+      // planned: 09/01. current: 12/01. Holiday: 10/01. count: 9(T6), 12(T2) = 2 ngày. diff = 1
+      expect(workingDayDiff("2026-01-09", "2026-01-12", DEFAULT_CALENDAR, ["2026-01-10"])).toBe(1);
+    });
+
+    it("Lễ trùng Chủ nhật (không trừ lặp)", () => {
+      // planned: 09/01 (T6). current: 12/01 (T2). CN là 11/01. Holiday: 11/01.
+      // count: 9(T6), 10(T7), 12(T2) = 3 ngày làm việc. diff = 2.
+      expect(workingDayDiff("2026-01-09", "2026-01-12", DEFAULT_CALENDAR, ["2026-01-11"])).toBe(2);
     });
   });
 });

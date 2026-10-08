@@ -93,6 +93,9 @@ async function saveScheduleResults(
     const lateFinishes = [];
     const totalFloats = [];
     const isCriticals = [];
+    const plannedEarlyStarts = [];
+    const plannedEarlyFinishes = [];
+    const plannedIsCriticals = [];
 
     for (const [taskId, result] of entries) {
       const duration =
@@ -131,6 +134,25 @@ async function saveScheduleResults(
       lateFinishes.push(new Date(`${lateFinishStr}T00:00:00.000Z`));
       totalFloats.push(result.float);
       isCriticals.push(result.critical);
+
+      if (result.planned) {
+        const plannedDuration = result.planned.EF !== undefined && result.planned.ES !== undefined 
+          ? Math.max(0, result.planned.EF - result.planned.ES) 
+          : 0;
+
+        const plannedEarlyStartStr = addWorkingDays(projectStart, result.planned.ES || 0, calendar, holidays);
+        const plannedEarlyFinishStr = plannedDuration > 0
+          ? addWorkingDays(plannedEarlyStartStr, plannedDuration - 1, calendar, holidays)
+          : plannedEarlyStartStr;
+
+        plannedEarlyStarts.push(new Date(`${plannedEarlyStartStr}T00:00:00.000Z`));
+        plannedEarlyFinishes.push(new Date(`${plannedEarlyFinishStr}T00:00:00.000Z`));
+        plannedIsCriticals.push(result.planned.critical);
+      } else {
+        plannedEarlyStarts.push(null);
+        plannedEarlyFinishes.push(null);
+        plannedIsCriticals.push(false);
+      }
     }
 
     // Bulk upsert
@@ -145,12 +167,16 @@ async function saveScheduleResults(
         total_float,
         is_critical,
         calculated_at,
-        needs_recalculation
+        needs_recalculation,
+        planned_early_start,
+        planned_early_finish,
+        planned_is_critical
       )
       SELECT * FROM UNNEST(
         $1::int[], $2::timestamp[], $3::timestamp[], $4::timestamp[],
-        $5::timestamp[], $6::int[], $7::boolean[]
-      ) AS t(task_id, early_start, early_finish, late_start, late_finish, total_float, is_critical)
+        $5::timestamp[], $6::int[], $7::boolean[],
+        $8::timestamp[], $9::timestamp[], $10::boolean[]
+      ) AS t(task_id, early_start, early_finish, late_start, late_finish, total_float, is_critical, planned_early_start, planned_early_finish, planned_is_critical)
       ON CONFLICT (task_id)
       DO UPDATE SET
         early_start = EXCLUDED.early_start,
@@ -160,7 +186,10 @@ async function saveScheduleResults(
         total_float = EXCLUDED.total_float,
         is_critical = EXCLUDED.is_critical,
         calculated_at = CURRENT_TIMESTAMP,
-        needs_recalculation = $8
+        needs_recalculation = $11,
+        planned_early_start = EXCLUDED.planned_early_start,
+        planned_early_finish = EXCLUDED.planned_early_finish,
+        planned_is_critical = EXCLUDED.planned_is_critical
       `,
       [
         taskIds,
@@ -170,6 +199,9 @@ async function saveScheduleResults(
         lateFinishes,
         totalFloats,
         isCriticals,
+        plannedEarlyStarts,
+        plannedEarlyFinishes,
+        plannedIsCriticals,
         isStale // Nếu đã có thay đổi (stale), không xóa cờ dirty
       ]
     );

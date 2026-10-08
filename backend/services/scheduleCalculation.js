@@ -212,6 +212,37 @@ async function calculateAndSaveSchedule(projectId, clockDate = null, expectedVer
     0
   );
 
+  const plannedTasks = Object.values(graph.nodes).map((task) => {
+    if (task.schedulingMode === 'manual' && task.manualStartDate) {
+      let offset = 0;
+      const taskStart = parseDate(task.manualStartDate);
+      if (taskStart.getTime() >= projStart.getTime()) {
+        offset = countWorkingDays(project.start_date, task.manualStartDate, calendar, holidays) - 1;
+      } else {
+        offset = -(countWorkingDays(task.manualStartDate, project.start_date, calendar, holidays) - 1);
+      }
+      return { ...task, manualOffset: Math.max(0, offset) };
+    }
+    return task;
+  });
+
+  const plannedScheduleByTask = calculateSchedule(
+    plannedTasks,
+    dependencies,
+    sortedOrder,
+    0
+  );
+
+  for (const taskId of Object.keys(scheduleByTask)) {
+    if (plannedScheduleByTask[taskId]) {
+      scheduleByTask[taskId].planned = {
+        ES: plannedScheduleByTask[taskId].ES,
+        EF: plannedScheduleByTask[taskId].EF,
+        critical: plannedScheduleByTask[taskId].critical,
+      };
+    }
+  }
+
   const savedCount = await saveScheduleResults(
     projectId,
     scheduleByTask,

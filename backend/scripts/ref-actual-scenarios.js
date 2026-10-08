@@ -134,6 +134,36 @@ const scenarios = [
     "id": "ca4b_dang_lam_hom_nay_tre",
     "today": 11,
     "actuals": { "D": { "actualStart": 7, "actualEnd": null, "percent": 40 } }
+  },
+  {
+    "id": "T37_ca1_gang_tre_3_ngay_lam_viec",
+    "today": null,
+    "actuals": { "D": { "actualStart": 7, "actualEnd": 15, "percent": 100 } },
+    "note": "Việc găng trễ 3 ngày làm việc"
+  },
+  {
+    "id": "T37_ca2_khong_gang_tre_it_hon_float",
+    "today": null,
+    "actuals": { "C": { "actualStart": 3, "actualEnd": 6, "percent": 100 } },
+    "note": "Việc không găng trễ ít hơn float, delay = 0"
+  },
+  {
+    "id": "T37_ca3_ngay_khoi_cong_chenh_vat_qua_chu_nhat",
+    "today": null,
+    "actuals": { "A": { "actualStart": 0, "actualEnd": 6, "percent": 100 } },
+    "note": "Ngày khởi công + chênh vắt qua chủ nhật"
+  },
+  {
+    "id": "T37_ca4_co_ngay_le_giua_hai_moc",
+    "today": null,
+    "actuals": { "D": { "actualStart": 7, "actualEnd": 15, "percent": 100 } },
+    "note": "Ca có ngày lễ giữa hai mốc"
+  },
+  {
+    "id": "T37_ca5_le_trung_chu_nhat",
+    "today": null,
+    "actuals": { "D": { "actualStart": 7, "actualEnd": 15, "percent": 100 } },
+    "note": "Ca lễ trùng chủ nhật"
   }
 ];
 
@@ -154,7 +184,7 @@ for (const s of scenarios) {
 const ca1 = results[0];
 if (ca1.projectFinish !== 20) console.error("ca1 failed", ca1.projectFinish);
 
-const file = 'backend/__tests__/fixtures/k01-expected.json';
+const file = '__tests__/fixtures/k01-expected.json';
 const data = JSON.parse(fs.readFileSync(file, 'utf8'));
 data.actualScenarios = results;
 fs.writeFileSync(file, JSON.stringify(data, null, 2));
