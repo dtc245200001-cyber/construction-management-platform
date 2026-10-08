@@ -77,10 +77,8 @@ function calculateScenario(actuals, today) {
   for (const u of reverseOrder) {
     const node = nodeData[u];
     let minSuccLS = projectFinish;
-    let hasSucc = false;
     for (const d of deps) {
       if (d.from === u) {
-        hasSucc = true;
         const succ = nodeData[d.to];
         if (succ.LS < minSuccLS) minSuccLS = succ.LS;
       }

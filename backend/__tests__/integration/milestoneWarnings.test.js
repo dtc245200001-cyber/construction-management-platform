@@ -10,11 +10,14 @@
 
 const db = require("../../config/db");
 const { evaluateMilestoneWarnings } = require("../../services/milestoneWarnings");
-const { getOffsetDays, countWorkingDays, DEFAULT_CALENDAR } = require("../../algorithms/workingDays");
+const { getOffsetDays, DEFAULT_CALENDAR } = require("../../algorithms/workingDays");
+
+let projectId;
+let userId;
+
 
 async function createWorkItem(c,n){let r=await c.query("INSERT INTO work_items (project_id, name, code) VALUES ($1, $2, 'CODE') RETURNING id",[projectId,n]);return r.rows[0].id;} async function createTaskWithSchedule(c,w,d){let r=await c.query("INSERT INTO tasks (work_item_id, name, duration_days) VALUES ($1, $2, $3) RETURNING id",[w,d.name,d.duration]);await c.query("INSERT INTO schedule_results (task_id, early_start, early_finish, late_start, late_finish, total_float, is_critical, calculated_at, needs_recalculation) VALUES ($1, $2, $3, $2, $3, 0, true, NOW(), false)",[r.rows[0].id,d.earlyStart,d.earlyFinish]);return r.rows[0].id;}
 describe("T-44 Milestone Warnings Tests", () => {
-  let projectId;
   let workItemId;
   let taskId;
   let milestoneId;
@@ -24,7 +27,7 @@ describe("T-44 Milestone Warnings Tests", () => {
     const userRes = await db.query(
       `INSERT INTO users (name, email, password_hash, role_id) VALUES ('Test User', 'test_t44_${Date.now()}@example.com', 'pwd_hash', 1) RETURNING id`
     );
-    const userId = userRes.rows[0].id;
+    userId = userRes.rows[0].id;
 
     // 1. Create a project
     const projRes = await db.query(
@@ -103,13 +106,24 @@ describe("T-44 Milestone Warnings Tests", () => {
   afterAll(async () => {
     // Cleanup
     await db.query(`DELETE FROM projects WHERE id = $1`, [projectId]);
-    await db.end();
   });
 });
 
 // ----------- T-45 Tests -----------
 
 describe("T-45 Driving Path + Security", () => {
+  beforeAll(async () => {
+    const projRes = await db.query(
+      `INSERT INTO projects (name, location, start_date) VALUES ('Test Project T-45', 'HN', '2026-05-01') RETURNING id`
+    );
+    projectId = projRes.rows[0].id;
+  });
+
+  afterAll(async () => {
+    await db.query(`DELETE FROM projects WHERE id = $1`, [projectId]);
+    await db.end();
+  });
+
   it("Cross-project warningId returns 404", async () => {
     const client = await db.connect();
     let otherProjectId;
