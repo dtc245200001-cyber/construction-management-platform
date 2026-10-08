@@ -34,6 +34,7 @@ export default function SchedulePage() {
   const [successMessage, setSuccessMessage] = useState("");
   const [hoveredRowId, setHoveredRowId] = useState(null);
   const [selectedTaskForProgress, setSelectedTaskForProgress] = useState(null);
+  const [summary, setSummary] = useState(null);
 
   const currentProjectId = localStorage.getItem("currentProjectId") || 1;
 
@@ -48,6 +49,7 @@ export default function SchedulePage() {
 
       const rows = res.data.data || [];
       setScheduleData(rows);
+      setSummary(res.data.summary || null);
 
       // Có việc nhưng chưa có mốc nào => chưa từng tính
       // hoặc chưa tính được. Thử tính một lần để phát hiện vòng.
@@ -158,6 +160,7 @@ export default function SchedulePage() {
       // Reload without setting loading=true to avoid flicker
       const again = await api.get(`/projects/${currentProjectId}/schedule-results`);
       setScheduleData(again.data.data || []);
+      setSummary(again.data.summary || null);
     } catch (err) {
       console.error("Lỗi tính toán lại tiến độ:", err);
 
@@ -236,9 +239,22 @@ export default function SchedulePage() {
               </div>
 
               <div>
-                <h1 className="text-white text-[30px] font-bold leading-tight">
-                  Bảng đường găng (CPM)
-                </h1>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-white text-[30px] font-bold leading-tight">
+                    Bảng đường găng (CPM)
+                  </h1>
+                  {summary && (
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                      summary.status === 'late' ? 'bg-red-500 text-white' : 
+                      summary.status === 'early' ? 'bg-emerald-500 text-white' : 
+                      'bg-blue-500 text-white'
+                    }`}>
+                      {summary.status === 'late' ? `Chậm ${summary.delayWorkingDays} ngày` :
+                       summary.status === 'early' ? `Sớm ${Math.abs(summary.delayWorkingDays)} ngày` :
+                       'Đúng tiến độ'}
+                    </span>
+                  )}
+                </div>
 
                 <p className="text-white/90 text-[18px] font-medium mt-1.5">
                   {currentProject ? `Dự án: ${currentProject.name}` : 'Phương pháp đường găng (Critical Path Method)'}
@@ -466,9 +482,13 @@ export default function SchedulePage() {
                   filteredData.map((row) => (
                     <tr
                       key={row.id}
-                      className="h-[50px] transition-colors hover:bg-slate-50"
+                      className={`h-[50px] transition-colors ${
+                        row.newly_critical
+                          ? "bg-red-50 border-l-4 border-l-red-500"
+                          : "hover:bg-slate-50"
+                      }`}
                     >
-                      <td className="px-4 py-2 font-medium text-[14px] text-[#0F1B3D]">
+                      <td className={`px-4 py-2 font-medium text-[14px] ${row.newly_critical ? 'text-red-700 font-bold' : 'text-[#0F1B3D]'}`}>
                         <div className="flex items-center gap-2">
                           <span>{row.name}</span>
                         </div>
@@ -483,7 +503,14 @@ export default function SchedulePage() {
                       </td>
 
                       <td className="px-4 py-2 text-center text-[13px] font-mono text-[#0F1B3D]">
-                        {formatDate(row.early_finish)}
+                        <div className="flex flex-col">
+                          <span>{formatDate(row.early_finish)}</span>
+                          {row.planned_early_finish && formatDate(row.planned_early_finish) !== formatDate(row.early_finish) && (
+                            <span className="text-[10px] text-gray-500 line-through">
+                              Plan: {formatDate(row.planned_early_finish)}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="px-4 py-2 text-center text-[13px] font-mono text-[#475569]">

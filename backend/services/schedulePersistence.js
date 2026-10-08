@@ -73,18 +73,8 @@ async function saveScheduleResults(
   try {
     await client.query("BEGIN");
 
-    // Lấy version hiện tại
-    const versionRes = await client.query(
-      `SELECT schedule_version FROM projects WHERE id = $1 FOR UPDATE`,
-      [projectId]
-    );
-
-    if (versionRes.rows.length === 0) {
-      throw new Error("Project not found");
-    }
-
-    const currentVersion = versionRes.rows[0].schedule_version;
-    const isStale = expectedVersion !== null && currentVersion !== expectedVersion;
+    // version check removed (T-41)
+    const isStale = false;
 
     const taskIds = [];
     const earlyStarts = [];

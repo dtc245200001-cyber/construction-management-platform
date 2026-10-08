@@ -34,8 +34,8 @@ describe("scheduleQuery", () => {
     expect(result).toHaveLength(1);
     expect(result[0].project_id).toBe(10);
 
-    expect(db.query).toHaveBeenCalledTimes(1);
-    expect(db.query).toHaveBeenCalledWith(
+    expect(db.query).toHaveBeenCalledTimes(3);
+    expect(db.query).toHaveBeenNthCalledWith(1,
       expect.stringContaining("LEFT JOIN schedule_results"),
       [10, null]
     );
@@ -48,8 +48,8 @@ describe("scheduleQuery", () => {
 
     await getScheduleResults(10, true);
 
-    expect(db.query).toHaveBeenCalledTimes(1);
-    expect(db.query).toHaveBeenCalledWith(
+    expect(db.query).toHaveBeenCalledTimes(3);
+    expect(db.query).toHaveBeenNthCalledWith(1,
       expect.stringContaining("sr.is_critical = $2"),
       [10, true]
     );

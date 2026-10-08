@@ -250,6 +250,7 @@ router.get(
       return res.json({
         projectId,
         count: results.length,
+        summary: results.summary,
         data: results,
       });
     } catch (error) {
@@ -579,10 +580,6 @@ router.post(
         const taskCount = Number(taskCountRes.rows[0].count);
 
         if (taskCount > 200) {
-          // Lấy version dự định
-          const versionRes = await client.query(`SELECT schedule_version FROM projects WHERE id = $1`, [projectId]);
-          const expectedVersion = versionRes.rows[0]?.schedule_version;
-
           const insertJobRes = await client.query(
             `INSERT INTO schedule_jobs (project_id, status) VALUES ($1, 'queued') RETURNING id`,
             [projectId]
@@ -592,7 +589,7 @@ router.post(
           await client.query("COMMIT");
           
           // Chạy nền
-          runScheduleJobAsync(jobId, projectId, null, expectedVersion).catch(e => console.error("Background job error:", e));
+          runScheduleJobAsync(jobId, projectId, null).catch(e => console.error("Background job error:", e));
 
           return res.status(202).json({
             message: "Tác vụ tính toán tiến độ đang chạy ngầm",
