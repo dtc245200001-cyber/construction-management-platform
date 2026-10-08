@@ -1000,7 +1000,7 @@
         }
       },
       "calculatedBy": "TẠM - script tham chiếu, CHƯA tính tay",
-      "calculatedDate": "2026-10-07",
+      "calculatedDate": "2026-10-08",
       "provisional": true,
       "expected": [
         {
@@ -1107,7 +1107,7 @@
         }
       },
       "calculatedBy": "TẠM - script tham chiếu, CHƯA tính tay",
-      "calculatedDate": "2026-10-07",
+      "calculatedDate": "2026-10-08",
       "provisional": true,
       "expected": [
         {
@@ -1214,7 +1214,7 @@
         }
       },
       "calculatedBy": "TẠM - script tham chiếu, CHƯA tính tay",
-      "calculatedDate": "2026-10-07",
+      "calculatedDate": "2026-10-08",
       "provisional": true,
       "expected": [
         {
@@ -1321,7 +1321,7 @@
         }
       },
       "calculatedBy": "TẠM - script tham chiếu, CHƯA tính tay",
-      "calculatedDate": "2026-10-07",
+      "calculatedDate": "2026-10-08",
       "provisional": true,
       "expected": [
         {
@@ -1428,7 +1428,7 @@
         }
       },
       "calculatedBy": "TẠM - script tham chiếu, CHƯA tính tay",
-      "calculatedDate": "2026-10-07",
+      "calculatedDate": "2026-10-08",
       "provisional": true,
       "expected": [
         {
@@ -1523,6 +1523,546 @@
         }
       ],
       "projectFinish": 19
+    },
+    {
+      "id": "T37_ca1_gang_tre_3_ngay_lam_viec",
+      "today": null,
+      "actuals": {
+        "D": {
+          "actualStart": 7,
+          "actualEnd": 15,
+          "percent": 100
+        }
+      },
+      "note": "Việc găng trễ 3 ngày làm việc",
+      "calculatedBy": "TẠM - script tham chiếu, CHƯA tính tay",
+      "calculatedDate": "2026-10-08",
+      "provisional": true,
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 3,
+          "LS": 0,
+          "LF": 3,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 3,
+          "EF": 7,
+          "LS": 3,
+          "LF": 7,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "C",
+          "ES": 3,
+          "EF": 5,
+          "LS": 8,
+          "LF": 10,
+          "float": 5,
+          "critical": false
+        },
+        {
+          "id": "D",
+          "ES": 7,
+          "EF": 15,
+          "LS": 7,
+          "LF": 15,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "E",
+          "ES": 7,
+          "EF": 10,
+          "LS": 11,
+          "LF": 14,
+          "float": 4,
+          "critical": false
+        },
+        {
+          "id": "F",
+          "ES": 5,
+          "EF": 9,
+          "LS": 10,
+          "LF": 14,
+          "float": 5,
+          "critical": false
+        },
+        {
+          "id": "G",
+          "ES": 15,
+          "EF": 17,
+          "LS": 15,
+          "LF": 17,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "H",
+          "ES": 10,
+          "EF": 13,
+          "LS": 14,
+          "LF": 17,
+          "float": 4,
+          "critical": false
+        },
+        {
+          "id": "I",
+          "ES": 17,
+          "EF": 19,
+          "LS": 17,
+          "LF": 19,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "J",
+          "ES": 19,
+          "EF": 20,
+          "LS": 19,
+          "LF": 20,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 20
+    },
+    {
+      "id": "T37_ca2_khong_gang_tre_it_hon_float",
+      "today": null,
+      "actuals": {
+        "C": {
+          "actualStart": 3,
+          "actualEnd": 6,
+          "percent": 100
+        }
+      },
+      "note": "Việc không găng trễ ít hơn float, delay = 0",
+      "calculatedBy": "TẠM - script tham chiếu, CHƯA tính tay",
+      "calculatedDate": "2026-10-08",
+      "provisional": true,
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 3,
+          "LS": 0,
+          "LF": 3,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 3,
+          "EF": 7,
+          "LS": 3,
+          "LF": 7,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "C",
+          "ES": 3,
+          "EF": 6,
+          "LS": 4,
+          "LF": 7,
+          "float": 1,
+          "critical": false
+        },
+        {
+          "id": "D",
+          "ES": 7,
+          "EF": 12,
+          "LS": 7,
+          "LF": 12,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "E",
+          "ES": 7,
+          "EF": 10,
+          "LS": 8,
+          "LF": 11,
+          "float": 1,
+          "critical": false
+        },
+        {
+          "id": "F",
+          "ES": 6,
+          "EF": 10,
+          "LS": 7,
+          "LF": 11,
+          "float": 1,
+          "critical": false
+        },
+        {
+          "id": "G",
+          "ES": 12,
+          "EF": 14,
+          "LS": 12,
+          "LF": 14,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "H",
+          "ES": 10,
+          "EF": 13,
+          "LS": 11,
+          "LF": 14,
+          "float": 1,
+          "critical": false
+        },
+        {
+          "id": "I",
+          "ES": 14,
+          "EF": 16,
+          "LS": 14,
+          "LF": 16,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "J",
+          "ES": 16,
+          "EF": 17,
+          "LS": 16,
+          "LF": 17,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 17
+    },
+    {
+      "id": "T37_ca3_ngay_khoi_cong_chenh_vat_qua_chu_nhat",
+      "today": null,
+      "actuals": {
+        "A": {
+          "actualStart": 0,
+          "actualEnd": 6,
+          "percent": 100
+        }
+      },
+      "note": "Ngày khởi công + chênh vắt qua chủ nhật",
+      "calculatedBy": "TẠM - script tham chiếu, CHƯA tính tay",
+      "calculatedDate": "2026-10-08",
+      "provisional": true,
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 6,
+          "LS": 0,
+          "LF": 6,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 6,
+          "EF": 10,
+          "LS": 6,
+          "LF": 10,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "C",
+          "ES": 6,
+          "EF": 8,
+          "LS": 8,
+          "LF": 10,
+          "float": 2,
+          "critical": false
+        },
+        {
+          "id": "D",
+          "ES": 10,
+          "EF": 15,
+          "LS": 10,
+          "LF": 15,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "E",
+          "ES": 10,
+          "EF": 13,
+          "LS": 11,
+          "LF": 14,
+          "float": 1,
+          "critical": false
+        },
+        {
+          "id": "F",
+          "ES": 8,
+          "EF": 12,
+          "LS": 10,
+          "LF": 14,
+          "float": 2,
+          "critical": false
+        },
+        {
+          "id": "G",
+          "ES": 15,
+          "EF": 17,
+          "LS": 15,
+          "LF": 17,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "H",
+          "ES": 13,
+          "EF": 16,
+          "LS": 14,
+          "LF": 17,
+          "float": 1,
+          "critical": false
+        },
+        {
+          "id": "I",
+          "ES": 17,
+          "EF": 19,
+          "LS": 17,
+          "LF": 19,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "J",
+          "ES": 19,
+          "EF": 20,
+          "LS": 19,
+          "LF": 20,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 20
+    },
+    {
+      "id": "T37_ca4_co_ngay_le_giua_hai_moc",
+      "today": null,
+      "actuals": {
+        "D": {
+          "actualStart": 7,
+          "actualEnd": 15,
+          "percent": 100
+        }
+      },
+      "note": "Ca có ngày lễ giữa hai mốc",
+      "calculatedBy": "TẠM - script tham chiếu, CHƯA tính tay",
+      "calculatedDate": "2026-10-08",
+      "provisional": true,
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 3,
+          "LS": 0,
+          "LF": 3,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 3,
+          "EF": 7,
+          "LS": 3,
+          "LF": 7,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "C",
+          "ES": 3,
+          "EF": 5,
+          "LS": 8,
+          "LF": 10,
+          "float": 5,
+          "critical": false
+        },
+        {
+          "id": "D",
+          "ES": 7,
+          "EF": 15,
+          "LS": 7,
+          "LF": 15,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "E",
+          "ES": 7,
+          "EF": 10,
+          "LS": 11,
+          "LF": 14,
+          "float": 4,
+          "critical": false
+        },
+        {
+          "id": "F",
+          "ES": 5,
+          "EF": 9,
+          "LS": 10,
+          "LF": 14,
+          "float": 5,
+          "critical": false
+        },
+        {
+          "id": "G",
+          "ES": 15,
+          "EF": 17,
+          "LS": 15,
+          "LF": 17,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "H",
+          "ES": 10,
+          "EF": 13,
+          "LS": 14,
+          "LF": 17,
+          "float": 4,
+          "critical": false
+        },
+        {
+          "id": "I",
+          "ES": 17,
+          "EF": 19,
+          "LS": 17,
+          "LF": 19,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "J",
+          "ES": 19,
+          "EF": 20,
+          "LS": 19,
+          "LF": 20,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 20
+    },
+    {
+      "id": "T37_ca5_le_trung_chu_nhat",
+      "today": null,
+      "actuals": {
+        "D": {
+          "actualStart": 7,
+          "actualEnd": 15,
+          "percent": 100
+        }
+      },
+      "note": "Ca lễ trùng chủ nhật",
+      "calculatedBy": "TẠM - script tham chiếu, CHƯA tính tay",
+      "calculatedDate": "2026-10-08",
+      "provisional": true,
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 3,
+          "LS": 0,
+          "LF": 3,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 3,
+          "EF": 7,
+          "LS": 3,
+          "LF": 7,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "C",
+          "ES": 3,
+          "EF": 5,
+          "LS": 8,
+          "LF": 10,
+          "float": 5,
+          "critical": false
+        },
+        {
+          "id": "D",
+          "ES": 7,
+          "EF": 15,
+          "LS": 7,
+          "LF": 15,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "E",
+          "ES": 7,
+          "EF": 10,
+          "LS": 11,
+          "LF": 14,
+          "float": 4,
+          "critical": false
+        },
+        {
+          "id": "F",
+          "ES": 5,
+          "EF": 9,
+          "LS": 10,
+          "LF": 14,
+          "float": 5,
+          "critical": false
+        },
+        {
+          "id": "G",
+          "ES": 15,
+          "EF": 17,
+          "LS": 15,
+          "LF": 17,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "H",
+          "ES": 10,
+          "EF": 13,
+          "LS": 14,
+          "LF": 17,
+          "float": 4,
+          "critical": false
+        },
+        {
+          "id": "I",
+          "ES": 17,
+          "EF": 19,
+          "LS": 17,
+          "LF": 19,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "J",
+          "ES": 19,
+          "EF": 20,
+          "LS": 19,
+          "LF": 20,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 20
     }
   ],
   "actualScenariosNote": "actualEnd là MỐC EF (offset ngày làm việc, kết thúc xong ở mốc đó), không phải ngày cuối cùng làm việc; today là offset ngày làm việc; \"phần còn lại\" = ceil(thời lượng × (100 − percent) / 100)."

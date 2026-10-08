@@ -18,6 +18,7 @@ function formatDate(dateStr) {
 
 export default function GanttPage() {
   const [tasks, setTasks] = useState([]);
+  const [summary, setSummary] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isPolling, setIsPolling] = useState(false);
@@ -93,6 +94,7 @@ export default function GanttPage() {
       if (shouldFetchResults) {
         const res = await api.get(`/projects/${currentProjectId}/schedule-results`);
         setTasks(res.data.data || []);
+        setSummary(res.data.summary || null);
       }
     } catch (err) {
       setError(err.response?.data?.message || "Lỗi tải tiến độ dự án");
@@ -253,6 +255,31 @@ export default function GanttPage() {
           </div>
 
           <div className="flex-1 overflow-auto bg-slate-50 relative custom-scrollbar">
+            {summary && !error && (
+              <div className="flex flex-wrap items-center gap-3 bg-white p-3 rounded-t-lg shadow-sm border-b border-gray-200 text-sm font-medium sticky left-0 z-30 min-w-max">
+                <div className="flex items-center gap-1.5 text-gray-700">
+                  <CalendarRange className="size-4 text-blue-500" />
+                  <span>Hoàn thành hiện tại: {summary.currentFinish || '--'}</span>
+                </div>
+                <span className="text-gray-300 hidden sm:inline">•</span>
+                <div className="flex items-center gap-1.5 text-gray-700">
+                  <CalendarRange className="size-4 text-slate-500" />
+                  <span>Kế hoạch: {summary.plannedFinish || '--'}</span>
+                </div>
+                <span className="text-gray-300 hidden sm:inline">•</span>
+                <div className={`flex items-center gap-1.5 ${summary.status === 'late' ? 'text-red-600' : summary.status === 'early' ? 'text-emerald-600' : 'text-blue-600'}`}>
+                  {summary.status === 'late' && <AlertTriangle className="size-4" />}
+                  {summary.status !== 'late' && <AlertTriangle className="size-4" />}
+                  <span>
+                    {summary.status === 'late' ? `Chậm ${summary.delayWorkingDays} ngày` :
+                     summary.status === 'early' ? `Sớm ${Math.abs(summary.delayWorkingDays)} ngày` : 
+                     'Đúng kế hoạch'}
+                  </span>
+                  {isPolling && <span className="ml-2 text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded animate-pulse">đang cập nhật</span>}
+                </div>
+              </div>
+            )}
+            
             <div className="flex w-max min-w-full">
               {/* CỘT TRÁI (Sticky Left) */}
               <div className="sticky left-0 z-20 bg-white border-r border-gray-200 flex flex-col shrink-0 w-[140px] md:w-[180px] lg:w-max lg:min-w-[250px] lg:max-w-[350px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
@@ -279,7 +306,15 @@ export default function GanttPage() {
                       onMouseLeave={() => setActiveBar(null)}
                     >
                       <div className="w-5 shrink-0 flex items-center justify-center">
-                        {bar.is_critical ? (
+                        {bar.newly_critical ? (
+                          <span
+                            aria-label="Việc mới trở thành găng"
+                            className="inline-flex size-4 items-center justify-center border border-dashed border-red-700 bg-white text-red-700 font-black text-[10px]"
+                            style={{ transform: "rotate(45deg)" }}
+                          >
+                            <span style={{ transform: "rotate(-45deg)" }}>!</span>
+                          </span>
+                        ) : bar.is_critical ? (
                           <span
                             aria-label="Việc găng"
                             className="inline-flex size-4 items-center justify-center rounded-full bg-red-700 text-[10px] font-black text-white"
@@ -421,8 +456,34 @@ export default function GanttPage() {
                           />
                         )}
 
-                        {/* T-32: ký hiệu riêng cho việc găng */}
-                        {bar.is_critical && (
+                        {/* T-32, T-37: ký hiệu riêng cho việc găng và mới găng */}
+                        {bar.newly_critical ? (
+                          <g data-testid={`newly-critical-marker-${bar.id}`}>
+                            <rect
+                              x={bar.x + 8 - 5.5}
+                              y={bar.y + ROW_HEIGHT / 2 - 5.5}
+                              width="11"
+                              height="11"
+                              fill="transparent"
+                              stroke="#dc2626"
+                              strokeWidth="1.5"
+                              strokeDasharray="2,2"
+                              transform={`rotate(45, ${bar.x + 8}, ${bar.y + ROW_HEIGHT / 2})`}
+                              pointerEvents="none"
+                            />
+                            <text
+                              x={bar.x + 8}
+                              y={bar.y + ROW_HEIGHT / 2 + 3}
+                              textAnchor="middle"
+                              fontSize="9"
+                              fontWeight="900"
+                              fill="#dc2626"
+                              pointerEvents="none"
+                            >
+                              !
+                            </text>
+                          </g>
+                        ) : bar.is_critical ? (
                           <>
                             <circle
                               data-testid={`critical-marker-${bar.id}`}
@@ -447,7 +508,7 @@ export default function GanttPage() {
                               !
                             </text>
                           </>
-                        )}
+                        ) : null}
 
                         {/* Float bên cạnh */}
                         <text
@@ -488,11 +549,15 @@ export default function GanttPage() {
                         {activeBar.name}
                       </span>
 
-                      {activeBar.is_critical && (
+                      {activeBar.newly_critical ? (
+                        <span className="rounded-full bg-red-50 border border-dashed border-red-700 px-2 py-0.5 text-xs font-bold text-red-700">
+                          Mới găng
+                        </span>
+                      ) : activeBar.is_critical ? (
                         <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">
                           Việc găng
                         </span>
-                      )}
+                      ) : null}
                     </div>
 
                     <div className="grid grid-cols-5 gap-2 text-center text-xs">

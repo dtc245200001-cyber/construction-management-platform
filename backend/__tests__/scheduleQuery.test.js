@@ -3,7 +3,7 @@ jest.mock("../config/db", () => ({
 }));
 
 const db = require("../config/db");
-const { getScheduleResults } = require("../services/scheduleQuery");
+const { getScheduleResults, getPlannedFinish } = require("../services/scheduleQuery");
 
 describe("scheduleQuery", () => {
   beforeEach(() => {
@@ -65,5 +65,58 @@ describe("scheduleQuery", () => {
     const sql = db.query.mock.calls[0][0];
 
     expect(sql).toContain("ORDER BY sr.early_start NULLS LAST, t.id");
+  });
+
+  describe("T-37: newly_critical logic", () => {
+    it("newly_critical is true if currently critical but planned was not critical", async () => {
+      db.query.mockResolvedValue({
+        rows: [
+          {
+            id: 1,
+            is_critical: true,
+            planned_is_critical: false
+          }
+        ]
+      });
+
+      const result = await getScheduleResults(10);
+      expect(result[0].newly_critical).toBe(true);
+    });
+
+    it("newly_critical is false if it was critical from the start (both true)", async () => {
+      db.query.mockResolvedValue({
+        rows: [
+          {
+            id: 1,
+            is_critical: true,
+            planned_is_critical: true
+          }
+        ]
+      });
+
+      const result = await getScheduleResults(10);
+      expect(result[0].newly_critical).toBe(false);
+    });
+
+    it("newly_critical is false if not critical currently", async () => {
+      db.query.mockResolvedValue({
+        rows: [
+          {
+            id: 1,
+            is_critical: false,
+            planned_is_critical: true
+          },
+          {
+            id: 2,
+            is_critical: false,
+            planned_is_critical: false
+          }
+        ]
+      });
+
+      const result = await getScheduleResults(10);
+      expect(result[0].newly_critical).toBe(false);
+      expect(result[1].newly_critical).toBe(false);
+    });
   });
 });

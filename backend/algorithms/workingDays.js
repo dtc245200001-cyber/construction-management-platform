@@ -194,6 +194,31 @@ function countWorkingDays(
   return count;
 }
 
+/**
+ * Tính số ngày làm việc chênh lệch giữa hai mốc thời gian.
+ * Dương: chậm (currentFinish > plannedFinish)
+ * Âm: sớm (currentFinish < plannedFinish)
+ * 0: đúng kế hoạch
+ * @param {string|Date} plannedFinish 
+ * @param {string|Date} currentFinish 
+ * @param {object} [calendar=DEFAULT_CALENDAR] 
+ * @param {Array<string|object|Date>} [holidays=[]] 
+ * @returns {number}
+ */
+function workingDayDiff(plannedFinish, currentFinish, calendar = DEFAULT_CALENDAR, holidays = []) {
+  if (!plannedFinish || !currentFinish) return 0;
+  
+  const planned = parseDate(plannedFinish);
+  const current = parseDate(currentFinish);
+  
+  if (current.getTime() > planned.getTime()) {
+    return countWorkingDays(planned, current, calendar, holidays) - 1;
+  } else if (current.getTime() < planned.getTime()) {
+    return -(countWorkingDays(current, planned, calendar, holidays) - 1);
+  }
+  return 0;
+}
+
 module.exports = {
   addWorkingDays,
   countWorkingDays,
@@ -202,4 +227,5 @@ module.exports = {
   formatDate,
   normalizeHolidays,
   DEFAULT_CALENDAR,
+  workingDayDiff,
 };

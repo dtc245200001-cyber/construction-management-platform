@@ -1,5 +1,21 @@
 const db = require("../config/db");
 
+const { workingDayDiff, DEFAULT_CALENDAR } = require("../algorithms/workingDays");
+
+async function getPlannedFinish(projectId, client = db) {
+  const result = await client.query(
+    `
+      SELECT MAX(sr.planned_early_finish) as max_finish
+      FROM tasks t
+      JOIN work_items wi ON wi.id = t.work_item_id
+      JOIN schedule_results sr ON sr.task_id = t.id
+      WHERE wi.project_id = $1
+    `,
+    [projectId]
+  );
+  return result.rows[0]?.max_finish;
+}
+
 async function getScheduleResults(projectId, criticalOnly = null) {
   const result = await db.query(
     `
@@ -18,6 +34,9 @@ async function getScheduleResults(projectId, criticalOnly = null) {
         sr.late_finish,
         sr.total_float,
         sr.is_critical,
+        sr.planned_early_start,
+        sr.planned_early_finish,
+        sr.planned_is_critical,
         sr.calculated_at
       FROM tasks t
       JOIN work_items wi
@@ -34,9 +53,13 @@ async function getScheduleResults(projectId, criticalOnly = null) {
     [projectId, criticalOnly]
   );
 
-  return result.rows;
+  return result.rows.map(row => ({
+    ...row,
+    newly_critical: row.is_critical && !row.planned_is_critical
+  }));
 }
 
 module.exports = {
   getScheduleResults,
+  getPlannedFinish,
 };
