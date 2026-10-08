@@ -631,6 +631,11 @@ router.delete(
        * trước khi DELETE.
        */
       if (err.code === "23503") {
+        if (err.constraint === "diary_entries_project_id_work_item_id_fkey") {
+          return res.status(409).json({
+            message: "Hạng mục đã có nhật ký, không thể xóa",
+          });
+        }
         return res.status(409).json({
           message:
             `Không thể xóa hạng mục "${itemName}" ` +
