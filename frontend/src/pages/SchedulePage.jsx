@@ -536,7 +536,15 @@ export default function SchedulePage() {
                       </td>
 
                       <td className="px-4 py-2 text-center">
-                        {row.is_critical ? (
+                        {row.newly_critical ? (
+                          <span
+                            aria-label="Việc mới trở thành găng"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-red-50 text-red-700 whitespace-nowrap border border-dashed border-red-700"
+                          >
+                            <div className="inline-flex size-3 items-center justify-center border border-dashed border-red-700 text-[8px] font-black" style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }}>!</div>
+                            Mới găng
+                          </span>
+                        ) : row.is_critical ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 whitespace-nowrap">
                             <AlertTriangle className="size-3" />
                             Đường găng

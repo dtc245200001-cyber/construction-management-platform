@@ -25,6 +25,8 @@ describe("scheduleQuery", () => {
           total_float: 0,
           is_critical: true,
           calculated_at: "2026-01-01T00:00:00.000Z",
+          max_planned: "2026-01-03T00:00:00.000Z", // for planned finish mock
+          max_current: "2026-01-03T00:00:00.000Z", // for current finish mock
         },
       ],
     });
@@ -34,7 +36,7 @@ describe("scheduleQuery", () => {
     expect(result).toHaveLength(1);
     expect(result[0].project_id).toBe(10);
 
-    expect(db.query).toHaveBeenCalledTimes(3);
+    expect(db.query).toHaveBeenCalledTimes(5);
     expect(db.query).toHaveBeenNthCalledWith(1,
       expect.stringContaining("LEFT JOIN schedule_results"),
       [10, null]
@@ -48,11 +50,20 @@ describe("scheduleQuery", () => {
 
     await getScheduleResults(10, true);
 
-    expect(db.query).toHaveBeenCalledTimes(3);
+    expect(db.query).toHaveBeenCalledTimes(5);
     expect(db.query).toHaveBeenNthCalledWith(1,
       expect.stringContaining("sr.is_critical = $2"),
       [10, true]
     );
+  });
+
+  test("returns correct summary even when critical filter is true", async () => {
+    db.query.mockResolvedValue({
+      rows: [{ max_current: "2026-01-05", max_planned: "2026-01-05" }],
+    });
+
+    const result = await getScheduleResults(10, true);
+    expect(result.summary.currentFinish).toBe("2026-01-05");
   });
 
   test("orders results by early start", async () => {

@@ -37,17 +37,18 @@ async function getScheduleResults(projectId, criticalOnly = null) {
   );
 
   let currentFinish = null;
-  let plannedFinish = null;
+  let plannedFinish = await getPlannedFinish(projectId);
   
-  if (result.rows.length > 0) {
-    result.rows.forEach(r => {
-      if (r.early_finish && (!currentFinish || new Date(r.early_finish) > new Date(currentFinish))) {
-        currentFinish = r.early_finish;
-      }
-      if (r.planned_early_finish && (!plannedFinish || new Date(r.planned_early_finish) > new Date(plannedFinish))) {
-        plannedFinish = r.planned_early_finish;
-      }
-    });
+  const currentRes = await db.query(
+    `SELECT MAX(sr.early_finish) as max_current 
+     FROM schedule_results sr 
+     JOIN tasks t ON t.id = sr.task_id 
+     JOIN work_items wi ON wi.id = t.work_item_id 
+     WHERE wi.project_id = $1`,
+    [projectId]
+  );
+  if (currentRes.rows.length > 0) {
+    currentFinish = currentRes.rows[0].max_current;
   }
 
   const { workingDayDiff, DEFAULT_CALENDAR } = require("../algorithms/workingDays");

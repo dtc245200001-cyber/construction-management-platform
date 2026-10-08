@@ -22,6 +22,7 @@ export default function GanttPage() {
   const [loading, setLoading] = useState(true);
   const [isPolling, setIsPolling] = useState(false);
   const [viewMode, setViewMode] = useState("day");
+  const [summary, setSummary] = useState(null);
   const context = useOutletContext();
   const currentProject = context?.currentProject;
 
@@ -93,6 +94,7 @@ export default function GanttPage() {
       if (shouldFetchResults) {
         const res = await api.get(`/projects/${currentProjectId}/schedule-results`);
         setTasks(res.data.data || []);
+        setSummary(res.data.summary || null);
       }
     } catch (err) {
       setError(err.response?.data?.message || "Lỗi tải tiến độ dự án");
@@ -138,10 +140,20 @@ export default function GanttPage() {
 
   if (validTasks.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50">
-        <p className="text-gray-500">
-          Dự án chưa có công việc nào hợp lệ để vẽ.
-        </p>
+      <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 gap-4">
+        {error && error.includes("vòng") ? (
+           <div className="bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center gap-3">
+             <AlertTriangle className="size-10 text-red-500" />
+             <h2 className="text-lg font-bold text-red-700">
+               Không thể vẽ sơ đồ do phát hiện vòng lặp
+             </h2>
+             <p className="text-sm">{error}</p>
+           </div>
+        ) : (
+          <p className="text-gray-500">
+            Dự án chưa có công việc nào hợp lệ để vẽ.
+          </p>
+        )}
       </div>
     );
   }
@@ -219,10 +231,34 @@ export default function GanttPage() {
               <h1 className="font-bold text-gray-800 text-[15px] md:text-base hidden md:block">
                 Sơ đồ thanh ngang
               </h1>
-              {isPolling && (
+              {isPolling && !summary && (
                 <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 px-3 py-1 rounded-full font-medium">
                   <RefreshCw className="size-4 animate-spin" />
                   Đang tính lại tiến độ...
+                </div>
+              )}
+              {summary && (
+                <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm">
+                  <span>Hoàn thành hiện tại {formatDate(summary.actualFinish)}</span>
+                  <span className="text-slate-300">•</span>
+                  <span>Kế hoạch {formatDate(summary.plannedFinish)}</span>
+                  <span className="text-slate-300">•</span>
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold ${
+                    summary.status === 'late' ? 'bg-red-100 text-red-700' : 
+                    summary.status === 'early' ? 'bg-emerald-100 text-emerald-700' : 
+                    'bg-blue-100 text-blue-700'
+                  }`}>
+                    {summary.status === 'late' && <AlertTriangle className="size-3" />}
+                    {summary.status === 'late' ? `Chậm ${summary.delayWorkingDays} ngày` :
+                     summary.status === 'early' ? `Sớm ${Math.abs(summary.delayWorkingDays)} ngày` :
+                     'Đúng kế hoạch'}
+                  </span>
+                  {isPolling && (
+                    <span className="text-xs text-slate-500 italic ml-1 flex items-center gap-1">
+                      <RefreshCw className="size-3 animate-spin" />
+                      đang cập nhật
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -279,7 +315,15 @@ export default function GanttPage() {
                       onMouseLeave={() => setActiveBar(null)}
                     >
                       <div className="w-5 shrink-0 flex items-center justify-center">
-                        {bar.is_critical ? (
+                        {bar.newly_critical ? (
+                          <div
+                            aria-label="Việc mới trở thành găng"
+                            className="inline-flex size-4 items-center justify-center border border-dashed border-red-700 bg-red-50 text-[10px] font-black text-red-700"
+                            style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }}
+                          >
+                            !
+                          </div>
+                        ) : bar.is_critical ? (
                           <span
                             aria-label="Việc găng"
                             className="inline-flex size-4 items-center justify-center rounded-full bg-red-700 text-[10px] font-black text-white"
@@ -422,7 +466,30 @@ export default function GanttPage() {
                         )}
 
                         {/* T-32: ký hiệu riêng cho việc găng */}
-                        {bar.is_critical && (
+                        {bar.newly_critical ? (
+                          <>
+                            <polygon
+                              data-testid={`newly-critical-marker-${bar.id}`}
+                              points={`${bar.x + 8},${bar.y + ROW_HEIGHT / 2 - 6} ${bar.x + 8 + 6},${bar.y + ROW_HEIGHT / 2} ${bar.x + 8},${bar.y + ROW_HEIGHT / 2 + 6} ${bar.x + 8 - 6},${bar.y + ROW_HEIGHT / 2}`}
+                              fill="#fef2f2"
+                              stroke="#dc2626"
+                              strokeWidth="1.5"
+                              strokeDasharray="2,1"
+                              pointerEvents="none"
+                            />
+                            <text
+                              x={bar.x + 8}
+                              y={bar.y + ROW_HEIGHT / 2 + 3}
+                              textAnchor="middle"
+                              fontSize="9"
+                              fontWeight="900"
+                              fill="#dc2626"
+                              pointerEvents="none"
+                            >
+                              !
+                            </text>
+                          </>
+                        ) : bar.is_critical ? (
                           <>
                             <circle
                               data-testid={`critical-marker-${bar.id}`}
@@ -434,7 +501,6 @@ export default function GanttPage() {
                               strokeWidth="1.5"
                               pointerEvents="none"
                             />
-
                             <text
                               x={bar.x + 8}
                               y={bar.y + ROW_HEIGHT / 2 + 3}
@@ -447,7 +513,7 @@ export default function GanttPage() {
                               !
                             </text>
                           </>
-                        )}
+                        ) : null}
 
                         {/* Float bên cạnh */}
                         <text
@@ -478,17 +544,28 @@ export default function GanttPage() {
                     }}
                   >
                     <div className="mb-3 flex items-center gap-2">
-                      {activeBar.is_critical && (
+                      {activeBar.newly_critical ? (
+                        <div
+                          className="inline-flex size-5 items-center justify-center border border-dashed border-red-700 bg-red-50 text-[12px] font-black text-red-700"
+                          style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }}
+                        >
+                          !
+                        </div>
+                      ) : activeBar.is_critical ? (
                         <span className="inline-flex size-5 items-center justify-center rounded-full bg-red-700 text-xs font-black text-white">
                           !
                         </span>
-                      )}
+                      ) : null}
 
                       <span className="font-bold text-slate-900">
                         {activeBar.name}
                       </span>
 
-                      {activeBar.is_critical && (
+                      {activeBar.newly_critical ? (
+                        <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700 border border-dashed border-red-700">
+                          Việc mới trở thành găng
+                        </span>
+                      ) : activeBar.is_critical && (
                         <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">
                           Việc găng
                         </span>
