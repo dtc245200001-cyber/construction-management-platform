@@ -32,6 +32,49 @@ const DEFAULT_CALENDAR = Object.freeze({
   saturday: true,
   sunday: false,
 });
+function getOffsetDays(
+  projectStart,
+  targetDate,
+  calendar = DEFAULT_CALENDAR,
+  holidays = []
+) {
+  const start = parseDate(projectStart);
+  const target = parseDate(targetDate);
+
+  if (start.getTime() === target.getTime()) {
+    return 0;
+  }
+
+  const holidaysSet = normalizeHolidays(holidays);
+  const cal = calendar || DEFAULT_CALENDAR;
+  let count = 0;
+
+  if (target.getTime() > start.getTime()) {
+    const cur = new Date(start.getTime());
+    cur.setUTCDate(cur.getUTCDate() + 1);
+
+    while (cur.getTime() <= target.getTime()) {
+      if (isWorkingDay(cur, cal, holidaysSet)) {
+        count++;
+      }
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    }
+
+    return count;
+  }
+
+  const cur = new Date(start.getTime());
+  cur.setUTCDate(cur.getUTCDate() - 1);
+
+  while (cur.getTime() >= target.getTime()) {
+    if (isWorkingDay(cur, cal, holidaysSet)) {
+      count++;
+    }
+    cur.setUTCDate(cur.getUTCDate() - 1);
+  }
+
+  return -count;
+}
 
 /**
  * Chuyển đổi input (string YYYY-MM-DD hoặc Date) thành Date đối tượng theo UTC.
@@ -194,12 +237,44 @@ function countWorkingDays(
   return count;
 }
 
+/**
+ * Hàm 3: Tính số ngày làm việc chênh lệch giữa hai mốc (T-37).
+ * Dương là chậm (currentFinish sau plannedFinish).
+ * Âm là sớm (currentFinish trước plannedFinish).
+ * Bằng 0 là đúng kế hoạch.
+ * @param {string|Date} plannedFinish
+ * @param {string|Date} currentFinish
+ * @param {object} [calendar=DEFAULT_CALENDAR]
+ * @param {Array<string|object|Date>} [holidays=[]]
+ * @returns {number}
+ */
+function workingDayDiff(
+  plannedFinish,
+  currentFinish,
+  calendar = DEFAULT_CALENDAR,
+  holidays = []
+) {
+  const p = parseDate(plannedFinish);
+  const c = parseDate(currentFinish);
+
+  if (p.getTime() === c.getTime()) {
+    return 0;
+  } else if (p.getTime() < c.getTime()) {
+    return countWorkingDays(p, c, calendar, holidays) - 1;
+  } else {
+    return -(countWorkingDays(c, p, calendar, holidays) - 1);
+  }
+}
+
 module.exports = {
   addWorkingDays,
   countWorkingDays,
+  workingDayDiff,
+  getOffsetDays,
   isWorkingDay,
   parseDate,
   formatDate,
   normalizeHolidays,
   DEFAULT_CALENDAR,
 };
+

@@ -105,7 +105,7 @@ export default function DashboardLayout({ user, setUser }) {
   const currentNav = navItems.find(item => item.path === location.pathname) || navItems[0];
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex h-screen bg-background overflow-hidden">
       {/* Mobile Overlay */}
       {isMobileMenuOpen && (
         <div 
@@ -116,13 +116,13 @@ export default function DashboardLayout({ user, setUser }) {
 
       {/* Sidebar */}
       <aside 
-        className={`fixed inset-y-0 left-0 z-50 flex-col bg-sidebar py-6 text-sidebar-foreground transition-all duration-300 lg:sticky lg:top-0 lg:h-screen lg:flex shrink-0
+        className={`fixed inset-y-0 left-0 z-50 flex-col bg-sidebar py-6 text-sidebar-foreground transition-all duration-300 h-screen overflow-hidden lg:static lg:flex shrink-0
           ${isMobileMenuOpen ? 'translate-x-0 w-[280px] px-5 flex' : '-translate-x-full lg:translate-x-0'}
           ${isSidebarCollapsed ? 'lg:w-[80px] lg:items-center lg:px-2' : 'lg:w-[280px] lg:px-5'}
           ${!isMobileMenuOpen ? 'hidden lg:flex' : ''}
         `}
       >
-        <div className={`flex items-center gap-3 w-full ${isSidebarCollapsed ? 'justify-center' : ''}`}>
+        <div className={`flex items-center gap-3 w-full shrink-0 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
           <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground">
             <ShieldCheck className="size-6" />
           </div>
@@ -233,7 +233,7 @@ export default function DashboardLayout({ user, setUser }) {
         <button 
           title="Đăng xuất"
           onClick={handleLogout} 
-          className={`mt-5 flex items-center gap-3 py-2 text-sm text-sidebar-foreground/85 hover:text-red-500 outline-none w-full ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'}`}
+          className={`mt-5 shrink-0 flex items-center gap-3 py-2 text-sm text-sidebar-foreground/85 hover:text-red-500 outline-none cursor-pointer relative z-10 pointer-events-auto w-full ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'}`}
         >
           <Settings className="size-5 shrink-0" /> 
           {!isSidebarCollapsed && "Đăng xuất"}
@@ -241,7 +241,7 @@ export default function DashboardLayout({ user, setUser }) {
       </aside>
 
       {/* Main Container */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col h-screen overflow-hidden">
         {/* Topbar */}
         <header className="sticky top-0 z-50 flex flex-wrap items-center gap-4 border-b border-border bg-card px-6 py-4">
           <button 
@@ -309,7 +309,9 @@ export default function DashboardLayout({ user, setUser }) {
         </header>
 
         {/* Dynamic Page Content */}
-        <Outlet context={{ currentProject }} />
+        <main className="flex-1 min-h-0 flex flex-col overflow-hidden bg-background">
+          <Outlet context={{ currentProject }} />
+        </main>
       </div>
     </div>
   );

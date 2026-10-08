@@ -37,10 +37,12 @@ async function calculateAndSaveSchedule(projectId, clockDate = null, expectedVer
   }
 
   const project = projectResult.rows[0];
-
-  const currentVersion = expectedVersion !== null ? expectedVersion : project.schedule_version;
-  const todayDateStr = clockDate ? new Date(clockDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-  const lastCalcDateStr = project.last_schedule_calculated_date ? new Date(project.last_schedule_calculated_date).toISOString().split('T')[0] : null;
+  const getVNTimeStr = (d) => {
+    const vnTime = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+    return vnTime.toISOString().substring(0, 10);
+  };
+  const todayDateStr = clockDate ? getVNTimeStr(new Date(clockDate)) : getVNTimeStr(new Date());
+  const lastCalcDateStr = project.last_schedule_calculated_date ? getVNTimeStr(new Date(project.last_schedule_calculated_date)) : null;
 
   const scheduleState = await pool.query(
     `
@@ -61,6 +63,7 @@ async function calculateAndSaveSchedule(projectId, clockDate = null, expectedVer
   const forceRecalculate = Number(in_progress_count) > 0 && lastCalcDateStr !== todayDateStr;
 
   if (Number(result_count) > 0 && Number(dirty_count) === 0 && !forceRecalculate) {
+     await evaluateMilestoneWarnings(projectId);
     return {
       projectId,
       savedCount: 0,
@@ -132,24 +135,24 @@ async function calculateAndSaveSchedule(projectId, clockDate = null, expectedVer
 
   const tasks = Object.values(graph.nodes).map((task) => {
     // Logic thuc te (Buoc 3)
-    if (task.actual_start_date) {
+    if (task.actualStartDate) {
       let offsetStart = 0;
-      const taskStart = parseDate(task.actual_start_date);
+      const taskStart = parseDate(task.actualStartDate);
       if (taskStart.getTime() >= projStart.getTime()) {
-        offsetStart = countWorkingDays(project.start_date, task.actual_start_date, calendar, holidays) - 1;
+        offsetStart = countWorkingDays(project.start_date, task.actualStartDate, calendar, holidays) - 1;
       } else {
-        offsetStart = -(countWorkingDays(task.actual_start_date, project.start_date, calendar, holidays) - 1);
+        offsetStart = -(countWorkingDays(task.actualStartDate, project.start_date, calendar, holidays) - 1);
       }
       offsetStart = Math.max(0, offsetStart);
 
-      if (task.actual_end_date) {
+      if (task.actualEndDate) {
         // Da hoan thanh
         let offsetEnd = 0;
-        const taskEnd = parseDate(task.actual_end_date);
+        const taskEnd = parseDate(task.actualEndDate);
         if (taskEnd.getTime() >= projStart.getTime()) {
-          offsetEnd = countWorkingDays(project.start_date, task.actual_end_date, calendar, holidays) - 1;
+          offsetEnd = countWorkingDays(project.start_date, task.actualEndDate, calendar, holidays) - 1;
         } else {
-          offsetEnd = -(countWorkingDays(task.actual_end_date, project.start_date, calendar, holidays) - 1);
+          offsetEnd = -(countWorkingDays(task.actualEndDate, project.start_date, calendar, holidays) - 1);
         }
         
         const ES = offsetStart;
@@ -165,7 +168,7 @@ async function calculateAndSaveSchedule(projectId, clockDate = null, expectedVer
       } else {
         // Dang lam
         const ES = offsetStart;
-        const percent = task.percent_complete || 0;
+        const percent = task.percentComplete || 0;
         const remaining = Math.ceil(task.duration * (100 - percent) / 100);
         const EF = Math.max(ES + task.duration, todayOffset + remaining);
         
@@ -212,13 +215,43 @@ async function calculateAndSaveSchedule(projectId, clockDate = null, expectedVer
     0
   );
 
+  const plannedTasks = Object.values(graph.nodes).map((task) => {
+    let newTask = { ...task, isActual: false, percentComplete: 0, actualStartDate: null, actualEndDate: null };
+    if (task.schedulingMode === 'manual' && task.manualStartDate) {
+      let offset = 0;
+      const taskStart = parseDate(task.manualStartDate);
+      if (taskStart.getTime() >= projStart.getTime()) {
+        offset = countWorkingDays(project.start_date, task.manualStartDate, calendar, holidays) - 1;
+      } else {
+        offset = -(countWorkingDays(task.manualStartDate, project.start_date, calendar, holidays) - 1);
+      }
+      return { ...newTask, manualOffset: Math.max(0, offset) };
+    }
+    return newTask;
+  });
+
+  const plannedScheduleByTask = calculateSchedule(
+    plannedTasks,
+    dependencies,
+    sortedOrder,
+    0
+  );
+
+  for (const taskId in scheduleByTask) {
+    if (plannedScheduleByTask[taskId]) {
+      scheduleByTask[taskId].planned_ES = plannedScheduleByTask[taskId].ES;
+      scheduleByTask[taskId].planned_EF = plannedScheduleByTask[taskId].EF;
+      scheduleByTask[taskId].planned_critical = plannedScheduleByTask[taskId].critical;
+    }
+  }
+
   const savedCount = await saveScheduleResults(
     projectId,
     scheduleByTask,
     project.start_date,
     calendar,
     holidays,
-    currentVersion,
+    expectedVersion,
     clockDate
   );
 

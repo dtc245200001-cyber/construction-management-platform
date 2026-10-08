@@ -25,6 +25,10 @@ async function getScheduleResults(projectId, criticalOnly = null) {
         ON wi.id = t.work_item_id
       LEFT JOIN schedule_results sr
         ON sr.task_id = t.id
+      LEFT JOIN baselines b
+        ON b.project_id = wi.project_id AND b.is_active = true
+      LEFT JOIN baseline_items bi
+        ON bi.baseline_id = b.id AND bi.task_id = t.id
       WHERE wi.project_id = $1
         AND (
           $2::boolean IS NULL
@@ -35,9 +39,54 @@ async function getScheduleResults(projectId, criticalOnly = null) {
     [projectId, criticalOnly]
   );
 
-  return result.rows;
+  let currentFinish = null;
+  let plannedFinish = await getPlannedFinish(projectId);
+  
+  const currentRes = await db.query(
+    `SELECT MAX(sr.early_finish) as max_current 
+     FROM schedule_results sr 
+     JOIN tasks t ON t.id = sr.task_id 
+     JOIN work_items wi ON wi.id = t.work_item_id 
+     WHERE wi.project_id = $1`,
+    [projectId]
+  );
+  if (currentRes.rows.length > 0) {
+    currentFinish = currentRes.rows[0].max_current;
+  }
+
+  const { workingDayDiff, DEFAULT_CALENDAR } = require("../algorithms/workingDays");
+  const calRes = await db.query("SELECT * FROM calendars WHERE project_id = $1", [projectId]);
+  const holRes = await db.query("SELECT holiday_date FROM holidays WHERE project_id = $1", [projectId]);
+  const calendar = calRes.rows.length > 0 ? calRes.rows[0] : DEFAULT_CALENDAR;
+  const holidays = holRes.rows.map(r => r.holiday_date);
+
+  let delayWorkingDays = 0;
+  let status = "on_track";
+
+  if (currentFinish && plannedFinish) {
+    delayWorkingDays = workingDayDiff(plannedFinish, currentFinish, calendar, holidays);
+    if (delayWorkingDays > 0) status = "late";
+    else if (delayWorkingDays < 0) status = "early";
+  }
+
+  const rows = result.rows;
+  rows.summary = { currentFinish, plannedFinish, delayWorkingDays, status, hasBaseline: rows.length > 0 && rows[0].has_baseline === true, };
+  return rows;
+}
+
+async function getPlannedFinish(projectId) {
+  const result = await db.query(
+    `SELECT MAX(sr.planned_early_finish) as max_planned 
+     FROM schedule_results sr 
+     JOIN tasks t ON t.id = sr.task_id 
+     JOIN work_items wi ON wi.id = t.work_item_id 
+     WHERE wi.project_id = $1`,
+    [projectId]
+  );
+  return result.rows[0]?.max_planned || null;
 }
 
 module.exports = {
   getScheduleResults,
+  getPlannedFinish,
 };

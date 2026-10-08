@@ -149,8 +149,7 @@ export default function LandingPage({ user, setUser }) {
     : 0;
 
   return (
-
-        <main className="grid flex-1 gap-5 p-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <main className="grid flex-1 gap-5 p-6 xl:grid-cols-[minmax(0,1fr)_340px] overflow-y-auto">
           {/* Left column */}
           <div className="flex min-w-0 flex-col gap-5">
             {/* Hero */}

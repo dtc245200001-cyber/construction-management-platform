@@ -8,16 +8,10 @@ const pool = require("../config/db");
  * @returns {Promise<number>} number of affected schedule results
  */
 async function markProjectScheduleDirty(projectId, client = pool) {
-  // Tăng version của dự án ngay cả khi chưa có schedule_results
   await client.query(
-    `
-      UPDATE projects
-      SET schedule_version = schedule_version + 1
-      WHERE id = $1
-    `,
+    "UPDATE projects SET schedule_version = schedule_version + 1 WHERE id = $1",
     [projectId]
   );
-
   const result = await client.query(
     `
       UPDATE schedule_results sr

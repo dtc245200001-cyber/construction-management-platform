@@ -143,9 +143,9 @@ describe("TaskProgressModal (T-35 / S-15)", () => {
       expect(api.patch).toHaveBeenCalledWith(
         "/projects/13/tasks/101/progress",
         {
-          actual_start_date: "2026-10-01",
-          actual_end_date: "2026-10-10",
-          percent_complete: 60,
+          actualStartDate: "2026-10-01",
+          actualEndDate: "2026-10-10",
+          percentComplete: 60,
         }
       );
     });
@@ -202,9 +202,9 @@ describe("TaskProgressModal (T-35 / S-15)", () => {
       expect(api.patch).toHaveBeenCalledWith(
         "/projects/13/tasks/102/progress",
         {
-          actual_start_date: "2026-10-01",
-          actual_end_date: "2026-10-05",
-          percent_complete: 80,
+          actualStartDate: "2026-10-01",
+          actualEndDate: "2026-10-05",
+          percentComplete: 80,
         }
       );
     });

@@ -86,7 +86,7 @@ export default function MembersPage({ user }) {
   const hasFailedAttempts = (member) => Number(member.failed_login_attempts || 0) > 0;
 
   return (
-    <div className="flex-1 p-6 md:p-8 max-w-7xl mx-auto w-full">
+    <div className="flex-1 p-6 md:p-8 max-w-7xl mx-auto w-full overflow-y-auto">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <h2 className="text-2xl font-bold text-site-dark flex items-center gap-2">

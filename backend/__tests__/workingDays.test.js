@@ -183,4 +183,36 @@ describe("T-39: Module thuật toán ngày làm việc và ngày nghỉ", () => 
       expect(isWorkingDay("2026-01-05", DEFAULT_CALENDAR, ["2026-01-05"])).toBe(false); // Holiday
     });
   });
+
+  describe("workingDayDiff (T-37)", () => {
+    const { workingDayDiff } = require("../algorithms/workingDays");
+    
+    test("returns 0 when dates are equal", () => {
+      expect(workingDayDiff("2026-10-01", "2026-10-01")).toBe(0);
+    });
+
+    test("returns positive for delay (currentFinish > plannedFinish)", () => {
+      // Oct 1 (Thu) to Oct 2 (Fri) -> 1 working day difference
+      expect(workingDayDiff("2026-10-01", "2026-10-02")).toBe(1);
+    });
+
+    test("returns negative for early (currentFinish < plannedFinish)", () => {
+      // Oct 2 (Fri) to Oct 1 (Thu) -> -1 working day difference
+      expect(workingDayDiff("2026-10-02", "2026-10-01")).toBe(-1);
+    });
+
+    test("skips weekends", () => {
+      // Oct 2 (Fri) to Oct 5 (Mon) -> 1 working day difference (Sat, Sun skipped if using standard 5-day calendar)
+      const cal = { ...DEFAULT_CALENDAR, saturday: false };
+      expect(workingDayDiff("2026-10-02", "2026-10-05", cal)).toBe(1);
+    });
+
+    test("handles holidays", () => {
+      // Oct 2 (Fri) to Oct 6 (Tue), Mon Oct 5 is holiday. So next is Tue Oct 6.
+      // Working days: Oct 2(start), Oct 6(end). Difference is 1.
+      const cal = { ...DEFAULT_CALENDAR, saturday: false };
+      const holidays = ["2026-10-05"];
+      expect(workingDayDiff("2026-10-02", "2026-10-06", cal, holidays)).toBe(1);
+    });
+  });
 });

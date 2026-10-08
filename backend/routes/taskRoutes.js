@@ -208,13 +208,13 @@ const handleUpdateTask = async (req, res, next) => {
     });
   }
 
-  const hasDuration = req.body.duration_days !== undefined;
+  const hasDuration = req.body.duration_days !== undefined || req.body.durationDays !== undefined;
   const hasName = req.body.name !== undefined;
-  const hasSchedulingMode = req.body.scheduling_mode !== undefined;
-  const hasManualStartDate = req.body.manual_start_date !== undefined;
-  const hasActualStartDate = req.body.actual_start_date !== undefined;
-  const hasActualEndDate = req.body.actual_end_date !== undefined;
-  const hasPercentComplete = req.body.percent_complete !== undefined;
+  const hasSchedulingMode = req.body.scheduling_mode !== undefined || req.body.schedulingMode !== undefined;
+  const hasManualStartDate = req.body.manual_start_date !== undefined || req.body.manualStartDate !== undefined;
+  const hasActualStartDate = req.body.actual_start_date !== undefined || req.body.actualStartDate !== undefined;
+  const hasActualEndDate = req.body.actual_end_date !== undefined || req.body.actualEndDate !== undefined;
+  const hasPercentComplete = req.body.percent_complete !== undefined || req.body.percentComplete !== undefined;
 
   if (
     !hasDuration &&
@@ -252,10 +252,11 @@ const handleUpdateTask = async (req, res, next) => {
 
   let targetPercentComplete;
   if (hasPercentComplete) {
-    if (req.body.percent_complete === null || req.body.percent_complete === "") {
+    const rawP = req.body.percent_complete !== undefined ? req.body.percent_complete : req.body.percentComplete;
+    if (rawP === null || rawP === "") {
       targetPercentComplete = 0;
     } else {
-      const p = Number(req.body.percent_complete);
+      const p = Number(rawP);
       if (!Number.isInteger(p) || p < 0 || p > 100) {
         return res.status(400).json({
           message: "Phần trăm hoàn thành phải là số nguyên trong khoảng 0 đến 100",
@@ -267,7 +268,7 @@ const handleUpdateTask = async (req, res, next) => {
 
   let targetActualStartDate;
   if (hasActualStartDate) {
-    const parsedStart = parseDateOnly(req.body.actual_start_date);
+    const parsedStart = parseDateOnly(req.body.actual_start_date !== undefined ? req.body.actual_start_date : req.body.actualStartDate);
     if (parsedStart === "INVALID") {
       return res.status(400).json({
         message: "Ngày bắt đầu thực tế không hợp lệ",
@@ -278,7 +279,7 @@ const handleUpdateTask = async (req, res, next) => {
 
   let targetActualEndDate;
   if (hasActualEndDate) {
-    const parsedEnd = parseDateOnly(req.body.actual_end_date);
+    const parsedEnd = parseDateOnly(req.body.actual_end_date !== undefined ? req.body.actual_end_date : req.body.actualEndDate);
     if (parsedEnd === "INVALID") {
       return res.status(400).json({
         message: "Ngày kết thúc thực tế không hợp lệ",
