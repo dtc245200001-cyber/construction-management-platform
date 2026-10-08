@@ -249,7 +249,9 @@ async function calculateAndSaveSchedule(projectId, clockDate = null, expectedVer
     scheduleByTask,
     project.start_date,
     calendar,
-    holidays
+    holidays,
+    expectedVersion,
+    clockDate
   );
 
   // T-44: Evaluate milestone warnings using the newly calculated schedule results
@@ -265,11 +267,11 @@ async function calculateAndSaveSchedule(projectId, clockDate = null, expectedVer
 
 const activeJobs = new Set();
 
-async function runScheduleJobAsync(jobId, projectId, clockDate = null) {
+async function runScheduleJobAsync(jobId, projectId, clockDate = null, expectedVersion = null) {
   const jobPromise = (async () => {
     try {
       await pool.query(`UPDATE schedule_jobs SET status = 'running', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [jobId]);
-      await calculateAndSaveSchedule(projectId, clockDate);
+      await calculateAndSaveSchedule(projectId, clockDate, expectedVersion);
       await pool.query(`UPDATE schedule_jobs SET status = 'done', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [jobId]);
     } catch (error) {
       const errorDetails = {

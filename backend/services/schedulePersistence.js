@@ -73,8 +73,18 @@ async function saveScheduleResults(
   try {
     await client.query("BEGIN");
 
-    // version check removed (T-41)
-    const isStale = false;
+    let isStale = false;
+    if (expectedVersion !== null) {
+      const vCheck = await client.query(
+        "SELECT schedule_version FROM projects WHERE id = $1",
+        [projectId]
+      );
+      if (vCheck.rows.length > 0) {
+        if (vCheck.rows[0].schedule_version !== expectedVersion) {
+          isStale = true;
+        }
+      }
+    }
 
     const taskIds = [];
     const earlyStarts = [];

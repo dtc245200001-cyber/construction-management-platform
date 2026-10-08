@@ -8,8 +8,10 @@ const pool = require("../config/db");
  * @returns {Promise<number>} number of affected schedule results
  */
 async function markProjectScheduleDirty(projectId, client = pool) {
-  // version increment removed (T-41)
-
+  await client.query(
+    "UPDATE projects SET schedule_version = schedule_version + 1 WHERE id = $1",
+    [projectId]
+  );
   const result = await client.query(
     `
       UPDATE schedule_results sr
