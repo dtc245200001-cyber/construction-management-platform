@@ -8,3 +8,5 @@ deploy/.env.staging
 
 # Local database backups
 deploy/backups/
+.env
+node_modules/
