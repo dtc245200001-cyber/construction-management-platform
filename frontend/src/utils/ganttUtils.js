@@ -10,30 +10,42 @@ import { differenceInCalendarDays, parseISO, addDays, format } from 'date-fns';
 export function dateToX(date, projectStartDate, pixelsPerDay) {
   const d = typeof date === 'string' ? parseISO(date) : date;
   const start = typeof projectStartDate === 'string' ? parseISO(projectStartDate) : projectStartDate;
-  
+
   const diffDays = differenceInCalendarDays(d, start);
   return diffDays * pixelsPerDay;
 }
 
 export function mapScheduleToGantt(tasks, projectStartDate, pixelsPerDay, rowHeight = 40) {
   if (!tasks || !Array.isArray(tasks)) return [];
-  
+
   return tasks.map((task, index) => {
     if (!task.early_start || !task.early_finish) return null;
-    
+
     const x = dateToX(task.early_start, projectStartDate, pixelsPerDay);
-    
+
     const startObj = parseISO(task.early_start);
     const finishObj = parseISO(task.early_finish);
     const diffDays = differenceInCalendarDays(finishObj, startObj);
     const width = (diffDays + 1) * pixelsPerDay;
-    
+
+    // T-42: toạ độ thanh kế hoạch gốc (null nếu việc này chưa có trong bản chốt)
+    let baseline = null;
+    if (task.baseline_start && task.baseline_finish) {
+      const bs = parseISO(task.baseline_start);
+      const bf = parseISO(task.baseline_finish);
+      baseline = {
+        x: dateToX(task.baseline_start, projectStartDate, pixelsPerDay),
+        width: (differenceInCalendarDays(bf, bs) + 1) * pixelsPerDay,
+      };
+    }
+
     return {
       ...task,
       x,
       y: index * rowHeight,
       width,
-      height: rowHeight * 0.6
+      height: rowHeight * 0.6,
+      baseline,
     };
   }).filter(Boolean);
 }
@@ -50,7 +62,7 @@ export function generateTimelineTicks(projectStartDate, totalDays, viewMode, pix
   if (!projectStartDate) return [];
   const startObj = typeof projectStartDate === 'string' ? parseISO(projectStartDate) : projectStartDate;
   const ticks = [];
-  
+
   if (viewMode === 'day') {
     for (let i = 0; i <= totalDays; i++) {
       const date = addDays(startObj, i);
@@ -70,6 +82,6 @@ export function generateTimelineTicks(projectStartDate, totalDays, viewMode, pix
       });
     }
   }
-  
+
   return ticks;
 }

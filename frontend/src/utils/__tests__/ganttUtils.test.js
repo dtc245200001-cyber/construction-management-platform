@@ -26,22 +26,34 @@ describe('ganttUtils', () => {
   });
 
   describe('mapScheduleToGantt', () => {
+    it('có kế hoạch gốc thì trả toạ độ thanh mờ, không có thì baseline = null', () => {
+      const tasks = [
+        {
+          id: 1, name: 'A', early_start: '2026-10-03', early_finish: '2026-10-04',
+          baseline_start: '2026-10-02', baseline_finish: '2026-10-04'
+        },
+        { id: 2, name: 'B', early_start: '2026-10-03', early_finish: '2026-10-04' },
+      ];
+      const res = mapScheduleToGantt(tasks, '2026-10-02', 20, 40);
+      expect(res[0].baseline).toEqual({ x: 0, width: 60 });
+      expect(res[1].baseline).toBeNull();
+    });
     it('map mảng API task sang tọa độ vẽ Gantt', () => {
       const mockTasks = [
         { id: 1, name: 'Task 1', early_start: '2026-10-02', early_finish: '2026-10-03', is_critical: true },
         { id: 2, name: 'Task 2', early_start: '2026-10-04', early_finish: '2026-10-04', is_critical: false }
       ];
-      
+
       const res = mapScheduleToGantt(mockTasks, '2026-10-02', 20, 40);
-      
+
       expect(res).toHaveLength(2);
-      
+
       // Task 1: 02/10 -> 03/10 (2 days). x = 0, width = 40. y = 0
       expect(res[0].x).toBe(0);
       expect(res[0].y).toBe(0);
       expect(res[0].width).toBe(40);
       expect(res[0].height).toBe(24); // 40 * 0.6
-      
+
       // Task 2: 04/10 (diff 2 days from 02/10). x = 40. width = 1 day (20px). y = 40
       expect(res[1].x).toBe(40);
       expect(res[1].y).toBe(40);

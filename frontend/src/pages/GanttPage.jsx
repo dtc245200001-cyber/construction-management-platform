@@ -25,6 +25,8 @@ export default function GanttPage() {
   const [summary, setSummary] = useState(null);
   const context = useOutletContext();
   const currentProject = context?.currentProject;
+  const [baselineBusy, setBaselineBusy] = useState(false);
+  const [baselineMsg, setBaselineMsg] = useState(null);
 
   // T-33: thanh đang được hover / focus / click
   const [activeBar, setActiveBar] = useState(null);
@@ -47,7 +49,7 @@ export default function GanttPage() {
 
       try {
         const calcRes = await api.post(`/projects/${currentProjectId}/schedule/recalculate`);
-        
+
         if (calcRes.status === 202 && calcRes.data?.jobId) {
           setIsPolling(true);
           let jobStatus = 'queued';
@@ -103,6 +105,24 @@ export default function GanttPage() {
       setIsPolling(false);
     }
   };
+  const handleCreateBaseline = async () => {
+    try {
+      setBaselineBusy(true);
+      setBaselineMsg(null);
+      await api.post(`/projects/${currentProjectId}/baselines`);
+      const res = await api.get(`/projects/${currentProjectId}/schedule-results`);
+      setTasks(res.data.data || []);
+      setSummary(res.data.summary || null);
+    } catch (err) {
+      setBaselineMsg(
+        err.response?.status === 403
+          ? "Chỉ ban quản lý được chốt kế hoạch gốc"
+          : err.response?.data?.message || "Không chốt được kế hoạch gốc"
+      );
+    } finally {
+      setBaselineBusy(false);
+    }
+  };
 
   useEffect(() => {
     fetchData();
@@ -142,13 +162,13 @@ export default function GanttPage() {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 gap-4">
         {error && error.includes("vòng") ? (
-           <div className="bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center gap-3">
-             <AlertTriangle className="size-10 text-red-500" />
-             <h2 className="text-lg font-bold text-red-700">
-               Không thể vẽ sơ đồ do phát hiện vòng lặp
-             </h2>
-             <p className="text-sm">{error}</p>
-           </div>
+          <div className="bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center gap-3">
+            <AlertTriangle className="size-10 text-red-500" />
+            <h2 className="text-lg font-bold text-red-700">
+              Không thể vẽ sơ đồ do phát hiện vòng lặp
+            </h2>
+            <p className="text-sm">{error}</p>
+          </div>
         ) : (
           <p className="text-gray-500">
             Dự án chưa có công việc nào hợp lệ để vẽ.
@@ -158,14 +178,19 @@ export default function GanttPage() {
     );
   }
 
-  const sortedStarts = [...validTasks].sort(
-    (a, b) => new Date(a.early_start) - new Date(b.early_start),
+  const allStarts = validTasks.flatMap((t) =>
+    [t.early_start, t.baseline_start].filter(Boolean),
+  );
+  const projectStartDate = allStarts.reduce((min, d) =>
+    new Date(d) < new Date(min) ? d : min,
   );
 
-  const projectStartDate = sortedStarts[0].early_start;
-
   const projectEndDate = new Date(
-    Math.max(...validTasks.map((task) => new Date(task.early_finish))),
+    Math.max(
+      ...validTasks.flatMap((t) =>
+        [t.early_finish, t.baseline_finish].filter(Boolean).map((d) => new Date(d)),
+      ),
+    ),
   );
 
   const totalDays = differenceInCalendarDays(
@@ -187,7 +212,11 @@ export default function GanttPage() {
     PIXELS_PER_DAY,
   );
 
-  const maxRightX = Math.max(...ganttBars.map((bar) => bar.x + bar.width));
+  const maxRightX = Math.max(
+    ...ganttBars.map((bar) =>
+      Math.max(bar.x + bar.width, bar.baseline ? bar.baseline.x + bar.baseline.width : 0),
+    ),
+  );
 
   const svgWidth = Math.max(
     maxRightX + 200,
@@ -243,15 +272,20 @@ export default function GanttPage() {
                   <span className="text-slate-300">•</span>
                   <span>Kế hoạch {formatDate(summary.plannedFinish)}</span>
                   <span className="text-slate-300">•</span>
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold ${
-                    summary.status === 'late' ? 'bg-red-100 text-red-700' : 
-                    summary.status === 'early' ? 'bg-emerald-100 text-emerald-700' : 
-                    'bg-blue-100 text-blue-700'
-                  }`}>
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold ${summary.status === 'late' ? 'bg-red-100 text-red-700' :
+                    summary.status === 'early' ? 'bg-emerald-100 text-emerald-700' :
+                      'bg-blue-100 text-blue-700'
+                    }`}>
+                    {summary?.hasBaseline && (
+                      <span className="inline-flex items-center gap-1.5 text-xs text-slate-600">
+                        <span className="inline-block h-1 w-5 rounded bg-slate-500/50" />
+                        Kế hoạch gốc
+                      </span>
+                    )}
                     {summary.status === 'late' && <AlertTriangle className="size-3" />}
                     {summary.status === 'late' ? `Chậm ${summary.delayWorkingDays} ngày` :
-                     summary.status === 'early' ? `Sớm ${Math.abs(summary.delayWorkingDays)} ngày` :
-                     'Đúng kế hoạch'}
+                      summary.status === 'early' ? `Sớm ${Math.abs(summary.delayWorkingDays)} ngày` :
+                        'Đúng kế hoạch'}
                   </span>
                   {isPolling && (
                     <span className="text-xs text-slate-500 italic ml-1 flex items-center gap-1">
@@ -266,28 +300,42 @@ export default function GanttPage() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setViewMode("day")}
-                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                  viewMode === "day"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
-                }`}
+                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${viewMode === "day"
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+                  }`}
               >
                 Chế độ Ngày
               </button>
 
               <button
                 onClick={() => setViewMode("week")}
-                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                  viewMode === "week"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
-                }`}
+                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${viewMode === "week"
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+                  }`}
               >
                 Chế độ Tuần
               </button>
             </div>
           </div>
-
+          {summary && !summary.hasBaseline && (
+            <div
+              data-testid="baseline-hint"
+              className="px-4 py-2 bg-amber-50 border-b border-amber-200 text-sm text-amber-800 flex flex-wrap items-center gap-3"
+            >
+              <span>Chưa chốt kế hoạch gốc nên chưa có thanh so sánh.</span>
+              <button
+                type="button"
+                onClick={handleCreateBaseline}
+                disabled={baselineBusy}
+                className="px-3 py-1 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-60"
+              >
+                {baselineBusy ? "Đang chốt..." : "Chốt kế hoạch gốc"}
+              </button>
+              {baselineMsg && <span className="text-red-600">{baselineMsg}</span>}
+            </div>
+          )}
           <div className="flex-1 overflow-auto bg-slate-50 relative custom-scrollbar">
             <div className="flex w-max min-w-full">
               {/* CỘT TRÁI (Sticky Left) */}
@@ -302,13 +350,11 @@ export default function GanttPage() {
                   {ganttBars.map((bar) => (
                     <div
                       key={bar.id}
-                      className={`px-2 md:px-4 text-[12px] md:text-[13px] truncate border-b border-slate-100 flex items-center gap-2 transition-colors cursor-default ${
-                        activeBar?.id === bar.id ? "bg-slate-50" : "bg-white"
-                      } ${
-                        bar.is_critical
+                      className={`px-2 md:px-4 text-[12px] md:text-[13px] truncate border-b border-slate-100 flex items-center gap-2 transition-colors cursor-default ${activeBar?.id === bar.id ? "bg-slate-50" : "bg-white"
+                        } ${bar.is_critical
                           ? "font-bold text-red-700"
                           : "font-medium text-slate-700"
-                      }`}
+                        }`}
                       style={{ height: ROW_HEIGHT }}
                       title={bar.name}
                       onMouseEnter={() => setActiveBar(bar)}
@@ -433,9 +479,8 @@ export default function GanttPage() {
                           rx={4}
                           role="button"
                           tabIndex={0}
-                          aria-label={`${bar.name} - ${
-                            bar.is_critical ? "Việc găng" : "Không găng"
-                          }`}
+                          aria-label={`${bar.name} - ${bar.is_critical ? "Việc găng" : "Không găng"
+                            }`}
                           style={{
                             cursor: "pointer",
                             outline: "none",
@@ -461,6 +506,20 @@ export default function GanttPage() {
                             fill="#0f172a"
                             opacity="0.25"
                             rx={4}
+                            pointerEvents="none"
+                          />
+                        )}
+                        {/* T-42: thanh kế hoạch gốc mờ, mỏng, nằm dưới thanh hiện tại */}
+                        {bar.baseline && (
+                          <rect
+                            data-testid={`baseline-bar-${bar.id}`}
+                            x={bar.baseline.x}
+                            y={bar.y + (ROW_HEIGHT - bar.height) / 2 + bar.height + 2}
+                            width={bar.baseline.width}
+                            height={4}
+                            fill="#64748b"
+                            opacity="0.45"
+                            rx={2}
                             pointerEvents="none"
                           />
                         )}
@@ -605,11 +664,10 @@ export default function GanttPage() {
                         <div className="font-bold text-slate-500">Float</div>
 
                         <div
-                          className={`mt-1 ${
-                            activeBar.total_float === 0
-                              ? "font-bold text-red-600"
-                              : "text-slate-900"
-                          }`}
+                          className={`mt-1 ${activeBar.total_float === 0
+                            ? "font-bold text-red-600"
+                            : "text-slate-900"
+                            }`}
                         >
                           {activeBar.total_float != null
                             ? `${activeBar.total_float} ngày`

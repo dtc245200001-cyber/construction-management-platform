@@ -322,3 +322,49 @@ describe(
     });
   }
 );
+
+describe("GanttPage - T-42", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.setItem("currentProjectId", "4");
+    api.post.mockResolvedValue({ data: {} });
+  });
+
+  test("có kế hoạch gốc thì thấy thanh mờ, không thấy gợi ý", async () => {
+    api.get.mockResolvedValue({
+      data: {
+        data: [
+          {
+            ...rows[0],
+            baseline_start: "2026-10-08T00:00:00.000Z",
+            baseline_finish: "2026-10-12T00:00:00.000Z",
+          },
+        ],
+        summary: { hasBaseline: true },
+      },
+    });
+    render(<GanttPage />);
+    expect(await screen.findByTestId("baseline-bar-1")).toBeInTheDocument();
+    expect(screen.queryByTestId("baseline-hint")).not.toBeInTheDocument();
+  });
+
+  test("chưa chốt thì không có thanh mờ và có gợi ý chốt", async () => {
+    api.get.mockResolvedValue({
+      data: { data: rows, summary: { hasBaseline: false } },
+    });
+    render(<GanttPage />);
+    expect(await screen.findByTestId("baseline-hint")).toBeInTheDocument();
+    expect(screen.queryByTestId("baseline-bar-1")).not.toBeInTheDocument();
+  });
+
+  test("bấm Chốt kế hoạch gốc gọi đúng API", async () => {
+    api.get.mockResolvedValue({
+      data: { data: rows, summary: { hasBaseline: false } },
+    });
+    render(<GanttPage />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Chốt kế hoạch gốc/i }),
+    );
+    expect(api.post).toHaveBeenCalledWith("/projects/4/baselines");
+  });
+});
