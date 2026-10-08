@@ -108,10 +108,10 @@ describe('DiaryPage', () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('Đổ bê tông')).toBeInTheDocument());
     
-    // Convert 23:30Z to local string
-    // In VN (UTC+7), it's 06:30 - 02/10/2026. 
-    // We just check if the text matches something similar to 06:30 - 02/10/2026.
-    expect(screen.getByText(/02\/10\/2026/)).toBeInTheDocument();
+    // Parse the date and format it to match the environment's timezone
+    // GitHub Actions runs in UTC, while local might run in UTC+7
+    const expectedDateStr = format(new Date('2026-10-01T23:30:00Z'), 'dd/MM/yyyy');
+    expect(screen.getByText(new RegExp(expectedDateStr))).toBeInTheDocument();
   });
 
   describe('DiaryEntryForm Validation', () => {
