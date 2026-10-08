@@ -94,6 +94,23 @@ async function saveScheduleResults(
     const totalFloats = [];
     const isCriticals = [];
 
+    const columns = [
+      { name: 'task_id', type: 'int[]' },
+      { name: 'early_start', type: 'timestamp[]' },
+      { name: 'early_finish', type: 'timestamp[]' },
+      { name: 'late_start', type: 'timestamp[]' },
+      { name: 'late_finish', type: 'timestamp[]' },
+      { name: 'total_float', type: 'int[]' },
+      { name: 'is_critical', type: 'boolean[]' },
+      { name: 'planned_early_start', type: 'timestamp[]' },
+      { name: 'planned_early_finish', type: 'timestamp[]' },
+      { name: 'planned_is_critical', type: 'boolean[]' }
+    ];
+
+    const plannedEarlyStarts = [];
+    const plannedEarlyFinishes = [];
+    const plannedIsCriticals = [];
+
     for (const [taskId, result] of entries) {
       const duration =
         result.EF !== undefined && result.ES !== undefined
@@ -124,6 +141,20 @@ async function saveScheduleResults(
           ? addWorkingDays(lateStartStr, duration - 1, calendar, holidays)
           : lateStartStr;
 
+      // Planned dates (T-37)
+      let plannedEsDate = null;
+      let plannedEfDate = null;
+      let plannedCrit = null;
+      
+      if (result.planned_ES !== undefined) {
+        const pDuration = Math.max(0, (result.planned_EF || 0) - result.planned_ES);
+        const pStartStr = addWorkingDays(projectStart, result.planned_ES, calendar, holidays);
+        const pFinishStr = pDuration > 0 ? addWorkingDays(pStartStr, pDuration - 1, calendar, holidays) : pStartStr;
+        plannedEsDate = new Date(`${pStartStr}T00:00:00.000Z`);
+        plannedEfDate = new Date(`${pFinishStr}T00:00:00.000Z`);
+        plannedCrit = result.planned_critical || false;
+      }
+
       taskIds.push(Number(taskId));
       earlyStarts.push(new Date(`${earlyStartStr}T00:00:00.000Z`));
       earlyFinishes.push(new Date(`${earlyFinishStr}T00:00:00.000Z`));
@@ -131,17 +162,10 @@ async function saveScheduleResults(
       lateFinishes.push(new Date(`${lateFinishStr}T00:00:00.000Z`));
       totalFloats.push(result.float);
       isCriticals.push(result.critical);
+      plannedEarlyStarts.push(plannedEsDate);
+      plannedEarlyFinishes.push(plannedEfDate);
+      plannedIsCriticals.push(plannedCrit);
     }
-
-    const columns = [
-      { name: 'task_id', type: 'int[]' },
-      { name: 'early_start', type: 'timestamp[]' },
-      { name: 'early_finish', type: 'timestamp[]' },
-      { name: 'late_start', type: 'timestamp[]' },
-      { name: 'late_finish', type: 'timestamp[]' },
-      { name: 'total_float', type: 'int[]' },
-      { name: 'is_critical', type: 'boolean[]' }
-    ];
 
     const unnestArgs = columns.map((c, i) => `$${i + 1}::${c.type}`).join(', ');
     const asList = columns.map(c => c.name).join(', ');
@@ -171,6 +195,9 @@ async function saveScheduleResults(
         lateFinishes,
         totalFloats,
         isCriticals,
+        plannedEarlyStarts,
+        plannedEarlyFinishes,
+        plannedIsCriticals,
         isStale // Nếu đã có thay đổi (stale), không xóa cờ dirty
       ]
     );
