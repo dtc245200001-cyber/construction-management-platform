@@ -7,6 +7,7 @@ const {
 const { calculateSchedule } = require("../utils/scheduleAlgorithms");
 const { saveScheduleResults } = require("./schedulePersistence");
 const { evaluateMilestoneWarnings } = require("./milestoneWarnings");
+const { countWorkingDays, parseDate, DEFAULT_CALENDAR } = require("../algorithms/workingDays");
 
 /**
  * Calculate and persist schedule results for a project.
@@ -49,6 +50,9 @@ async function calculateAndSaveSchedule(projectId) {
   const { result_count, dirty_count } = scheduleState.rows[0];
 
   if (Number(result_count) > 0 && Number(dirty_count) === 0) {
+    // T-44: Still evaluate milestone warnings even when schedule is clean,
+    // so newly created/modified milestones get evaluated.
+    await evaluateMilestoneWarnings(projectId);
     return {
       projectId,
       savedCount: 0,
@@ -62,6 +66,14 @@ async function calculateAndSaveSchedule(projectId) {
     error.status = 400;
     throw error;
   }
+
+  const [calRes, holRes] = await Promise.all([
+    pool.query("SELECT * FROM calendars WHERE project_id = $1", [projectId]),
+    pool.query("SELECT holiday_date FROM holidays WHERE project_id = $1", [projectId]),
+  ]);
+
+  const calendar = calRes.rows[0] || DEFAULT_CALENDAR;
+  const holidays = holRes.rows.map((r) => r.holiday_date);
 
   const graph = await buildGraph(projectId, pool);
 
@@ -109,11 +121,68 @@ async function calculateAndSaveSchedule(projectId) {
   throw error;
 }
 
+  const projStart = parseDate(project.start_date);
+  let todayOffset = 0;
+  const todayDateStr = new Date().toISOString().split('T')[0];
+  if (parseDate(todayDateStr).getTime() >= projStart.getTime()) {
+    todayOffset = countWorkingDays(project.start_date, todayDateStr, calendar, holidays) - 1;
+  }
+
   const tasks = Object.values(graph.nodes).map(task => {
+    if (task.actualStartDate) {
+      let offsetStart = 0;
+      const taskStart = parseDate(task.actualStartDate);
+      if (taskStart.getTime() >= projStart.getTime()) {
+        offsetStart = countWorkingDays(project.start_date, task.actualStartDate, calendar, holidays) - 1;
+      } else {
+        offsetStart = -(countWorkingDays(task.actualStartDate, project.start_date, calendar, holidays) - 1);
+      }
+      offsetStart = Math.max(0, offsetStart);
+
+      if (task.actualEndDate) {
+        let offsetEnd = 0;
+        const taskEnd = parseDate(task.actualEndDate);
+        if (taskEnd.getTime() >= projStart.getTime()) {
+          offsetEnd = countWorkingDays(project.start_date, task.actualEndDate, calendar, holidays) - 1;
+        } else {
+          offsetEnd = -(countWorkingDays(task.actualEndDate, project.start_date, calendar, holidays) - 1);
+        }
+        
+        const ES = offsetStart;
+        const EF = offsetEnd + 1;
+        
+        return {
+          ...task,
+          manualOffset: ES,
+          duration: Math.max(0, EF - ES),
+          isActual: true,
+          schedulingMode: 'manual'
+        };
+      } else {
+        const ES = offsetStart;
+        const percent = task.percentComplete || 0;
+        const remaining = Math.ceil(task.duration * (100 - percent) / 100);
+        const EF = Math.max(ES + task.duration, todayOffset + remaining);
+        
+        return {
+          ...task,
+          manualOffset: ES,
+          duration: Math.max(0, EF - ES),
+          isActual: true,
+          schedulingMode: 'manual'
+        };
+      }
+    }
+
     if (task.schedulingMode === 'manual' && task.manualStartDate) {
-      const msPerDay = 1000 * 60 * 60 * 24;
-      const offset = Math.round((new Date(task.manualStartDate) - new Date(project.start_date)) / msPerDay);
-      return { ...task, manualOffset: offset };
+      let offset = 0;
+      const taskStart = parseDate(task.manualStartDate);
+      if (taskStart.getTime() >= projStart.getTime()) {
+        offset = countWorkingDays(project.start_date, task.manualStartDate, calendar, holidays) - 1;
+      } else {
+        offset = -(countWorkingDays(task.manualStartDate, project.start_date, calendar, holidays) - 1);
+      }
+      return { ...task, manualOffset: Math.max(0, offset) };
     }
     return task;
   });

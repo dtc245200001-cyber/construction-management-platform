@@ -200,9 +200,47 @@ function countWorkingDays(
   return count;
 }
 
+/**
+ * Hàm 3: Tìm số n (offset days) sao cho addWorkingDays(projectStart, n) = targetDate.
+ * Đếm số ngày làm việc ĐƯỢC CỘNG từ projectStart (exclusive) tới targetDate (inclusive).
+ * @param {string|Date} projectStart
+ * @param {string|Date} targetDate
+ * @param {object} [calendar=DEFAULT_CALENDAR]
+ * @param {Array<string|object|Date>} [holidays=[]]
+ * @returns {number}
+ */
+function getOffsetDays(projectStart, targetDate, calendar = DEFAULT_CALENDAR, holidays = []) {
+  const start = parseDate(projectStart);
+  const target = parseDate(targetDate);
+  if (start.getTime() === target.getTime()) return 0;
+
+  const holidaysSet = normalizeHolidays(holidays);
+  const cal = calendar || DEFAULT_CALENDAR;
+  let count = 0;
+
+  if (target.getTime() > start.getTime()) {
+    const cur = new Date(start.getTime());
+    cur.setUTCDate(cur.getUTCDate() + 1);
+    while (cur.getTime() <= target.getTime()) {
+      if (isWorkingDay(cur, cal, holidaysSet)) count++;
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    }
+    return count;
+  } else {
+    const cur = new Date(start.getTime());
+    cur.setUTCDate(cur.getUTCDate() - 1);
+    while (cur.getTime() >= target.getTime()) {
+      if (isWorkingDay(cur, cal, holidaysSet)) count++;
+      cur.setUTCDate(cur.getUTCDate() - 1);
+    }
+    return -count;
+  }
+}
+
 module.exports = {
   addWorkingDays,
   countWorkingDays,
+  getOffsetDays,
   isWorkingDay,
   parseDate,
   formatDate,
