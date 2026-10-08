@@ -26,6 +26,7 @@ import SchedulePage from './pages/SchedulePage';
 import GanttPage from './pages/GanttPage';
 import WarningsPage from './pages/WarningsPage';
 import ProjectCalendarPage from './pages/ProjectCalendarPage';
+import DiaryPage from './pages/DiaryPage';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -94,6 +95,7 @@ function App() {
           <Route path="/gantt" element={<GanttPage />} />
           <Route path="/warnings" element={<WarningsPage user={user} />} />
           <Route path="/calendar" element={<ProjectCalendarPage user={user} />} />
+          <Route path="/diary" element={<DiaryPage user={user} />} />
           <Route path="/members" element={<MembersPage user={user} />} />
         </Route>
 

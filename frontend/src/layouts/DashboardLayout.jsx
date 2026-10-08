@@ -274,7 +274,9 @@ export default function DashboardLayout({ user, setUser }) {
             Thứ Sáu, 25/09/2026 · Tuần 14
           </p>
 
-          <button className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 outline-none">
+          <button 
+            onClick={() => navigate('/diary', { state: { openForm: true } })}
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 outline-none">
             <Plus className="size-4" /> Ghi nhật ký nhanh
           </button>
 
