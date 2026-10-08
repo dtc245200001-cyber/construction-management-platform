@@ -197,46 +197,38 @@ export default function DashboardLayout({ user, setUser }) {
           </div>
         )}
 
-        <nav className="mt-6 flex flex-1 flex-col gap-1 w-full">
-          {navItems.map((item) => {
-            const isActive = location.pathname === item.path;
-            return (
-              <button
-                key={item.label}
-                title={item.label}
-                onClick={() => {
-                  if (item.path === '/dashboard' || item.path === '/wbs' || item.path === '/members' || item.path === '/schedule' || item.path === '/gantt' || item.path === '/warnings' || item.path === '/calendar') {
-                    navigate(item.path);
-                  } else {
-                    alert("Tính năng này sẽ được phát triển trong các Sprint tiếp theo.");
-                  }
-                }}
-                className={[
-                  "flex items-center gap-3 rounded-xl py-3 text-left text-sm font-medium transition-colors cursor-pointer outline-none",
-                  isSidebarCollapsed ? "justify-center px-0" : "px-3.5",
-                  isActive
-                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                    : "text-sidebar-foreground/85 hover:bg-sidebar-accent",
-                ].join(" ")}
-              >
-                <item.icon className="size-5 shrink-0" />
-                {!isSidebarCollapsed && <span className="truncate">{item.label}</span>}
-              </button>
-            )
-          })}
-        </nav>
+        <div className="mt-6 flex-1 overflow-y-auto w-full no-scrollbar">
+          <nav className="flex flex-col gap-1 w-full">
+            {navItems.map((item) => {
+              const isActive = location.pathname === item.path;
+              return (
+                <button
+                  key={item.label}
+                  title={item.label}
+                  onClick={() => {
+                    if (item.path === '/dashboard' || item.path === '/wbs' || item.path === '/members' || item.path === '/schedule' || item.path === '/gantt' || item.path === '/warnings' || item.path === '/calendar') {
+                      navigate(item.path);
+                    } else {
+                      alert("Tính năng này sẽ được phát triển trong các Sprint tiếp theo.");
+                    }
+                  }}
+                  className={[
+                    "flex items-center gap-3 rounded-xl py-3 text-left text-sm font-medium transition-colors cursor-pointer outline-none",
+                    isSidebarCollapsed ? "justify-center px-0" : "px-3.5",
+                    isActive
+                      ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                      : "text-sidebar-foreground/85 hover:bg-sidebar-accent",
+                  ].join(" ")}
+                >
+                  <item.icon className="size-5 shrink-0" />
+                  {!isSidebarCollapsed && <span className="truncate">{item.label}</span>}
+                </button>
+              )
+            })}
+          </nav>
+        </div>
 
-        {!isSidebarCollapsed && (
-          <div className="mt-6 rounded-xl bg-sidebar-accent p-4 w-full">
-            <p className="flex items-center gap-2 text-sm">
-              <span className="size-2.5 shrink-0 rounded-full bg-success" />
-              Đang chờ đồng bộ 3 mục
-            </p>
-            <button className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-sidebar-border/60 px-3 py-2.5 text-sm font-medium transition-colors hover:bg-sidebar-border outline-none">
-              <RefreshCw className="size-4 shrink-0" /> Đồng bộ ngay
-            </button>
-          </div>
-        )}
+
 
         <button 
           title="Đăng xuất"
@@ -278,9 +270,12 @@ export default function DashboardLayout({ user, setUser }) {
             <Plus className="size-4" /> Ghi nhật ký nhanh
           </button>
 
-          <button className="relative text-muted-foreground outline-none">
+          <button 
+            className="relative text-muted-foreground outline-none cursor-pointer hover:bg-accent/50 p-2 rounded-xl transition-colors"
+            onClick={() => navigate('/warnings')}
+          >
             <Bell className="size-5" />
-            <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-danger text-[10px] font-bold text-primary-foreground">
+            <span className="absolute right-0.5 top-0.5 flex size-4 items-center justify-center rounded-full bg-danger text-[10px] font-bold text-primary-foreground">
               2
             </span>
           </button>

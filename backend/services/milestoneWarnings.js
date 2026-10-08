@@ -1,20 +1,18 @@
 const db = require('../config/db');
-
-// T-39 is pending, so using a simple date diff for now.
-function calculateWorkingDays(startDate, endDate) {
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  start.setHours(0, 0, 0, 0);
-  end.setHours(0, 0, 0, 0);
-  const diffTime = end.getTime() - start.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays;
-}
+const { countWorkingDays, DEFAULT_CALENDAR } = require('../algorithms/workingDays');
 
 async function evaluateMilestoneWarnings(projectId) {
   const client = await db.connect();
   try {
     await client.query("BEGIN");
+
+    // Lịch + ngày lễ của dự án (giống cách scheduleCalculation.js đang lấy)
+    const [calRes, holRes] = await Promise.all([
+      client.query("SELECT * FROM calendars WHERE project_id = $1", [projectId]),
+      client.query("SELECT holiday_date FROM holidays WHERE project_id = $1", [projectId]),
+    ]);
+    const calendar = calRes.rows[0] || DEFAULT_CALENDAR;
+    const holidays = holRes.rows.map((r) => r.holiday_date);
 
     const milestonesRes = await client.query(`
       SELECT m.id as milestone_id, m.work_item_id, m.required_date
@@ -33,7 +31,6 @@ async function evaluateMilestoneWarnings(projectId) {
         )
         SELECT id FROM work_item_tree
       `, [row.work_item_id]);
-
       const workItemIds = descendantsRes.rows.map(r => r.id);
 
       const maxEfRes = await client.query(`
@@ -43,10 +40,25 @@ async function evaluateMilestoneWarnings(projectId) {
         WHERE t.work_item_id = ANY($1::int[])
       `, [workItemIds]);
 
-      let maxEf = maxEfRes.rows[0].max_ef;
+      const maxEf = maxEfRes.rows[0].max_ef;
       if (!maxEf) continue;
 
-      let daysExceeded = calculateWorkingDays(row.required_date, maxEf);
+      // Đếm đúng số NGÀY LÀM VIỆC vượt mốc (không phải ngày lịch).
+      // required_date là ngày bắt buộc; nếu early_finish rơi đúng ngày đó thì
+      // chưa vượt — chỉ đếm từ ngày SAU required_date tới early_finish.
+      let daysExceeded = 0;
+      const requiredDateStr = new Date(row.required_date).toISOString().slice(0, 10);
+      const maxEfStr = new Date(maxEf).toISOString().slice(0, 10);
+      if (maxEfStr > requiredDateStr) {
+        const dayAfterRequired = new Date(row.required_date);
+        dayAfterRequired.setUTCDate(dayAfterRequired.getUTCDate() + 1);
+        daysExceeded = countWorkingDays(
+          dayAfterRequired.toISOString().slice(0, 10),
+          maxEfStr,
+          calendar,
+          holidays
+        );
+      }
 
       if (daysExceeded > 0) {
         await client.query(`
@@ -74,7 +86,4 @@ async function evaluateMilestoneWarnings(projectId) {
   }
 }
 
-module.exports = {
-  evaluateMilestoneWarnings,
-  calculateWorkingDays
-};
+module.exports = { evaluateMilestoneWarnings };

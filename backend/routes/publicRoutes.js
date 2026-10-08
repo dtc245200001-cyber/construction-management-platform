@@ -11,6 +11,16 @@ function removeAccents(str) {
 }
 
 // GET /api/public/projects - Danh sách dự án công khai
+/**
+ * @swagger
+ * /api/public/projects:
+ *   get:
+ *     summary: API GET /projects
+ *     tags: [Public]
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get('/projects', async (req, res, next) => {
   try {
     const { q, tinh, loai, limit = 10, offset = 0 } = req.query;
@@ -87,6 +97,22 @@ router.get('/projects', async (req, res, next) => {
 });
 
 // GET /api/public/projects/:id - Chi tiết dự án công khai
+/**
+ * @swagger
+ * /api/public/projects/{id}:
+ *   get:
+ *     summary: API GET /projects/:id
+ *     tags: [Public]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get('/projects/:id', async (req, res, next) => {
   try {
     const result = await db.query(
@@ -119,6 +145,16 @@ function setInvitationLimiter(limiter) {
 }
 
 // POST /api/public/newsletter - Đăng ký nhận tin
+/**
+ * @swagger
+ * /api/public/newsletter:
+ *   post:
+ *     summary: API POST /newsletter
+ *     tags: [Public]
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post('/newsletter', (req, res, next) => newsletterLimiter(req, res, next), async (req, res, next) => {
   try {
     const { email } = req.body;
@@ -145,6 +181,22 @@ router.post('/newsletter', (req, res, next) => newsletterLimiter(req, res, next)
 });
 
 // GET /api/public/invitations/:token - Kiểm tra token mời
+/**
+ * @swagger
+ * /api/public/invitations/{token}:
+ *   get:
+ *     summary: API GET /invitations/:token
+ *     tags: [Public]
+ *     parameters:
+ *       - in: path
+ *         name: token
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get('/invitations/:token', (req, res, next) => invitationLimiter(req, res, next), async (req, res, next) => {
   try {
     const { token } = req.params;
@@ -177,6 +229,22 @@ router.get('/invitations/:token', (req, res, next) => invitationLimiter(req, res
 });
 
 // POST /api/public/invitations/:token/accept - Chấp nhận lời mời (cho user đã có tài khoản)
+/**
+ * @swagger
+ * /api/public/invitations/{token}/accept:
+ *   post:
+ *     summary: API POST /invitations/:token/accept
+ *     tags: [Public]
+ *     parameters:
+ *       - in: path
+ *         name: token
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post('/invitations/:token/accept', (req, res, next) => invitationLimiter(req, res, next), async (req, res, next) => {
   try {
     const { token } = req.params;

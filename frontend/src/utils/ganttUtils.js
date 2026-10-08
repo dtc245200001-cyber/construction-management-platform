@@ -44,20 +44,36 @@ export function mapScheduleToGantt(tasks, projectStartDate, pixelsPerDay, rowHei
  * @param {number} totalDays - Tổng số ngày dự kiến cần vẽ
  * @param {string} viewMode - 'day' hoặc 'week'
  * @param {number} pixelsPerDay 
- * @returns {Array} Mảng các mốc thời gian { x, label, type }
+ * @param {Object} calendar
+ * @param {Array} holidays
+ * @returns {Array} Mảng các mốc thời gian { x, label, type, isNonWorkingDay }
  */
-export function generateTimelineTicks(projectStartDate, totalDays, viewMode, pixelsPerDay) {
+export function generateTimelineTicks(projectStartDate, totalDays, viewMode, pixelsPerDay, calendar = null, holidays = []) {
   if (!projectStartDate) return [];
   const startObj = typeof projectStartDate === 'string' ? parseISO(projectStartDate) : projectStartDate;
   const ticks = [];
+
+  const dayMap = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
   
   if (viewMode === 'day') {
     for (let i = 0; i <= totalDays; i++) {
       const date = addDays(startObj, i);
+      
+      let isNonWorkingDay = false;
+      if (calendar) {
+        const dayName = dayMap[date.getDay()];
+        if (!calendar[dayName]) isNonWorkingDay = true;
+      }
+      const dateStr = format(date, 'yyyy-MM-dd');
+      if (holidays && holidays.some(h => (h.holiday_date || h).substring(0, 10) === dateStr)) {
+        isNonWorkingDay = true;
+      }
+
       ticks.push({
         x: i * pixelsPerDay,
         label: format(date, 'dd/MM/yyyy'),
-        type: 'day'
+        type: 'day',
+        isNonWorkingDay
       });
     }
   } else if (viewMode === 'week') {
@@ -66,7 +82,8 @@ export function generateTimelineTicks(projectStartDate, totalDays, viewMode, pix
       ticks.push({
         x: i * pixelsPerDay,
         label: `T${Math.floor(i / 7) + 1} (${format(date, 'dd/MM/yyyy')})`,
-        type: 'week'
+        type: 'week',
+        isNonWorkingDay: false
       });
     }
   }

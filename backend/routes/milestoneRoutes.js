@@ -11,6 +11,22 @@ const router = createProjectRouter();
 
 // GET /api/projects/:projectId/milestones
 // Lấy danh sách các mốc bàn giao của dự án (đang hiệu lực)
+/**
+ * @swagger
+ * /api/projects/{projectId}/milestones:
+ *   get:
+ *     summary: API GET /:projectId/milestones
+ *     tags: [Milestone]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get(
   "/:projectId/milestones",
   requireAuth,
@@ -36,6 +52,27 @@ router.get(
 
 // POST /api/projects/:projectId/work-items/:workItemId/milestones
 // Đặt hoặc cập nhật mốc bàn giao bắt buộc cho hạng mục
+/**
+ * @swagger
+ * /api/projects/{projectId}/work-items/{workItemId}/milestones:
+ *   post:
+ *     summary: API POST /:projectId/work-items/:workItemId/milestones
+ *     tags: [Milestone]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: workItemId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post(
   "/:projectId/work-items/:workItemId/milestones",
   requireAuth,
@@ -98,6 +135,27 @@ router.post(
 
 // DELETE /api/projects/:projectId/work-items/:workItemId/milestones
 // Xóa mốc đang hiệu lực
+/**
+ * @swagger
+ * /api/projects/{projectId}/work-items/{workItemId}/milestones:
+ *   delete:
+ *     summary: API DELETE /:projectId/work-items/:workItemId/milestones
+ *     tags: [Milestone]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: workItemId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.delete(
   "/:projectId/work-items/:workItemId/milestones",
   requireAuth,
@@ -142,6 +200,22 @@ router.delete(
 );
 
 // GET /api/projects/:projectId/warnings
+/**
+ * @swagger
+ * /api/projects/{projectId}/warnings:
+ *   get:
+ *     summary: API GET /:projectId/warnings
+ *     tags: [Milestone]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get(
   "/:projectId/warnings",
   requireAuth,
@@ -169,6 +243,27 @@ router.get(
 );
 
 // GET /api/projects/:projectId/warnings/:warningId/critical-path
+/**
+ * @swagger
+ * /api/projects/{projectId}/warnings/{warningId}/critical-path:
+ *   get:
+ *     summary: API GET /:projectId/warnings/:warningId/critical-path
+ *     tags: [Milestone]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: warningId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get(
   "/:projectId/warnings/:warningId/critical-path",
   requireAuth,

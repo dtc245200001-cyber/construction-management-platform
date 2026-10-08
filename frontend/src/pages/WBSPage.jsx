@@ -413,6 +413,7 @@ const closeTaskForm = () => {
             <td className="px-4">
               <span className="inline-flex px-2 py-0.5 rounded text-[11px] font-medium bg-[#EEF2FF] text-[#4F46E5]">Hạng mục</span>
             </td>
+            <td className="px-4"></td>
             <td className="px-4 text-sm text-[#475569]">{renderDate(node.start_date)}</td>
             <td className="px-4 text-sm text-[#475569]">{renderDate(node.end_date)}</td>
             <td className={`px-4 text-right sticky right-0 z-10 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] transition-colors ${color.bg}`}>
@@ -492,6 +493,23 @@ const closeTaskForm = () => {
           <td className="px-4">
             <span className="inline-flex px-2 py-0.5 rounded text-[11px] font-medium bg-[#DCFCE7] text-[#15803D]">Công việc</span>
           </td>
+          <td className="px-4 text-sm text-[#475569]">
+            {node.predecessors?.length > 0 ? (
+              <div className="flex flex-wrap gap-1 max-w-[150px]">
+                {node.predecessors.map((p, idx) => {
+                  const refIdx = taskIdToIndexMap[p.id] || p.id;
+                  const type = p.type !== 'FS' ? p.type : '';
+                  return (
+                    <span key={idx} className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[11px] font-mono border border-slate-200" title={`Ràng buộc: ${p.type}`}>
+                      {refIdx}{type}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : (
+              <span className="text-slate-300">-</span>
+            )}
+          </td>
           <td className="px-4 text-sm text-[#475569]">{renderDate(node.start_date)}</td>
           <td className="px-4 text-sm text-[#475569]">{renderDate(node.end_date)}</td>
           <td className="px-4 text-right sticky right-0 bg-white group-hover:bg-[#F5F8FF] z-10 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] transition-colors">
@@ -519,6 +537,22 @@ const closeTaskForm = () => {
 
   // T-09: Cây đã tổng hợp ngày hạng mục (min ES / max EF) — tính thuần frontend
   const rolledItems = useMemo(() => rollupCategoryDates(items), [items]);
+
+  // Tạo map ánh xạ từ task_id sang STT (VD: 1.1, 1.2.1) để hiển thị trong cột Ràng buộc
+  const taskIdToIndexMap = useMemo(() => {
+    const map = {};
+    const traverse = (nodes, parentIndexStr = "") => {
+      nodes.forEach((node, i) => {
+        const idx = parentIndexStr ? `${parentIndexStr}.${i + 1}` : `${i + 1}`;
+        if (node.type === "task" && node.task_id) {
+          map[node.task_id] = idx;
+        }
+        if (node.children) traverse(node.children, idx);
+      });
+    };
+    traverse(rolledItems);
+    return map;
+  }, [rolledItems]);
 
   // Tính toán số liệu cho Panel Phải (không còn trạng thái / tiến độ)
   const stats = useMemo(() => {
@@ -620,6 +654,7 @@ const visibleItems = useMemo(() => {
                   <tr>
                     <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] min-w-[360px] whitespace-nowrap">STT / Tên công việc / Hạng mục</th>
                     <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[110px] whitespace-nowrap">Loại</th>
+                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[120px] whitespace-nowrap">Ràng buộc</th>
                     <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[120px] whitespace-nowrap">Bắt đầu</th>
                     <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[120px] whitespace-nowrap">Kết thúc</th>
                     <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[50px] sticky right-0 bg-white z-20 shadow-[-4px_0_12px_rgba(0,0,0,0.05)]"></th>
@@ -627,11 +662,11 @@ const visibleItems = useMemo(() => {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan="5" className="p-8 text-center text-gray-500">Đang tải dữ liệu...</td></tr>
+                    <tr><td colSpan="6" className="p-8 text-center text-gray-500">Đang tải dữ liệu...</td></tr>
                   ) : items.length === 0 ? (
-                    <tr><td colSpan="5" className="p-16 text-center text-gray-500">Chưa có hạng mục nào.</td></tr>
+                    <tr><td colSpan="6" className="p-16 text-center text-gray-500">Chưa có hạng mục nào.</td></tr>
                   ) : visibleItems.length === 0 ? (
-                    <tr><td colSpan="5" className="p-16 text-center text-gray-500">Không tìm thấy kết quả.</td></tr>
+                    <tr><td colSpan="6" className="p-16 text-center text-gray-500">Không tìm thấy kết quả.</td></tr>
                   ) : (
                     visibleItems.map((root, i) => renderRow(root, 0, (i+1).toString(), i))
                   )}

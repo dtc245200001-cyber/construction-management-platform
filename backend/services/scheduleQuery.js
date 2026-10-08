@@ -18,7 +18,8 @@ async function getScheduleResults(projectId, criticalOnly = null) {
         sr.late_finish,
         sr.total_float,
         sr.is_critical,
-        sr.calculated_at
+        sr.calculated_at,
+        t.was_critical_baseline
       FROM tasks t
       JOIN work_items wi
         ON wi.id = t.work_item_id

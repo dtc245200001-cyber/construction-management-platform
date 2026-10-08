@@ -13,6 +13,16 @@ const { markProjectScheduleDirty } = require("../services/scheduleRecalculation"
 const router = createProjectRouter();
 
 // GET /api/projects - Danh sách dự án mà user tham gia
+/**
+ * @swagger
+ * /api/projects:
+ *   get:
+ *     summary: API GET /
+ *     tags: [Project]
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get(
   "/",
   requireAuth,
@@ -47,6 +57,16 @@ function removeAccents(str) {
 }
 
 // POST /api/projects - Tạo dự án mới
+/**
+ * @swagger
+ * /api/projects:
+ *   post:
+ *     summary: API POST /
+ *     tags: [Project]
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post(
   "/",
   requireSystemAdmin,
@@ -126,6 +146,22 @@ router.post(
 );
 
 // DELETE /api/projects/:projectId - Xóa dự án
+/**
+ * @swagger
+ * /api/projects/{projectId}:
+ *   delete:
+ *     summary: API DELETE /:projectId
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.delete(
   "/:projectId",
   requireSystemAdmin,
@@ -157,6 +193,22 @@ router.delete(
 );
 
 // PUT /api/projects/:projectId - Cập nhật dự án
+/**
+ * @swagger
+ * /api/projects/{projectId}:
+ *   put:
+ *     summary: API PUT /:projectId
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.put(
   "/:projectId",
   requireSystemAdmin,
@@ -212,6 +264,22 @@ router.put(
 
 
 // GET /api/projects/:projectId/schedule-results
+/**
+ * @swagger
+ * /api/projects/{projectId}/schedule-results:
+ *   get:
+ *     summary: API GET /:projectId/schedule-results
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get(
   "/:projectId/schedule-results",
   requireAuth,
@@ -247,10 +315,21 @@ router.get(
         criticalOnly
       );
 
+      // Lấy danh sách dependencies để vẽ mũi tên trên Gantt
+      const depsResult = await db.query(
+        `SELECT d.predecessor_id, d.successor_id, d.dependency_type, d.lead_lag_days
+         FROM dependencies d
+         JOIN tasks t ON d.successor_id = t.id
+         JOIN work_items wi ON t.work_item_id = wi.id
+         WHERE wi.project_id = $1`,
+        [projectId]
+      );
+
       return res.json({
         projectId,
         count: results.length,
         data: results,
+        dependencies: depsResult.rows,
       });
     } catch (error) {
       next(error);
@@ -259,7 +338,81 @@ router.get(
 );
 
 
+// GET /api/projects/:projectId/schedule-summary
+/**
+ * @swagger
+ * /api/projects/{projectId}/schedule-summary:
+ *   get:
+ *     summary: API GET /:projectId/schedule-summary
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
+router.get(
+  "/:projectId/schedule-summary",
+  requireAuth,
+  checkProjectAccess,
+  allow(Object.values(ROLES)),
+  async (req, res, next) => {
+    try {
+      const projectId = Number(req.params.projectId);
+      const result = await db.query(
+        `SELECT
+           start_date,
+           planned_finish_date,
+           (
+             SELECT MAX(early_finish)
+             FROM schedule_results sr
+             JOIN tasks t ON t.id = sr.task_id
+             JOIN work_items wi ON wi.id = t.work_item_id
+             WHERE wi.project_id = $1
+           ) AS current_finish_date
+         FROM projects
+         WHERE id = $1`,
+        [projectId]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ message: "Không tìm thấy dự án" });
+      }
+
+      const { start_date, planned_finish_date, current_finish_date } = result.rows[0];
+
+      return res.json({
+        start_date,
+        planned_finish_date,
+        current_finish_date
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // GET /api/projects/:projectId
+/**
+ * @swagger
+ * /api/projects/{projectId}:
+ *   get:
+ *     summary: API GET /:projectId
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get(
   "/:projectId",
   requireAuth,
@@ -291,6 +444,22 @@ router.get(
 );
 
 // POST /api/projects/:projectId/open
+/**
+ * @swagger
+ * /api/projects/{projectId}/open:
+ *   post:
+ *     summary: API POST /:projectId/open
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post(
   "/:projectId/open",
   requireAuth,
@@ -316,6 +485,22 @@ router.post(
 );
 
 // GET /api/projects/:projectId/members
+/**
+ * @swagger
+ * /api/projects/{projectId}/members:
+ *   get:
+ *     summary: API GET /:projectId/members
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get(
   "/:projectId/members",
   requireAuth,
@@ -358,6 +543,22 @@ router.get(
 );
 
 // POST /api/projects/:projectId/members
+/**
+ * @swagger
+ * /api/projects/{projectId}/members:
+ *   post:
+ *     summary: API POST /:projectId/members
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post(
   "/:projectId/members",
   requireAuth,
@@ -448,6 +649,27 @@ router.post(
 );
 
 // POST /api/projects/:projectId/members/:userId/unlock - Mở khóa tài khoản thành viên
+/**
+ * @swagger
+ * /api/projects/{projectId}/members/{userId}/unlock:
+ *   post:
+ *     summary: API POST /:projectId/members/:userId/unlock
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post(
   "/:projectId/members/:userId/unlock",
   requireAuth,
@@ -478,6 +700,27 @@ router.post(
 );
 
 // POST /api/projects/:projectId/invitations/:invId/resend
+/**
+ * @swagger
+ * /api/projects/{projectId}/invitations/{invId}/resend:
+ *   post:
+ *     summary: API POST /:projectId/invitations/:invId/resend
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: invId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post(
   "/:projectId/invitations/:invId/resend",
   requireAuth,
@@ -537,6 +780,22 @@ router.post(
 
 
 // POST /api/projects/:projectId/schedule/recalculate
+/**
+ * @swagger
+ * /api/projects/{projectId}/schedule/recalculate:
+ *   post:
+ *     summary: API POST /:projectId/schedule/recalculate
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post(
   "/:projectId/schedule/recalculate",
   requireAuth,
@@ -620,6 +879,27 @@ router.post(
 );
 
 // GET /api/projects/:projectId/schedule-jobs/:jobId
+/**
+ * @swagger
+ * /api/projects/{projectId}/schedule-jobs/{jobId}:
+ *   get:
+ *     summary: API GET /:projectId/schedule-jobs/:jobId
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get(
   "/:projectId/schedule-jobs/:jobId",
   requireAuth,
@@ -649,6 +929,22 @@ router.get(
 );
 
 // GET /api/projects/:projectId/calendar
+/**
+ * @swagger
+ * /api/projects/{projectId}/calendar:
+ *   get:
+ *     summary: API GET /:projectId/calendar
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get(
   "/:projectId/calendar",
   requireAuth,
@@ -684,6 +980,22 @@ router.get(
 );
 
 // PUT /api/projects/:projectId/calendar
+/**
+ * @swagger
+ * /api/projects/{projectId}/calendar:
+ *   put:
+ *     summary: API PUT /:projectId/calendar
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.put(
   "/:projectId/calendar",
   requireAuth,
@@ -751,6 +1063,22 @@ router.put(
 );
 
 // GET /api/projects/:projectId/holidays
+/**
+ * @swagger
+ * /api/projects/{projectId}/holidays:
+ *   get:
+ *     summary: API GET /:projectId/holidays
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get(
   "/:projectId/holidays",
   requireAuth,
@@ -777,6 +1105,22 @@ router.get(
 );
 
 // POST /api/projects/:projectId/holidays
+/**
+ * @swagger
+ * /api/projects/{projectId}/holidays:
+ *   post:
+ *     summary: API POST /:projectId/holidays
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post(
   "/:projectId/holidays",
   requireAuth,
@@ -843,6 +1187,27 @@ router.post(
 );
 
 // DELETE /api/projects/:projectId/holidays/:holidayId
+/**
+ * @swagger
+ * /api/projects/{projectId}/holidays/{holidayId}:
+ *   delete:
+ *     summary: API DELETE /:projectId/holidays/:holidayId
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: holidayId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.delete(
   "/:projectId/holidays/:holidayId",
   requireAuth,
@@ -887,6 +1252,27 @@ router.delete(
 );
 
 // PUT /api/projects/:projectId/holidays/:holidayId
+/**
+ * @swagger
+ * /api/projects/{projectId}/holidays/{holidayId}:
+ *   put:
+ *     summary: API PUT /:projectId/holidays/:holidayId
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: holidayId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.put(
   "/:projectId/holidays/:holidayId",
   requireAuth,

@@ -29,6 +29,22 @@ const {
 const router = createProjectRouter();
 
 // ─── GET /:projectId — Lấy danh sách hạng mục theo parentId ─────────────────
+/**
+ * @swagger
+ * /api/categories/{projectId}:
+ *   get:
+ *     summary: API GET /:projectId
+ *     tags: [Category]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get(
   "/:projectId",
   requireAuth,
@@ -84,6 +100,22 @@ router.get(
 );
 
 // ─── GET /:projectId/tree/all — Toàn bộ hạng mục dạng phẳng ────────────────
+/**
+ * @swagger
+ * /api/categories/{projectId}/tree/all:
+ *   get:
+ *     summary: API GET /:projectId/tree/all
+ *     tags: [Category]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get(
   "/:projectId/tree/all",
   requireAuth,
@@ -133,7 +165,12 @@ router.get(
             t.percent_complete,
             sr.early_start,
             sr.early_finish,
-            sr.is_critical
+            sr.is_critical,
+            COALESCE((
+              SELECT json_agg(json_build_object('id', d.predecessor_id, 'type', d.dependency_type))
+              FROM dependencies d
+              WHERE d.successor_id = t.id
+            ), '[]'::json) as predecessors
           FROM tasks t
           JOIN work_items wi ON wi.id = t.work_item_id
           LEFT JOIN schedule_results sr ON sr.task_id = t.id
@@ -169,6 +206,7 @@ router.get(
         status: isDone ? "Hoàn thành" : (isDoing ? "Đang thực hiện" : "Chưa bắt đầu"),
         progress: t.percent_complete ?? 0,
         is_critical: t.is_critical || false,
+        predecessors: t.predecessors || [],
       };
     });
 
@@ -177,6 +215,22 @@ router.get(
 );
 
 // ─── POST /:projectId — Thêm hạng mục ───────────────────────────────────────
+/**
+ * @swagger
+ * /api/categories/{projectId}:
+ *   post:
+ *     summary: API POST /:projectId
+ *     tags: [Category]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post(
   "/:projectId",
   requireAuth,
@@ -271,6 +325,27 @@ router.post(
 );
 
 // ─── PUT /:projectId/:id — Sửa hạng mục ─────────────────────────────────────
+/**
+ * @swagger
+ * /api/categories/{projectId}/{id}:
+ *   put:
+ *     summary: API PUT /:projectId/:id
+ *     tags: [Category]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.put(
   "/:projectId/:id",
   requireAuth,
@@ -366,6 +441,27 @@ router.put(
 );
 
 // ─── PATCH /:projectId/:id/move — Đổi hạng mục cha ───────────────────────────
+/**
+ * @swagger
+ * /api/categories/{projectId}/{id}/move:
+ *   patch:
+ *     summary: API PATCH /:projectId/:id/move
+ *     tags: [Category]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.patch(
   "/:projectId/:id/move",
   requireAuth,
@@ -508,6 +604,27 @@ router.patch(
 );
 
 // ─── DELETE /:projectId/:id — Xóa hạng mục ───────────────────────────────────
+/**
+ * @swagger
+ * /api/categories/{projectId}/{id}:
+ *   delete:
+ *     summary: API DELETE /:projectId/:id
+ *     tags: [Category]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.delete(
   "/:projectId/:id",
   requireAuth,
