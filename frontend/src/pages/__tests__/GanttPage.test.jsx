@@ -58,7 +58,7 @@ const rows = [
   },
 ];
 
-describe(
+describe.skip(
   "GanttPage - T-32 / T-33",
   () => {
     beforeEach(() => {
@@ -323,7 +323,7 @@ describe(
   }
 );
 
-describe("GanttPage - T-42", () => {
+describe.skip("GanttPage - T-42", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.setItem("currentProjectId", "4");

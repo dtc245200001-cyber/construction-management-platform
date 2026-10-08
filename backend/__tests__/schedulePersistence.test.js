@@ -1,4 +1,3 @@
-const { Pool } = require("pg");
 const { saveScheduleResults } = require("../services/schedulePersistence");
 
 jest.mock("pg", () => {

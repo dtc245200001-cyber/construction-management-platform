@@ -206,7 +206,7 @@ export default function DashboardLayout({ user, setUser }) {
                   key={item.label}
                   title={item.label}
                   onClick={() => {
-                    if (item.path === '/dashboard' || item.path === '/wbs' || item.path === '/members' || item.path === '/schedule' || item.path === '/gantt' || item.path === '/warnings' || item.path === '/calendar') {
+                    if (item.path === '/dashboard' || item.path === '/wbs' || item.path === '/members' || item.path === '/schedule' || item.path === '/gantt' || item.path === '/warnings' || item.path === '/calendar' || item.path === '/diary') {
                       navigate(item.path);
                     } else {
                       alert("Tính năng này sẽ được phát triển trong các Sprint tiếp theo.");
@@ -227,8 +227,6 @@ export default function DashboardLayout({ user, setUser }) {
             })}
           </nav>
         </div>
-
-
 
         <button 
           title="Đăng xuất"

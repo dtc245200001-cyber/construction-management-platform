@@ -38,7 +38,7 @@ describe("Diary API Integration Tests", () => {
     const userKySu = await pool.query("INSERT INTO users (name, email, password_hash, role_id, is_system_admin, is_verified) VALUES ('Ky Su', 'kysu@test.com', $1, $2, false, true) RETURNING id", [passwordHash, roleKySu]);
     const userChuDauTu = await pool.query("INSERT INTO users (name, email, password_hash, role_id, is_system_admin, is_verified) VALUES ('Chu Dau Tu', 'chudautu@test.com', $1, $2, false, true) RETURNING id", [passwordHash, roleChuDauTu]);
     const userKeToan = await pool.query("INSERT INTO users (name, email, password_hash, role_id, is_system_admin, is_verified) VALUES ('Ke Toan', 'ketoan@test.com', $1, $2, false, true) RETURNING id", [passwordHash, roleKeToan]);
-    const userNoProject = await pool.query("INSERT INTO users (name, email, password_hash, role_id, is_system_admin, is_verified) VALUES ('No Project', 'noproject@test.com', $1, $2, false, true) RETURNING id", [passwordHash, roleKySu]);
+    await pool.query("INSERT INTO users (name, email, password_hash, role_id, is_system_admin, is_verified) VALUES ('No Project', 'noproject@test.com', $1, $2, false, true) RETURNING id", [passwordHash, roleKySu]);
 
     // Login
     cookieAdmin = (await request(app).post("/api/auth/login").send({ email: "admin@test.com", password: "Password123!" })).headers["set-cookie"];

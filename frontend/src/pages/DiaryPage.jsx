@@ -12,7 +12,6 @@ const ALLOWED_ROLES = ['ky_su_giam_sat', 'chi_huy_truong', 'ban_quan_ly', 'doi_t
 export default function DiaryPage({ user }) {
   const location = useLocation();
   const projectId = localStorage.getItem('currentProjectId') || 13;
-  const canWrite = ALLOWED_ROLES.includes(user?.role);
 
   const [entries, setEntries] = useState([]);
   const [total, setTotal] = useState(0);
@@ -25,6 +24,12 @@ export default function DiaryPage({ user }) {
   
   const [categories, setCategories] = useState([]);
   const [showForm, setShowForm] = useState(location.state?.openForm || false);
+
+  useEffect(() => {
+    if (location.state?.openForm) {
+      setShowForm(true);
+    }
+  }, [location.state]);
 
   useEffect(() => {
     // Fetch categories for filter
@@ -99,14 +104,12 @@ export default function DiaryPage({ user }) {
             </h1>
             <p className="text-gray-500 mt-1 text-sm">Ghi nhận và theo dõi các hoạt động trên công trường</p>
           </div>
-          {canWrite && (
-            <button 
-              onClick={() => setShowForm(true)}
-              className="min-h-[44px] px-5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm"
-            >
-              <Plus className="size-5" /> Ghi nhật ký
-            </button>
-          )}
+          <button 
+            onClick={() => setShowForm(true)}
+            className="min-h-[44px] px-5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm"
+          >
+            <Plus className="size-5" /> Ghi nhật ký
+          </button>
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-200 p-4 flex flex-col sm:flex-row items-center gap-3 shrink-0 shadow-sm">

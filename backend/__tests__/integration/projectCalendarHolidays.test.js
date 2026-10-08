@@ -1,13 +1,11 @@
 const request = require("supertest");
-const path = require("path");
 const app = require("../../app");
 const pool = require("../../config/db");
 const { calculateAndSaveSchedule } = require("../../services/scheduleCalculation");
 
 describe("T-40 / S-17: Project Calendar and Holidays Schedule Calculation", () => {
   let cookieAdmin;
-  let userAdmin;
-
+  
   beforeAll(async () => {
     // Clear data
     await pool.query(
@@ -36,7 +34,6 @@ describe("T-40 / S-17: Project Calendar and Holidays Schedule Calculation", () =
       password: "Password123",
     });
     cookieAdmin = loginRes.headers["set-cookie"];
-    userAdmin = loginRes.body.user;
   });
 
   afterAll(async () => {
