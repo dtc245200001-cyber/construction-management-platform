@@ -121,4 +121,19 @@ async function evaluateMilestoneWarnings(projectId) {
   }
 }
 
-module.exports = { evaluateMilestoneWarnings };
+/**
+ * Đóng mọi cảnh báo đang mở của một mốc (khi mốc bị thay thế hoặc gỡ bỏ).
+ *
+ * @param {number} milestoneId
+ * @param {import('pg').PoolClient} [client] dùng chung transaction nếu có
+ */
+async function closeMilestoneWarnings(milestoneId, client = db) {
+  await client.query(
+    `UPDATE milestone_warnings
+     SET status = 'closed', closed_at = NOW()
+     WHERE milestone_id = $1 AND status = 'open'`,
+    [milestoneId]
+  );
+}
+
+module.exports = { evaluateMilestoneWarnings, closeMilestoneWarnings };
