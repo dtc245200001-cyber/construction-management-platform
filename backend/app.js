@@ -5,7 +5,7 @@
 
 "use strict";
 
-require("dotenv").config();
+require("dotenv").config({ path: require("path").resolve(__dirname, "../.env") });
 
 const express = require("express");
 const cors = require("cors");
@@ -42,7 +42,7 @@ const SESSION_SECRET = process.env.SESSION_SECRET || "dev-secret-key-unsafe";
 // â”€â”€â”€ CORS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Äá»c danh sÃ¡ch origin Ä‘Æ°á»£c phÃ©p tá»« CORS_ORIGINS (phÃ¢n tÃ¡ch báº±ng dáº¥u pháº©y).
 // VÃ­ dá»¥: CORS_ORIGINS=http://localhost:5173,https://app.example.com
-const allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5173")
+const allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5173,http://127.0.0.1:5173")
   .split(",")
   .map((o) => o.trim().replace(/\/$/, ""))
   .filter(Boolean);
@@ -183,6 +183,9 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicApiLimiter, publicRoutes);
 const milestoneRoutes = require("./routes/milestoneRoutes");
 app.use("/api/projects", milestoneRoutes);
+
+const diaryRoutes = require("./routes/diaryRoutes");
+app.use("/api/projects", diaryRoutes);
 const baselineRoutes = require("./routes/baselineRoutes");
 app.use("/api/projects", baselineRoutes);
 
