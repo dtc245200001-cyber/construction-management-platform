@@ -106,6 +106,7 @@ export default function GanttPage() {
         ]);
         setTasks(res.data.data || []);
         setDependencies(res.data.dependencies || []);
+        setSummary(res.data.summary || null);
         if (summaryRes.data) {
           setScheduleSummary(summaryRes.data);
         }

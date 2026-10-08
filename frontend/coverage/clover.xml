@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<coverage generated="1790805190079" clover="3.2.0">
+  <project timestamp="1790805190080" name="All files">
+    <metrics statements="10" coveredstatements="10" conditionals="4" coveredconditionals="4" methods="3" coveredmethods="3" elements="17" coveredelements="17" complexity="0" loc="10" ncloc="10" packages="1" files="1" classes="1"/>
+    <file name="buildTree.js" path="D:\construction-management-platform\frontend\src\utils\buildTree.js">
+      <metrics statements="10" coveredstatements="10" conditionals="4" coveredconditionals="4" methods="3" coveredmethods="3"/>
+      <line num="9" count="3" type="stmt"/>
+      <line num="10" count="3" type="stmt"/>
+      <line num="12" count="3" type="stmt"/>
+      <line num="13" count="6" type="stmt"/>
+      <line num="16" count="3" type="stmt"/>
+      <line num="17" count="6" type="cond" truecount="4" falsecount="0"/>
+      <line num="18" count="3" type="stmt"/>
+      <line num="19" count="3" type="stmt"/>
+      <line num="21" count="3" type="stmt"/>
+      <line num="25" count="3" type="stmt"/>
+    </file>
+  </project>
+</coverage>

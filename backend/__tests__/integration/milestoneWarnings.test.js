@@ -12,7 +12,63 @@ const request = require("supertest");
 const app = require("../../app");
 const db = require("../../config/db");
 const { evaluateMilestoneWarnings } = require("../../services/milestoneWarnings");
-const { countWorkingDays, DEFAULT_CALENDAR } = require("../../algorithms/workingDays");
+const { countWorkingDays, DEFAULT_CALENDAR, getOffsetDays } = require("../../algorithms/workingDays");
+
+// ── Shared test fixtures for T-45 ────────────────────────────────────────────
+const ROLES = { BAN_QUAN_LY: "ban_quan_ly" };
+let testUserId;
+let testProjectId;
+
+// Helper: create a work item (returns id)
+async function createWorkItem(client, name) {
+  if (!testProjectId) throw new Error("testProjectId not set");
+  const res = await client.query(
+    `INSERT INTO work_items (project_id, name, type) VALUES ($1, $2, 'task') RETURNING id`,
+    [testProjectId, name]
+  );
+  return res.rows[0].id;
+}
+
+// Helper: create a task + schedule_result in one call
+async function createTaskWithSchedule(client, workItemId, { name, duration, earlyStart, earlyFinish }) {
+  const taskRes = await client.query(
+    `INSERT INTO tasks (work_item_id, name, duration_days) VALUES ($1, $2, $3) RETURNING id`,
+    [workItemId, name, duration]
+  );
+  const taskId = taskRes.rows[0].id;
+  await client.query(
+    `INSERT INTO schedule_results (task_id, early_start, early_finish, late_start, late_finish, total_float, is_critical, calculated_at, needs_recalculation)
+     VALUES ($1, $2, $3, $2, $3, 0, true, NOW(), false)`,
+    [taskId, earlyStart, earlyFinish]
+  );
+  return taskId;
+}
+
+// Setup shared fixtures before T-45 tests
+beforeAll(async () => {
+  const userRes = await db.query(
+    `INSERT INTO users (name, email, password_hash, role_id) VALUES ('T45 User', 't45_${Date.now()}@example.com', 'hash', 1) RETURNING id`
+  );
+  testUserId = userRes.rows[0].id;
+
+  const projRes = await db.query(
+    `INSERT INTO projects (name, start_date) VALUES ('T45 Project', '2026-05-01') RETURNING id`
+  );
+  testProjectId = projRes.rows[0].id;
+
+  await db.query(
+    `INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+    [testProjectId, testUserId, ROLES.BAN_QUAN_LY]
+  );
+});
+
+afterAll(async () => {
+  if (testProjectId) await db.query(`DELETE FROM projects WHERE id = $1`, [testProjectId]);
+  if (testUserId) await db.query(`DELETE FROM users WHERE id = $1`, [testUserId]);
+  await db.end();
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
 
 describe("T-44 Milestone Warnings Tests", () => {
   let projectId;
@@ -104,7 +160,6 @@ describe("T-44 Milestone Warnings Tests", () => {
   afterAll(async () => {
     // Cleanup
     await db.query(`DELETE FROM projects WHERE id = $1`, [projectId]);
-    await db.end();
   });
 });
 

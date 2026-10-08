@@ -82,7 +82,7 @@ async function evaluateMilestoneWarnings(projectId) {
         WHERE t.work_item_id = ANY($1::int[])
       `, [workItemIds]);
 
-      const maxEf = maxEfRes.rows[0].max_ef;
+      const maxEf = taskInfoRes.rows[0].max_ef;
       if (!maxEf) continue;
 
       // Đếm đúng số NGÀY LÀM VIỆC vượt mốc (không phải ngày lịch).

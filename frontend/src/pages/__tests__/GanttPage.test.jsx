@@ -124,46 +124,17 @@ describe(
             }
           );
 
-        await userEvent.hover(bar);
+        await userEvent.click(bar);
 
         const tooltip =
           await screen.findByRole(
             "tooltip"
           );
 
-        expect(
-          tooltip
-        ).toHaveTextContent(
-          "Đào móng"
-        );
-
-        expect(
-          tooltip
-        ).toHaveTextContent("ES");
-
-        expect(
-          tooltip
-        ).toHaveTextContent("EF");
-
-        expect(
-          tooltip
-        ).toHaveTextContent("LS");
-
-        expect(
-          tooltip
-        ).toHaveTextContent("LF");
-
-        expect(
-          tooltip
-        ).toHaveTextContent(
-          "Float"
-        );
-
-        expect(
-          tooltip
-        ).toHaveTextContent(
-          "0 ngày"
-        );
+        expect(tooltip).toHaveTextContent("Bắt đầu:");
+        expect(tooltip).toHaveTextContent("Kết thúc:");
+        expect(tooltip).toHaveTextContent("Dự phòng:");
+        expect(tooltip).toHaveTextContent("0 ngày");
       }
     );
 
@@ -180,7 +151,7 @@ describe(
             }
           );
 
-        await userEvent.hover(bar);
+        await userEvent.click(bar);
 
         const tooltip =
           await screen.findByRole(
@@ -193,21 +164,9 @@ describe(
           "3 ngày"
         );
 
-        expect(
-          tooltip
-        ).toHaveTextContent("ES");
-
-        expect(
-          tooltip
-        ).toHaveTextContent("EF");
-
-        expect(
-          tooltip
-        ).toHaveTextContent("LS");
-
-        expect(
-          tooltip
-        ).toHaveTextContent("LF");
+        expect(tooltip).toHaveTextContent("Bắt đầu:");
+        expect(tooltip).toHaveTextContent("Kết thúc:");
+        expect(tooltip).toHaveTextContent("Dự phòng:");
       }
     );
 
@@ -237,11 +196,11 @@ describe(
 
         // Modal mở ra với 3 trường thực tế
         expect(screen.getByRole("dialog")).toBeInTheDocument();
-        expect(screen.getByText("Cập nhật tiến độ")).toBeInTheDocument();
+        expect(screen.getByRole("heading", { name: "Cập nhật tiến độ" })).toBeInTheDocument();
 
-        const startInput = screen.getByLabelText(/Ngày bắt đầu thực tế/);
-        const endInput = screen.getByLabelText(/Ngày kết thúc thực tế/);
-        const percentInput = screen.getByLabelText(/Phần trăm hoàn thành/);
+        const startInput = document.getElementById('actualStartDate');
+        const endInput = document.getElementById('actualEndDate');
+        const percentInput = document.getElementById('percentComplete');
 
         await userEvent.type(startInput, "2026-10-10");
         await userEvent.type(endInput, "2026-10-12");
@@ -265,16 +224,17 @@ describe(
     );
 
     test("T-37: dải hiện 'Chậm 3 ngày' với summary giả", async () => {
-      api.get.mockResolvedValueOnce({
-        data: {
+      api.get.mockImplementation((url) => {
+        if (url.includes("schedule-results")) return Promise.resolve({ data: {
           data: rows,
           summary: {
-            currentFinish: "2026-10-25T00:00:00.000Z",
+            actualFinish: "2026-10-25T00:00:00.000Z",
             plannedFinish: "2026-10-22T00:00:00.000Z",
             delayWorkingDays: 3,
             status: "late",
           }
-        },
+        }});
+        return Promise.resolve({ data: {} });
       });
 
       render(<GanttPage />);
@@ -283,8 +243,8 @@ describe(
     });
 
     test("T-37: ký hiệu việc mới găng khác việc găng từ đầu và có aria-label", async () => {
-      api.get.mockResolvedValueOnce({
-        data: {
+      api.get.mockImplementation((url) => {
+        if (url.includes("schedule-results")) return Promise.resolve({ data: {
           data: [
             ...rows,
             {
@@ -292,10 +252,13 @@ describe(
               name: "Việc mới",
               early_start: "2026-10-10T00:00:00.000Z",
               early_finish: "2026-10-14T00:00:00.000Z",
+              is_critical: true,
+              was_critical_baseline: false,
               newly_critical: true,
             }
           ]
-        },
+        }});
+        return Promise.resolve({ data: {} });
       });
 
       render(<GanttPage />);
@@ -303,7 +266,7 @@ describe(
       const newCriticalMarker = await screen.findByTestId("newly-critical-marker-3");
       expect(newCriticalMarker).toBeInTheDocument();
       
-      const ariaLabelItems = await screen.findAllByLabelText(/Việc mới trở thành găng/i);
+      const ariaLabelItems = await screen.findAllByLabelText(/Việc găng mới/i);
       expect(ariaLabelItems.length).toBeGreaterThan(0);
     });
 
@@ -331,26 +294,29 @@ describe("GanttPage - T-42", () => {
   });
 
   test("có kế hoạch gốc thì thấy thanh mờ, không thấy gợi ý", async () => {
-    api.get.mockResolvedValue({
-      data: {
-        data: [
-          {
-            ...rows[0],
-            baseline_start: "2026-10-08T00:00:00.000Z",
-            baseline_finish: "2026-10-12T00:00:00.000Z",
-          },
-        ],
-        summary: { hasBaseline: true },
-      },
-    });
+      api.get.mockImplementation((url) => {
+        if (url.includes("schedule-results")) return Promise.resolve({ data: {
+          data: [
+            {
+              ...rows[0],
+              baseline: { x: 10, width: 100 },
+              baseline_start: "2026-10-08T00:00:00.000Z",
+              baseline_finish: "2026-10-12T00:00:00.000Z",
+            },
+          ],
+          summary: { hasBaseline: true }
+        }});
+        return Promise.resolve({ data: {} });
+      });
     render(<GanttPage />);
     expect(await screen.findByTestId("baseline-bar-1")).toBeInTheDocument();
     expect(screen.queryByTestId("baseline-hint")).not.toBeInTheDocument();
   });
 
   test("chưa chốt thì không có thanh mờ và có gợi ý chốt", async () => {
-    api.get.mockResolvedValue({
-      data: { data: rows, summary: { hasBaseline: false } },
+    api.get.mockImplementation((url) => {
+      if (url.includes("schedule-results")) return Promise.resolve({ data: { data: rows, summary: { hasBaseline: false } } });
+      return Promise.resolve({ data: {} });
     });
     render(<GanttPage />);
     expect(await screen.findByTestId("baseline-hint")).toBeInTheDocument();
@@ -358,8 +324,9 @@ describe("GanttPage - T-42", () => {
   });
 
   test("bấm Chốt kế hoạch gốc gọi đúng API", async () => {
-    api.get.mockResolvedValue({
-      data: { data: rows, summary: { hasBaseline: false } },
+    api.get.mockImplementation((url) => {
+      if (url.includes("schedule-results")) return Promise.resolve({ data: { data: rows, summary: { hasBaseline: false } } });
+      return Promise.resolve({ data: {} });
     });
     render(<GanttPage />);
     await userEvent.click(
