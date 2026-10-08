@@ -195,8 +195,8 @@ export default function GanttPage() {
   );
 
   return (
-    <div className="flex-1 h-[calc(100vh-73px)] bg-[#F3F6FB] text-[#0F1B3D] flex flex-col overflow-hidden">
-      <div className="flex-1 flex flex-col overflow-hidden p-4 sm:p-6 gap-6 max-w-[1672px] mx-auto w-full">
+    <div className="flex-1 min-h-0 bg-[#F3F6FB] text-[#0F1B3D] flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col p-4 sm:p-6 gap-6 max-w-[1672px] mx-auto w-full">
         {/* Hero Banner */}
         <div className="relative h-[115px] rounded-2xl overflow-hidden shrink-0 flex items-center p-6 shadow-sm">
           <div

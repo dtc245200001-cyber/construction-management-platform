@@ -32,6 +32,49 @@ const DEFAULT_CALENDAR = Object.freeze({
   saturday: true,
   sunday: false,
 });
+function getOffsetDays(
+  projectStart,
+  targetDate,
+  calendar = DEFAULT_CALENDAR,
+  holidays = []
+) {
+  const start = parseDate(projectStart);
+  const target = parseDate(targetDate);
+
+  if (start.getTime() === target.getTime()) {
+    return 0;
+  }
+
+  const holidaysSet = normalizeHolidays(holidays);
+  const cal = calendar || DEFAULT_CALENDAR;
+  let count = 0;
+
+  if (target.getTime() > start.getTime()) {
+    const cur = new Date(start.getTime());
+    cur.setUTCDate(cur.getUTCDate() + 1);
+
+    while (cur.getTime() <= target.getTime()) {
+      if (isWorkingDay(cur, cal, holidaysSet)) {
+        count++;
+      }
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    }
+
+    return count;
+  }
+
+  const cur = new Date(start.getTime());
+  cur.setUTCDate(cur.getUTCDate() - 1);
+
+  while (cur.getTime() >= target.getTime()) {
+    if (isWorkingDay(cur, cal, holidaysSet)) {
+      count++;
+    }
+    cur.setUTCDate(cur.getUTCDate() - 1);
+  }
+
+  return -count;
+}
 
 /**
  * Chuyển đổi input (string YYYY-MM-DD hoặc Date) thành Date đối tượng theo UTC.
@@ -227,9 +270,11 @@ module.exports = {
   addWorkingDays,
   countWorkingDays,
   workingDayDiff,
+  getOffsetDays,
   isWorkingDay,
   parseDate,
   formatDate,
   normalizeHolidays,
   DEFAULT_CALENDAR,
 };
+
