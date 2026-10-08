@@ -197,7 +197,7 @@ export default function DashboardLayout({ user, setUser }) {
           </div>
         )}
 
-        <div className="mt-6 flex-1 overflow-y-auto w-full no-scrollbar">
+        <div className="mt-6 flex-1 w-full" style={{ overflowY: 'auto', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
           <nav className="flex flex-col gap-1 w-full">
             {navItems.map((item) => {
               const isActive = location.pathname === item.path;
@@ -309,7 +309,7 @@ export default function DashboardLayout({ user, setUser }) {
         </header>
 
         {/* Dynamic Page Content */}
-        <main className="flex-1 min-h-0 flex flex-col overflow-hidden bg-background">
+        <main className="flex-1 overflow-y-auto bg-background">
           <Outlet context={{ currentProject }} />
         </main>
       </div>
