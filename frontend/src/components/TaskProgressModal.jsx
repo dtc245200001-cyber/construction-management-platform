@@ -19,8 +19,8 @@ export default function TaskProgressModal({
   const initialStartDate = task?.actual_start_date
     ? String(task.actual_start_date).substring(0, 10)
     : "";
-  const initialEndDate = task?.actual_end_date
-    ? String(task.actual_end_date).substring(0, 10)
+  const initialEndDate = task?.actualEndDate || task?.actual_end_date
+    ? String(task.actualEndDate || task.actual_end_date).substring(0, 10)
     : "";
   const initialPercent =
     task?.percent_complete != null ? Number(task.percent_complete) : 0;
@@ -41,7 +41,7 @@ export default function TaskProgressModal({
       task.actual_start_date ? String(task.actual_start_date).substring(0, 10) : ""
     );
     setActualEndDate(
-      task.actual_end_date ? String(task.actual_end_date).substring(0, 10) : ""
+      (task.actualEndDate || task.actual_end_date) ? String(task.actualEndDate || task.actual_end_date).substring(0, 10) : ""
     );
     setPercentComplete(
       task.percent_complete != null ? String(task.percent_complete) : "0"
@@ -84,9 +84,9 @@ export default function TaskProgressModal({
 
     try {
       const payload = {
-        actual_start_date: actualStartDate.trim() ? actualStartDate : null,
-        actual_end_date: actualEndDate.trim() ? actualEndDate : null,
-        percent_complete: parsedPercent,
+        actualStartDate: actualStartDate.trim() ? actualStartDate : null,
+        actualEndDate: actualEndDate.trim() ? actualEndDate : null,
+        percentComplete: parsedPercent,
       };
 
       const res = await api.patch(

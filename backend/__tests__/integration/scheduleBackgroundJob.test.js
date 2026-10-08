@@ -140,5 +140,33 @@ describe("T-36: Background Job and Progress Integration", () => {
       expect(res2.status).toBe(202);
       expect(res1.body.jobId).toEqual(res2.body.jobId);
     });
+    it("Job should keep dirty flag if project is modified during calculation", async () => {
+      // Mark dirty first
+      await request(app)
+        .patch(`/api/projects/${projectId}/tasks/${taskIds[3]}/progress`)
+        .set("Cookie", authCookie)
+        .send({ percent_complete: 10 });
+      
+      const vCheck = await pool.query("SELECT schedule_version FROM projects WHERE id = $1", [projectId]);
+      const expectedVersion = vCheck.rows[0].schedule_version;
+
+      // Modify again to bump the version in DB
+      await request(app)
+        .patch(`/api/projects/${projectId}/tasks/${taskIds[4]}/progress`)
+        .set("Cookie", authCookie)
+        .send({ percent_complete: 20 });
+      
+      // Now finish job with old version
+      const { runScheduleJobAsync } = require("../../services/scheduleCalculation");
+      const insertJobRes = await pool.query(
+        `INSERT INTO schedule_jobs (project_id, status) VALUES ($1, 'queued') RETURNING id`,
+        [projectId]
+      );
+      await runScheduleJobAsync(insertJobRes.rows[0].id, projectId, null, expectedVersion);
+
+      // Should still be dirty
+      const dirtyCheck = await pool.query(`SELECT needs_recalculation FROM schedule_results WHERE task_id = $1`, [taskIds[4]]);
+      expect(dirtyCheck.rows[0].needs_recalculation).toBe(true);
+    });
   });
 });

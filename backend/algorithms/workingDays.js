@@ -194,9 +194,39 @@ function countWorkingDays(
   return count;
 }
 
+/**
+ * Hàm 3: Tính số ngày làm việc chênh lệch giữa hai mốc (T-37).
+ * Dương là chậm (currentFinish sau plannedFinish).
+ * Âm là sớm (currentFinish trước plannedFinish).
+ * Bằng 0 là đúng kế hoạch.
+ * @param {string|Date} plannedFinish
+ * @param {string|Date} currentFinish
+ * @param {object} [calendar=DEFAULT_CALENDAR]
+ * @param {Array<string|object|Date>} [holidays=[]]
+ * @returns {number}
+ */
+function workingDayDiff(
+  plannedFinish,
+  currentFinish,
+  calendar = DEFAULT_CALENDAR,
+  holidays = []
+) {
+  const p = parseDate(plannedFinish);
+  const c = parseDate(currentFinish);
+
+  if (p.getTime() === c.getTime()) {
+    return 0;
+  } else if (p.getTime() < c.getTime()) {
+    return countWorkingDays(p, c, calendar, holidays) - 1;
+  } else {
+    return -(countWorkingDays(c, p, calendar, holidays) - 1);
+  }
+}
+
 module.exports = {
   addWorkingDays,
   countWorkingDays,
+  workingDayDiff,
   isWorkingDay,
   parseDate,
   formatDate,

@@ -216,7 +216,7 @@ function backwardPass(tasks, dependencies, topologicalOrder, earlyResults) {
  * @returns {number} - Độ trễ toàn phần tính theo số nguyên ngày
  */
 function calculateTotalFloat(LS, ES) {
-  return Math.max(0, Math.round(Number(LS) - Number(ES)));
+  return Math.round(Number(LS) - Number(ES));
 }
 
 /**

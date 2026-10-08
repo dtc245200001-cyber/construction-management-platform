@@ -255,13 +255,70 @@ describe(
           expect(api.patch).toHaveBeenCalledWith(
             "/projects/4/tasks/1/progress",
             {
-              actual_start_date: "2026-10-10",
-              actual_end_date: "2026-10-12",
-              percent_complete: 50,
+              actualStartDate: "2026-10-10",
+              actualEndDate: "2026-10-12",
+              percentComplete: 50,
             }
           );
         });
       }
     );
+
+    test("T-37: dải hiện 'Chậm 3 ngày' với summary giả", async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          data: rows,
+          summary: {
+            currentFinish: "2026-10-25T00:00:00.000Z",
+            plannedFinish: "2026-10-22T00:00:00.000Z",
+            delayWorkingDays: 3,
+            status: "late",
+          }
+        },
+      });
+
+      render(<GanttPage />);
+      expect(await screen.findByText(/Chậm 3 ngày/i)).toBeInTheDocument();
+      expect(screen.getByText(/Hoàn thành hiện tại/i)).toBeInTheDocument();
+    });
+
+    test("T-37: ký hiệu việc mới găng khác việc găng từ đầu và có aria-label", async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          data: [
+            ...rows,
+            {
+              id: 3,
+              name: "Việc mới",
+              early_start: "2026-10-10T00:00:00.000Z",
+              early_finish: "2026-10-14T00:00:00.000Z",
+              newly_critical: true,
+            }
+          ]
+        },
+      });
+
+      render(<GanttPage />);
+      
+      const newCriticalMarker = await screen.findByTestId("newly-critical-marker-3");
+      expect(newCriticalMarker).toBeInTheDocument();
+      
+      const ariaLabelItems = await screen.findAllByLabelText(/Việc mới trở thành găng/i);
+      expect(ariaLabelItems.length).toBeGreaterThan(0);
+    });
+
+    test("T-37: mạng có vòng không hiện dải rỗng, giữ thông báo vòng", async () => {
+      api.post.mockRejectedValueOnce({
+        response: {
+          data: {
+            code: "DEPENDENCY_CYCLE",
+            message: "Phát hiện vòng lặp A chờ B, B chờ A",
+          }
+        }
+      });
+      render(<GanttPage />);
+      expect(await screen.findByText(/Phát hiện vòng lặp/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Dự án chưa có công việc nào hợp lệ để vẽ/i)).not.toBeInTheDocument();
+    });
   }
 );
