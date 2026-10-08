@@ -166,11 +166,12 @@ describe("T-44 Milestone Warnings — working days + lifecycle", () => {
       // (Mon–Sat working, Sun off per DEFAULT_CALENDAR)
       // Day after deadline = 2026-06-09 (Tue)
       // Working days from 2026-06-09 to 2026-06-12 inclusive = Tue,Wed,Thu,Fri = 4
-      await createTaskWithSchedule(client, wiId, {
+      const taskId = await createTaskWithSchedule(client, wiId, {
         name: "Task-B",
         duration: 10,
         earlyFinish: "2026-06-12",
       });
+      await client.query(`UPDATE tasks SET actual_end_date = '2026-06-12' WHERE id = $1`, [taskId]);
       const msId = await createMilestone(client, wiId, "2026-06-08", testUserId);
       await client.query("COMMIT");
 
@@ -199,11 +200,12 @@ describe("T-44 Milestone Warnings — working days + lifecycle", () => {
       // Early finish: 2026-06-09 (Tuesday) — 1 working day after deadline
       // Day after deadline = 2026-06-09 (Tue)
       // Working days from 2026-06-09 to 2026-06-09 inclusive = Tue = 1
-      await createTaskWithSchedule(client, wiId, {
+      const taskId = await createTaskWithSchedule(client, wiId, {
         name: "Task-B2",
         duration: 2,
         earlyFinish: "2026-06-09",
       });
+      await client.query(`UPDATE tasks SET actual_end_date = '2026-06-09' WHERE id = $1`, [taskId]);
       const msId = await createMilestone(client, wiId, "2026-06-08", testUserId);
       await client.query("COMMIT");
 
@@ -288,6 +290,7 @@ describe("T-44 Milestone Warnings — working days + lifecycle", () => {
         duration: 10,
         earlyFinish: "2026-07-15",
       });
+      await client.query(`UPDATE tasks SET actual_end_date = '2026-07-15' WHERE id = $1`, [taskId]);
       const msId = await createMilestone(client, wiId, "2026-07-10", testUserId);
       await client.query("COMMIT");
 
@@ -305,6 +308,7 @@ describe("T-44 Milestone Warnings — working days + lifecycle", () => {
         `UPDATE schedule_results SET early_finish = '2026-07-20' WHERE task_id = $1`,
         [taskId],
       );
+      await db.query(`UPDATE tasks SET actual_end_date = '2026-07-20' WHERE id = $1`, [taskId]);
 
       // Second evaluation → updates existing warning, no duplicate
       await evaluateMilestoneWarnings(testProjectId);
@@ -332,6 +336,7 @@ describe("T-44 Milestone Warnings — working days + lifecycle", () => {
         duration: 10,
         earlyFinish: "2026-08-15",
       });
+      await client.query(`UPDATE tasks SET actual_end_date = '2026-08-15' WHERE id = $1`, [taskId]);
       const msId = await createMilestone(client, wiId, "2026-08-10", testUserId);
       await client.query("COMMIT");
 
@@ -348,6 +353,7 @@ describe("T-44 Milestone Warnings — working days + lifecycle", () => {
         `UPDATE schedule_results SET early_finish = '2026-08-05' WHERE task_id = $1`,
         [taskId],
       );
+      await db.query(`UPDATE tasks SET actual_end_date = '2026-08-05' WHERE id = $1`, [taskId]);
 
       // Second: closes warning
       await evaluateMilestoneWarnings(testProjectId);
@@ -632,7 +638,4 @@ describe("T-45 Driving Path + Security", () => {
     }
   });
 
-  afterAll(async () => {
-    await db.end();
-  });
 });
