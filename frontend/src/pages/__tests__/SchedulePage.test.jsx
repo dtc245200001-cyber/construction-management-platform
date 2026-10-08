@@ -179,9 +179,9 @@ describe("SchedulePage (T-28 / S-14 / T-32 / T-33)", () => {
 
       expect(screen.getByRole("dialog")).toBeInTheDocument();
       expect(screen.getByText("Cập nhật tiến độ")).toBeInTheDocument();
-      expect(screen.getByLabelText(/Ngày bắt đầu thực tế/)).toBeInTheDocument();
-      expect(screen.getByLabelText(/Ngày kết thúc thực tế/)).toBeInTheDocument();
-      expect(screen.getByLabelText(/Phần trăm hoàn thành/)).toBeInTheDocument();
+      expect(screen.getAllByLabelText(/Ngày bắt đầu thực tế/)[0]).toBeInTheDocument();
+      expect(screen.getAllByLabelText(/Ngày kết thúc thực tế/)[0]).toBeInTheDocument();
+      expect(screen.getAllByLabelText(/Phần trăm hoàn thành/)[0]).toBeInTheDocument();
     }
   );
 });

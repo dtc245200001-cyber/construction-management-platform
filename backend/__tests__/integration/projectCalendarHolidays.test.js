@@ -6,8 +6,7 @@ const { calculateAndSaveSchedule } = require("../../services/scheduleCalculation
 
 describe("T-40 / S-17: Project Calendar and Holidays Schedule Calculation", () => {
   let cookieAdmin;
-  let userAdmin;
-
+  
   beforeAll(async () => {
     // Clear data
     await pool.query(

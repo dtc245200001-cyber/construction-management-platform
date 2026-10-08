@@ -8,12 +8,11 @@
  * expect(true) stubs.
  */
 
-const request = require("supertest");
-const app = require("../../app");
 const db = require("../../config/db");
 const { evaluateMilestoneWarnings } = require("../../services/milestoneWarnings");
-const { countWorkingDays, DEFAULT_CALENDAR } = require("../../algorithms/workingDays");
+const { getOffsetDays, countWorkingDays, DEFAULT_CALENDAR } = require("../../algorithms/workingDays");
 
+async function createWorkItem(c,n){let r=await c.query("INSERT INTO work_items (project_id, name, code) VALUES ($1, $2, 'CODE') RETURNING id",[projectId,n]);return r.rows[0].id;} async function createTaskWithSchedule(c,w,d){let r=await c.query("INSERT INTO tasks (work_item_id, name, duration_days) VALUES ($1, $2, $3) RETURNING id",[w,d.name,d.duration]);await c.query("INSERT INTO schedule_results (task_id, early_start, early_finish, late_start, late_finish, total_float, is_critical, calculated_at, needs_recalculation) VALUES ($1, $2, $3, $2, $3, 0, true, NOW(), false)",[r.rows[0].id,d.earlyStart,d.earlyFinish]);return r.rows[0].id;}
 describe("T-44 Milestone Warnings Tests", () => {
   let projectId;
   let workItemId;
@@ -124,7 +123,7 @@ describe("T-45 Driving Path + Security", () => {
       // Add member
       await client.query(
         `INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
-        [otherProjectId, testUserId, ROLES.BAN_QUAN_LY],
+        [otherProjectId, userId, 'ban_quan_ly'],
       );
 
       // Create WI + task + milestone + warning in other project
@@ -144,7 +143,7 @@ describe("T-45 Driving Path + Security", () => {
       );
       const msRes = await client.query(
         `INSERT INTO milestones (work_item_id, required_date, created_by, is_active) VALUES ($1, '2026-06-05', $2, true) RETURNING id`,
-        [wiId, testUserId],
+        [wiId, userId],
       );
       const msId = msRes.rows[0].id;
       const warnRes = await client.query(
@@ -154,12 +153,12 @@ describe("T-45 Driving Path + Security", () => {
       const warningId = warnRes.rows[0].id;
       await client.query("COMMIT");
 
-      // Now try to access this warning from testProjectId → should 404
+      // Now try to access this warning from projectId → should 404
       // We need an authenticated session. Using supertest with login.
       // For unit testing the query logic directly:
       const checkRes = await db.query(
         `SELECT work_item_id FROM milestone_warnings WHERE id = $1 AND project_id = $2`,
-        [warningId, testProjectId], // wrong project
+        [warningId, projectId], // wrong project
       );
       expect(checkRes.rows.length).toBe(0); // Not found — cross-project blocked
 

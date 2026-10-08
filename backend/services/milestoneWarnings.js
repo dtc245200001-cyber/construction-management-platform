@@ -8,13 +8,6 @@ const { countWorkingDays, DEFAULT_CALENDAR } = require('../algorithms/workingDay
  * @param {number} projectId
  * @returns {Promise<Array<{holiday_date: string}>>}
  */
-async function loadProjectHolidays(client, projectId) {
-  const res = await client.query(
-    `SELECT holiday_date FROM holidays WHERE project_id = $1`,
-    [projectId],
-  );
-  return res.rows;
-}
 
 /**
  * Evaluate milestone warnings for a project.
@@ -82,7 +75,7 @@ async function evaluateMilestoneWarnings(projectId) {
         WHERE t.work_item_id = ANY($1::int[])
       `, [workItemIds]);
 
-      const maxEf = maxEfRes.rows[0].max_ef;
+      const maxEf = taskInfoRes.rows[0].max_ef;
       if (!maxEf) continue;
 
       // Đếm đúng số NGÀY LÀM VIỆC vượt mốc (không phải ngày lịch).

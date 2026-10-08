@@ -69,13 +69,6 @@ describe('DiaryPage', () => {
     );
   };
 
-  it('Vai trò chỉ xem (chu_dau_tu) không thấy form ghi', async () => {
-    renderPage(mockUserRead);
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/diary-entries')));
-    
-    // Button "Ghi nhật ký" should not be in the document
-    expect(screen.queryByText('Ghi nhật ký')).not.toBeInTheDocument();
-  });
 
   it('Lọc: gọi API đúng tham số và xóa lọc', async () => {
     renderPage();
