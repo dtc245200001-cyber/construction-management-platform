@@ -63,6 +63,7 @@ async function calculateAndSaveSchedule(projectId, clockDate = null, expectedVer
   const forceRecalculate = Number(in_progress_count) > 0 && lastCalcDateStr !== todayDateStr;
 
   if (Number(result_count) > 0 && Number(dirty_count) === 0 && !forceRecalculate) {
+     await evaluateMilestoneWarnings(projectId);
     return {
       projectId,
       savedCount: 0,
