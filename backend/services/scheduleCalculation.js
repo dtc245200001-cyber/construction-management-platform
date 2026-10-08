@@ -23,7 +23,7 @@ const {
 async function calculateAndSaveSchedule(projectId, clockDate = null, expectedVersion = null) {
   const projectResult = await pool.query(
     `
-      SELECT id, start_date, last_schedule_calculated_date
+      SELECT id, start_date, schedule_version, last_schedule_calculated_date, planned_finish_date
       FROM projects
       WHERE id = $1
     `,
@@ -254,6 +254,34 @@ async function calculateAndSaveSchedule(projectId, clockDate = null, expectedVer
     expectedVersion,
     clockDate
   );
+
+  // T-37: chốt mốc "kế hoạch gốc" một lần duy nhất (khi chưa có cột nào set)
+  if (project.planned_finish_date === null) {
+    const maxEfRes = await pool.query(
+      `SELECT MAX(sr.early_finish) AS max_ef
+       FROM schedule_results sr
+       JOIN tasks t ON t.id = sr.task_id
+       JOIN work_items wi ON wi.id = t.work_item_id
+       WHERE wi.project_id = $1`,
+      [projectId]
+    );
+    const maxEf = maxEfRes.rows[0]?.max_ef;
+    if (maxEf) {
+      await pool.query(
+        `UPDATE projects SET planned_finish_date = $1 WHERE id = $2 AND planned_finish_date IS NULL`,
+        [maxEf, projectId]
+      );
+    }
+  }
+
+  // T-37: chốt trạng thái găng gốc cho từng task, một lần duy nhất
+  for (const [taskId, result] of Object.entries(scheduleByTask)) {
+    await pool.query(
+      `UPDATE tasks SET was_critical_baseline = $1
+       WHERE id = $2 AND was_critical_baseline IS NULL`,
+      [Boolean(result.critical), taskId]
+    );
+  }
 
   // T-44: Evaluate milestone warnings using the newly calculated schedule results
   await evaluateMilestoneWarnings(projectId);

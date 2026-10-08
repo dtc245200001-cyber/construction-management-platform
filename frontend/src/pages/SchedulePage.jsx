@@ -219,7 +219,7 @@ export default function SchedulePage() {
 
   return (
     <div className="flex-1 min-h-0 bg-[#F3F6FB] text-[#0F1B3D] flex flex-col">
-      <div className="flex-1 min-h-0 flex flex-col p-6 gap-6 max-w-[1672px] mx-auto w-full">
+      <div className="flex flex-col p-6 gap-6 max-w-[1672px] mx-auto w-full">
         {/* Hero Banner */}
         <div className="relative h-[115px] rounded-2xl overflow-hidden shrink-0 flex items-center p-6 shadow-sm">
           <div
@@ -400,7 +400,7 @@ export default function SchedulePage() {
 
         {/* Bảng tiến độ */}
         <div className="flex-1 bg-white rounded-2xl border border-[#E6EBF3] shadow-[0_1px_2px_rgba(16,24,40,.04),0_4px_12px_rgba(16,24,40,.04)] flex flex-col overflow-hidden">
-          <div className="overflow-auto flex-1">
+          <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[960px]">
               <thead className="bg-white sticky top-0 z-10 shadow-sm">
                 <tr>

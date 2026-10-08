@@ -18,8 +18,12 @@ function formatDate(dateStr) {
 
 export default function GanttPage() {
   const [tasks, setTasks] = useState([]);
+  const [dependencies, setDependencies] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [scheduleSummary, setScheduleSummary] = useState(null);
+  const [calendar, setCalendar] = useState(null);
+  const [holidays, setHolidays] = useState([]);
   const [isPolling, setIsPolling] = useState(false);
   const [viewMode, setViewMode] = useState("day");
   const [summary, setSummary] = useState(null);
@@ -94,9 +98,23 @@ export default function GanttPage() {
       }
 
       if (shouldFetchResults) {
-        const res = await api.get(`/projects/${currentProjectId}/schedule-results`);
+        const [res, summaryRes, calRes, holRes] = await Promise.all([
+          api.get(`/projects/${currentProjectId}/schedule-results`),
+          api.get(`/projects/${currentProjectId}/schedule-summary`).catch(() => ({ data: null })),
+          api.get(`/projects/${currentProjectId}/calendar`).catch(() => ({ data: { calendar: null } })),
+          api.get(`/projects/${currentProjectId}/holidays`).catch(() => ({ data: { holidays: [] } }))
+        ]);
         setTasks(res.data.data || []);
-        setSummary(res.data.summary || null);
+        setDependencies(res.data.dependencies || []);
+        if (summaryRes.data) {
+          setScheduleSummary(summaryRes.data);
+        }
+        if (calRes.data?.calendar) {
+          setCalendar(calRes.data.calendar);
+        }
+        if (holRes.data?.holidays) {
+          setHolidays(holRes.data.holidays);
+        }
       }
     } catch (err) {
       setError(err.response?.data?.message || "Lỗi tải tiến độ dự án");
@@ -210,6 +228,8 @@ export default function GanttPage() {
     totalDays + 14,
     viewMode,
     PIXELS_PER_DAY,
+    calendar,
+    holidays
   );
 
   const maxRightX = Math.max(
@@ -236,7 +256,8 @@ export default function GanttPage() {
             }}
           ></div>
           <div className="absolute inset-0 bg-gradient-to-r from-[#0B3FA8] to-transparent opacity-95"></div>
-          <div className="relative z-10 flex items-center gap-5">
+          <div className="relative z-10 flex items-center justify-between w-full">
+            <div className="flex items-center gap-5">
             <div className="size-[60px] bg-[#1F63E0] rounded-xl flex items-center justify-center shadow-lg border border-white/20">
               <CalendarRange className="size-8 text-white" />
             </div>
@@ -244,14 +265,59 @@ export default function GanttPage() {
               <h1 className="text-white text-[30px] font-bold leading-tight">
                 Tiến độ thi công (Gantt)
               </h1>
-              <p className="text-white/90 text-[18px] font-medium mt-1.5">
-                {currentProject
-                  ? `Dự án: ${currentProject.name}`
-                  : "Sơ đồ thanh ngang theo trục thời gian"}
+              <p className="text-white/90 text-[18px] font-medium mt-1.5 flex items-center gap-4">
+                <span>
+                  {currentProject
+                    ? `Dự án: ${currentProject.name}`
+                    : "Sơ đồ thanh ngang theo trục thời gian"}
+                </span>
+                {scheduleSummary && scheduleSummary.planned_finish_date && scheduleSummary.current_finish_date && (
+                  <span className={`px-2.5 py-1 rounded-full text-sm font-bold ${
+                    differenceInCalendarDays(
+                      parseISO(scheduleSummary.current_finish_date),
+                      parseISO(scheduleSummary.planned_finish_date)
+                    ) > 0 
+                      ? "bg-red-500/20 text-red-100 border border-red-500/30"
+                      : "bg-green-500/20 text-green-100 border border-green-500/30"
+                  }`}>
+                    {differenceInCalendarDays(
+                      parseISO(scheduleSummary.current_finish_date),
+                      parseISO(scheduleSummary.planned_finish_date)
+                    ) > 0 
+                      ? `Trễ ${differenceInCalendarDays(
+                          parseISO(scheduleSummary.current_finish_date),
+                          parseISO(scheduleSummary.planned_finish_date)
+                        )} ngày so với gốc`
+                      : "Đúng tiến độ gốc"}
+                  </span>
+                )}
               </p>
             </div>
           </div>
+
+          {/* Chú thích màu sắc */}
+          <div className="relative z-10 hidden lg:flex items-center gap-5 bg-white/10 backdrop-blur-md px-5 py-2.5 rounded-xl border border-white/20 shadow-sm ml-auto">
+            <div className="flex items-center gap-2.5">
+              <div className="size-4 rounded-[4px] bg-blue-500 border border-blue-600 shadow-sm"></div>
+              <span className="text-white text-[13px] font-medium tracking-wide">Không găng</span>
+            </div>
+            <div className="w-[1px] h-4 bg-white/20"></div>
+            <div className="flex items-center gap-2.5">
+              <div className="relative size-4 rounded-[4px] bg-red-500 border border-red-600 shadow-sm flex items-center justify-center">
+                <span className="text-[10px] font-black text-white">!</span>
+              </div>
+              <span className="text-white text-[13px] font-medium tracking-wide">Việc găng</span>
+            </div>
+            <div className="w-[1px] h-4 bg-white/20"></div>
+            <div className="flex items-center gap-2.5">
+              <div className="relative size-4 rounded-[4px] bg-orange-500 border border-orange-600 shadow-sm flex items-center justify-center">
+                <span className="text-[10px] font-black text-white">!</span>
+              </div>
+              <span className="text-white text-[13px] font-medium tracking-wide">Găng (mới)</span>
+            </div>
+          </div>
         </div>
+      </div>
 
         <div className="flex-1 flex flex-col bg-white overflow-hidden rounded-2xl border border-[#E6EBF3] shadow-sm">
           {/* Toolbar */}
@@ -350,8 +416,12 @@ export default function GanttPage() {
                   {ganttBars.map((bar) => (
                     <div
                       key={bar.id}
-                      className={`px-2 md:px-4 text-[12px] md:text-[13px] truncate border-b border-slate-100 flex items-center gap-2 transition-colors cursor-default ${activeBar?.id === bar.id ? "bg-slate-50" : "bg-white"
-                        } ${bar.is_critical
+                      className={`px-2 md:px-4 text-[12px] md:text-[13px] truncate border-b border-slate-100 flex items-center gap-2 transition-colors cursor-default ${
+                        activeBar?.id === bar.id ? "bg-slate-50" : "bg-white"
+                      } ${
+                        bar.is_critical && bar.was_critical_baseline === false
+                          ? "font-bold text-orange-600"
+                          : bar.is_critical
                           ? "font-bold text-red-700"
                           : "font-medium text-slate-700"
                         }`}
@@ -361,14 +431,14 @@ export default function GanttPage() {
                       onMouseLeave={() => setActiveBar(null)}
                     >
                       <div className="w-5 shrink-0 flex items-center justify-center">
-                        {bar.newly_critical ? (
-                          <div
-                            aria-label="Việc mới trở thành găng"
-                            className="inline-flex size-4 items-center justify-center border border-dashed border-red-700 bg-red-50 text-[10px] font-black text-red-700"
-                            style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }}
+                        {bar.is_critical && bar.was_critical_baseline === false ? (
+                          <span
+                            aria-label="Việc găng mới"
+                            className="inline-flex size-4 items-center justify-center rounded-full bg-orange-600 text-[10px] font-black text-white"
+                            title="Việc mới bị đẩy thành găng"
                           >
                             !
-                          </div>
+                          </span>
                         ) : bar.is_critical ? (
                           <span
                             aria-label="Việc găng"
@@ -426,7 +496,23 @@ export default function GanttPage() {
                   width={svgWidth}
                   height={ganttBars.length * ROW_HEIGHT}
                   className="block bg-slate-50"
+                  onClick={() => setActiveBar(null)}
                 >
+                  {/* Vẽ cột ngày nghỉ bằng dải màu xám */}
+                  {ticks.map((tick) => 
+                    tick.isNonWorkingDay && viewMode === "day" ? (
+                      <rect
+                        key={`nw-${tick.x}`}
+                        x={tick.x}
+                        y={0}
+                        width={PIXELS_PER_DAY}
+                        height="100%"
+                        fill="#cbd5e1"
+                        opacity="0.3"
+                      />
+                    ) : null
+                  )}
+
                   {/* Lưới dọc */}
                   {ticks.map((tick) => (
                     <line
@@ -441,23 +527,29 @@ export default function GanttPage() {
                     />
                   ))}
 
+                  {/* 2. BACKGROUND ROWS & HORIZONTAL GRID */}
+                  {ganttBars.map((bar) => (
+                    <rect
+                      key={`bg-${bar.id}`}
+                      x={0}
+                      y={bar.y}
+                      width={svgWidth}
+                      height={ROW_HEIGHT}
+                      fill={activeBar?.id === bar.id ? "#f8fafc" : "transparent"}
+                      stroke="#f1f5f9"
+                      strokeWidth="1"
+                    />
+                  ))}
+
+
+                  {/* 4. TASK BARS */}
                   {ganttBars.map((bar) => {
-                    const barColor = bar.is_critical ? "#ef4444" : "#3b82f6";
+                    const isNewCritical = bar.is_critical && bar.was_critical_baseline === false;
+                    const barColor = isNewCritical ? "#ea580c" : bar.is_critical ? "#ef4444" : "#3b82f6";
+                    const strokeColor = isNewCritical ? "#c2410c" : bar.is_critical ? "#dc2626" : "#1d4ed8";
                     const progressPercent = Math.min(100, Math.max(0, bar.percent_complete || 0));
                     return (
-                      <g key={bar.id}>
-                        {/* nền của dòng */}
-                        <rect
-                          x={0}
-                          y={bar.y}
-                          width={svgWidth}
-                          height={ROW_HEIGHT}
-                          fill={
-                            activeBar?.id === bar.id ? "#f8fafc" : "transparent"
-                          }
-                          stroke="#f1f5f9"
-                          strokeWidth="1"
-                        />
+                      <g key={`bar-${bar.id}`}>
 
                         {/* T-32 + T-33 + T-35:
                         - việc găng có viền riêng
@@ -470,30 +562,30 @@ export default function GanttPage() {
                           width={bar.width}
                           height={bar.height}
                           fill={barColor}
-                          stroke={
-                            bar.is_critical
-                              ? "#dc2626" // red-600
-                              : "#1d4ed8" // blue-700
-                          }
+                          stroke={strokeColor}
                           strokeWidth={bar.is_critical ? 1.5 : 1}
                           rx={4}
                           role="button"
                           tabIndex={0}
-                          aria-label={`${bar.name} - ${bar.is_critical ? "Việc găng" : "Không găng"
-                            }`}
+                          aria-label={`${bar.name} - ${
+                            isNewCritical ? "Việc găng mới" : bar.is_critical ? "Việc găng" : "Không găng"
+                          }`}
                           style={{
                             cursor: "pointer",
                             outline: "none",
                           }}
-                          onMouseEnter={() => setActiveBar(bar)}
-                          onMouseLeave={() => setActiveBar(null)}
-                          onFocus={() => setActiveBar(bar)}
-                          onBlur={() => setActiveBar(null)}
-                          onClick={() =>
-                            setActiveBar(activeBar?.id === bar.id ? null : bar)
-                          }
-                          onDoubleClick={() => setSelectedTaskForProgress(bar)}
-                          onTouchStart={() => setActiveBar(bar)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveBar(activeBar?.id === bar.id ? null : bar);
+                          }}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedTaskForProgress(bar);
+                          }}
+                          onTouchStart={(e) => {
+                            e.stopPropagation();
+                            setActiveBar(activeBar?.id === bar.id ? null : bar);
+                          }}
                         />
 
                         {/* Phần trăm hoàn thành thực tế hiển thị trên thanh Gantt */}
@@ -555,7 +647,7 @@ export default function GanttPage() {
                               cx={bar.x + 8}
                               cy={bar.y + ROW_HEIGHT / 2}
                               r="5.5"
-                              fill="#dc2626"
+                              fill={isNewCritical ? "#ea580c" : "#dc2626"}
                               stroke="#ffffff"
                               strokeWidth="1.5"
                               pointerEvents="none"
@@ -584,118 +676,121 @@ export default function GanttPage() {
                           pointerEvents="none"
                         >
                           {bar.total_float > 0
-                            ? `(Float: ${bar.total_float}d)`
+                            ? `(Dự phòng: ${bar.total_float} ngày)`
                             : ""}
                         </text>
                       </g>
                     );
                   })}
+
+                  {/* 4. SVG DIAGONAL / ORTHOGONAL LINES cho RÀNG BUỘC (Dependencies) */}
+                  {dependencies.map((dep, index) => {
+                    const pred = ganttBars.find(b => b.id === dep.predecessor_id);
+                    const succ = ganttBars.find(b => b.id === dep.successor_id);
+                    
+                    if (!pred || !succ) return null;
+
+                    const isHovered = activeBar && (activeBar.id === pred.id || activeBar.id === succ.id);
+                    let pathD = "";
+                    const arrowSize = 4;
+                    // Tăng độ đậm để dễ nhìn hơn
+                    const strokeColor = isHovered ? "#2563eb" : "#64748b";
+                    const strokeWidth = isHovered ? "2.5" : "1.5";
+                    const opacity = isHovered ? 1 : 0.6;
+
+                    if (dep.dependency_type === 'FS') {
+                      // Finish to Start
+                      const startX = pred.x + pred.width;
+                      const startY = pred.y + ROW_HEIGHT / 2;
+                      const endX = succ.x;
+                      const endY = succ.y + ROW_HEIGHT / 2;
+                      
+                      // Cố định độ phình của curve (gap) để tránh bị phình to như sợi mỳ khi khoảng cách xa
+                      const gap = 20; 
+                      
+                      if (endX >= startX) {
+                        pathD = `M ${startX} ${startY} C ${startX + gap} ${startY}, ${endX - gap} ${endY}, ${endX - arrowSize} ${endY}`;
+                      } else {
+                        // Vòng lặp ngược nếu task sau bắt đầu trước khi task trước kết thúc
+                        pathD = `M ${startX} ${startY} C ${startX + gap} ${startY}, ${startX + gap} ${startY + ROW_HEIGHT/2}, ${startX} ${startY + ROW_HEIGHT/2} C ${endX - gap} ${startY + ROW_HEIGHT/2}, ${endX - gap} ${endY}, ${endX - arrowSize} ${endY}`;
+                      }
+                      
+                      return (
+                        <g key={`dep-${index}`} style={{ opacity, transition: 'opacity 0.2s' }}>
+                          <path d={pathD} fill="none" stroke={strokeColor} strokeWidth={strokeWidth} />
+                          <polygon 
+                            points={`${endX},${endY} ${endX-arrowSize},${endY-arrowSize} ${endX-arrowSize},${endY+arrowSize}`} 
+                            fill={strokeColor} 
+                          />
+                        </g>
+                      );
+                    }
+                    
+                    return null;
+                  })}
                 </svg>
 
-                {/* T-33 + T-35: Tooltip chi tiết kèm nút mở form cập nhật tiến độ */}
+                {/* T-33 + T-35: Tooltip chi tiết gọn nhẹ nằm TRÊN thanh công việc */}
                 {activeBar && (
                   <div
                     role="tooltip"
-                    className="pointer-events-auto absolute z-50 w-[390px] rounded-xl border border-slate-200 bg-white p-4 shadow-2xl"
+                    className="pointer-events-auto absolute z-50 w-[280px] rounded-lg border border-slate-200 bg-white/95 backdrop-blur-sm p-3 shadow-xl"
                     style={{
-                      left: activeBar.x + 10,
-                      top: 80 + activeBar.y + ROW_HEIGHT,
+                      left: Math.max(10, activeBar.x - 20),
+                      top: Math.max(0, 80 + activeBar.y - 120), // Đẩy lên trên thanh bar
                     }}
                   >
-                    <div className="mb-3 flex items-center gap-2">
-                      {activeBar.newly_critical ? (
-                        <div
-                          className="inline-flex size-5 items-center justify-center border border-dashed border-red-700 bg-red-50 text-[12px] font-black text-red-700"
-                          style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }}
-                        >
-                          !
+                    <div className="flex flex-col gap-1.5">
+                      {/* Dòng 1: Tên và Label */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="font-bold text-slate-800 text-[13px] leading-tight">
+                          {activeBar.is_critical && activeBar.was_critical_baseline === false ? (
+                            <span className="text-orange-600 mr-1">(!)</span>
+                          ) : activeBar.is_critical ? (
+                            <span className="text-red-600 mr-1">(!)</span>
+                          ) : null}
+                          {activeBar.name}
                         </div>
-                      ) : activeBar.is_critical ? (
-                        <span className="inline-flex size-5 items-center justify-center rounded-full bg-red-700 text-xs font-black text-white">
-                          !
-                        </span>
-                      ) : null}
-
-                      <span className="font-bold text-slate-900">
-                        {activeBar.name}
-                      </span>
-
-                      {activeBar.newly_critical ? (
-                        <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700 border border-dashed border-red-700">
-                          Việc mới trở thành găng
-                        </span>
-                      ) : activeBar.is_critical && (
-                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">
-                          Việc găng
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-5 gap-2 text-center text-xs">
-                      <div>
-                        <div className="font-bold text-slate-500">ES</div>
-                        <div className="mt-1 text-slate-900">
-                          {formatDate(activeBar.early_start)}
-                        </div>
+                        {activeBar.is_critical ? (
+                          <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${activeBar.was_critical_baseline === false ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'}`}>
+                            {activeBar.was_critical_baseline === false ? 'Găng (mới)' : 'Găng'}
+                          </span>
+                        ) : null}
                       </div>
 
-                      <div>
-                        <div className="font-bold text-slate-500">EF</div>
-                        <div className="mt-1 text-slate-900">
-                          {formatDate(activeBar.early_finish)}
+                      {/* Dòng 2: Thông số lưới */}
+                      <div className="grid grid-cols-2 gap-x-2 gap-y-1 mt-1 text-[11px]">
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Bắt đầu:</span>
+                          <span className="font-semibold text-slate-700">{formatDate(activeBar.early_start)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Kết thúc:</span>
+                          <span className="font-semibold text-slate-700">{formatDate(activeBar.early_finish)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Dự phòng:</span>
+                          <span className={`font-semibold ${activeBar.total_float === 0 ? 'text-red-600' : 'text-slate-700'}`}>
+                            {activeBar.total_float != null ? `${activeBar.total_float} ngày` : '--'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Thực tế:</span>
+                          <span className="font-semibold text-blue-600">{activeBar.percent_complete ?? 0}%</span>
                         </div>
                       </div>
 
-                      <div>
-                        <div className="font-bold text-slate-500">LS</div>
-                        <div className="mt-1 text-slate-900">
-                          {formatDate(activeBar.late_start)}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="font-bold text-slate-500">LF</div>
-                        <div className="mt-1 text-slate-900">
-                          {formatDate(activeBar.late_finish)}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="font-bold text-slate-500">Float</div>
-
-                        <div
-                          className={`mt-1 ${activeBar.total_float === 0
-                            ? "font-bold text-red-600"
-                            : "text-slate-900"
-                            }`}
-                        >
-                          {activeBar.total_float != null
-                            ? `${activeBar.total_float} ngày`
-                            : "--"}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* T-35: Cập nhật tiến độ thực tế từ sơ đồ */}
-                    <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                      <div className="text-xs text-slate-500">
-                        Tiến độ thực tế:{" "}
-                        <strong className="text-blue-600 font-bold">
-                          {activeBar.percent_complete ?? 0}%
-                        </strong>
-                      </div>
-
+                      {/* Dòng 3: Nút cập nhật (nhỏ gọn) */}
                       <button
                         type="button"
-                        aria-label={`Cập nhật tiến độ: ${activeBar.name}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedTaskForProgress(activeBar);
                         }}
-                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm cursor-pointer flex items-center gap-1.5"
+                        className="mt-1.5 w-full py-1.5 text-[11px] font-semibold rounded bg-slate-100 text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5 border border-blue-100"
                       >
-                        <Edit3 className="size-3.5" />
-                        <span>Cập nhật tiến độ</span>
+                        <Edit3 className="size-3" />
+                        Cập nhật tiến độ
                       </button>
                     </div>
                   </div>

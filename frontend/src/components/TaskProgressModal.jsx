@@ -2,6 +2,16 @@ import React, { useState, useEffect } from "react";
 import api from "../lib/api";
 import "./TaskForm.css";
 import { AlertTriangle, CheckCircle2, RotateCcw } from "lucide-react";
+import { format, parseISO } from "date-fns";
+
+function formatPlannedDate(dateStr) {
+  if (!dateStr) return "--";
+  try {
+    return format(parseISO(dateStr), "dd/MM/yyyy");
+  } catch {
+    return dateStr;
+  }
+}
 
 /**
  * TaskProgressModal (T-35 / S-15)
@@ -24,6 +34,9 @@ export default function TaskProgressModal({
     : "";
   const initialPercent =
     task?.percent_complete != null ? Number(task.percent_complete) : 0;
+
+  const plannedStart = task?.early_start || task?.start_date;
+  const plannedEnd = task?.early_finish || task?.end_date;
 
   // Xác định xem ban đầu công việc đã xong chưa (100% hoặc có ngày kết thúc thực tế)
   const wasCompleted = initialPercent === 100 || Boolean(initialEndDate);
@@ -245,8 +258,18 @@ export default function TaskProgressModal({
         <form onSubmit={handleSubmit} noValidate>
           {/* 1. NGÀY BẮT ĐẦU THỰC TẾ */}
           <div className="task-form-group">
-            <label htmlFor="actualStartDate">
-              Ngày bắt đầu thực tế
+            <label htmlFor="actualStartDate" className="flex items-center justify-between">
+              <span>Ngày bắt đầu thực tế</span>
+              {plannedStart && (
+                <button
+                  type="button"
+                  onClick={() => setActualStartDate(String(plannedStart).substring(0, 10))}
+                  title="Nhấn để dùng ngày kế hoạch"
+                  className="text-[11px] font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded transition-colors cursor-pointer"
+                >
+                  Kế hoạch: {formatPlannedDate(plannedStart)}
+                </button>
+              )}
             </label>
             <input
               id="actualStartDate"
@@ -262,8 +285,18 @@ export default function TaskProgressModal({
 
           {/* 2. NGÀY KẾT THÚC THỰC TẾ */}
           <div className="task-form-group">
-            <label htmlFor="actualEndDate">
-              Ngày kết thúc thực tế
+            <label htmlFor="actualEndDate" className="flex items-center justify-between">
+              <span>Ngày kết thúc thực tế</span>
+              {plannedEnd && (
+                <button
+                  type="button"
+                  onClick={() => setActualEndDate(String(plannedEnd).substring(0, 10))}
+                  title="Nhấn để dùng ngày kế hoạch"
+                  className="text-[11px] font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded transition-colors cursor-pointer"
+                >
+                  Kế hoạch: {formatPlannedDate(plannedEnd)}
+                </button>
+              )}
             </label>
             <input
               id="actualEndDate"

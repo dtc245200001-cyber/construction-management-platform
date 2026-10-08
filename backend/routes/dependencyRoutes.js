@@ -28,6 +28,22 @@ const router = createProjectRouter();
 
 const VALID_TYPES = ["FS", "SS", "FF", "SF"];
 
+/**
+ * @swagger
+ * /api/projects/{projectId}/dependencies:
+ *   post:
+ *     summary: API POST /:projectId/dependencies
+ *     tags: [Dependency]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post(
   "/:projectId/dependencies",
   requireAuth,
@@ -281,6 +297,27 @@ router.post(
   })
 );
 
+/**
+ * @swagger
+ * /api/projects/{projectId}/tasks/{taskId}/dependencies:
+ *   get:
+ *     summary: API GET /:projectId/tasks/:taskId/dependencies
+ *     tags: [Dependency]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get(
   "/:projectId/tasks/:taskId/dependencies",
   requireAuth,
@@ -303,6 +340,27 @@ router.get(
   })
 
 );
+/**
+ * @swagger
+ * /api/projects/{projectId}/tasks/{taskId}/dependencies:
+ *   get:
+ *     summary: API GET /:projectId/tasks/:taskId/dependencies
+ *     tags: [Dependency]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get(
   "/:projectId/tasks/:taskId/dependencies",
   requireAuth,
