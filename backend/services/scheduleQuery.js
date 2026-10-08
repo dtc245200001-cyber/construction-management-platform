@@ -20,12 +20,19 @@ async function getScheduleResults(projectId, criticalOnly = null) {
         sr.is_critical,
         sr.calculated_at,
         sr.planned_early_finish,
+        bi.early_start  AS baseline_start,
+        bi.early_finish AS baseline_finish,
+        (b.id IS NOT NULL) AS has_baseline,
         COALESCE((sr.is_critical = true AND sr.planned_is_critical = false), false) AS newly_critical
       FROM tasks t
       JOIN work_items wi
         ON wi.id = t.work_item_id
       LEFT JOIN schedule_results sr
         ON sr.task_id = t.id
+      LEFT JOIN baselines b
+        ON b.project_id = wi.project_id AND b.is_active = true
+      LEFT JOIN baseline_items bi
+        ON bi.baseline_id = b.id AND bi.task_id = t.id
       WHERE wi.project_id = $1
         AND (
           $2::boolean IS NULL
@@ -67,7 +74,7 @@ async function getScheduleResults(projectId, criticalOnly = null) {
   }
 
   const rows = result.rows;
-  rows.summary = { currentFinish, plannedFinish, delayWorkingDays, status };
+  rows.summary = { currentFinish, plannedFinish, delayWorkingDays, status, hasBaseline: rows.length > 0 && rows[0].has_baseline === true, };
   return rows;
 }
 

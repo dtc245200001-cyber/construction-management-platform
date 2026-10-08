@@ -77,4 +77,29 @@ describe("scheduleQuery", () => {
 
     expect(sql).toContain("ORDER BY sr.early_start NULLS LAST, t.id");
   });
+    test("trả mốc kế hoạch gốc trong cùng một truy vấn, không thêm truy vấn thứ hai", async () => {
+    db.query.mockResolvedValue({
+      rows: [
+        {
+          id: 1,
+          baseline_start: "2026-10-01T00:00:00.000Z",
+          baseline_finish: "2026-10-05T00:00:00.000Z",
+          has_baseline: true,
+        },
+      ],
+    });
+
+    const result = await getScheduleResults(10);
+
+    expect(db.query).toHaveBeenCalledTimes(5); // vẫn 5 như trước
+    expect(db.query.mock.calls[0][0]).toContain("baseline_items");
+    expect(result[0].baseline_start).toBe("2026-10-01T00:00:00.000Z");
+    expect(result.summary.hasBaseline).toBe(true);
+  });
+
+  test("chưa chốt thì hasBaseline = false", async () => {
+    db.query.mockResolvedValue({ rows: [{ id: 1, has_baseline: false }] });
+    const result = await getScheduleResults(10);
+    expect(result.summary.hasBaseline).toBe(false);
+  });
 });
