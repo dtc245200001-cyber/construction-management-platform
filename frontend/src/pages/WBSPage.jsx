@@ -557,8 +557,8 @@ const visibleItems = useMemo(() => {
 }, [rolledItems, search]);
 
   return (
-    <div className="flex-1 h-[calc(100vh-73px)] bg-[#F3F6FB] text-[#0F1B3D] flex flex-col overflow-hidden">
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden p-4 sm:p-6 gap-6 max-w-[1672px] mx-auto w-full">
+    <div className="flex-1 min-h-0 bg-[#F3F6FB] text-[#0F1B3D] flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row p-4 sm:p-6 gap-6 max-w-[1672px] mx-auto w-full">
         {/* Main Content */}
         <div className="flex-1 flex flex-col gap-6 overflow-hidden min-w-0">
           
