@@ -58,7 +58,7 @@ const rows = [
   },
 ];
 
-describe.skip(
+describe(
   "GanttPage - T-32 / T-33",
   () => {
     beforeEach(() => {
@@ -239,9 +239,11 @@ describe.skip(
         expect(screen.getByRole("dialog")).toBeInTheDocument();
         expect(screen.getByText("Cập nhật tiến độ")).toBeInTheDocument();
 
-        const startInput = screen.getByLabelText(/Ngày bắt đầu thực tế/);
-        const endInput = screen.getByLabelText(/Ngày kết thúc thực tế/);
-        const percentInput = screen.getByLabelText(/Phần trăm hoàn thành/);
+        const pickInput = (re) =>
+          screen.getAllByLabelText(re).find((el) => el.tagName === "INPUT");
+        const startInput = pickInput(/Ngày bắt đầu thực tế/);
+        const endInput = pickInput(/Ngày kết thúc thực tế/);
+        const percentInput = pickInput(/Phần trăm hoàn thành/);
 
         await userEvent.type(startInput, "2026-10-10");
         await userEvent.type(endInput, "2026-10-12");
@@ -323,7 +325,7 @@ describe.skip(
   }
 );
 
-describe.skip("GanttPage - T-42", () => {
+describe("GanttPage - T-42", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.setItem("currentProjectId", "4");

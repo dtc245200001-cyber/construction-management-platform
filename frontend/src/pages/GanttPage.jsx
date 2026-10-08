@@ -106,6 +106,7 @@ export default function GanttPage() {
         ]);
         setTasks(res.data.data || []);
         setDependencies(res.data.dependencies || []);
+        setSummary(res.data.summary || null);
         if (summaryRes.data) {
           setScheduleSummary(summaryRes.data);
         }
@@ -334,7 +335,7 @@ export default function GanttPage() {
               )}
               {summary && (
                 <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm">
-                  <span>Hoàn thành hiện tại {formatDate(summary.actualFinish)}</span>
+                  <span>Hoàn thành hiện tại {formatDate(summary.currentFinish ?? summary.actualFinish)}</span>
                   <span className="text-slate-300">•</span>
                   <span>Kế hoạch {formatDate(summary.plannedFinish)}</span>
                   <span className="text-slate-300">•</span>
@@ -461,6 +462,7 @@ export default function GanttPage() {
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedTaskForProgress(bar);
+                          setActiveBar(null);
                         }}
                         className="opacity-70 hover:opacity-100 hover:text-blue-600 p-0.5 text-slate-400 cursor-pointer shrink-0"
                       >
@@ -576,8 +578,9 @@ export default function GanttPage() {
                           }}
                           onClick={(e) => {
                             e.stopPropagation();
-                            setActiveBar(activeBar?.id === bar.id ? null : bar);
+                            setActiveBar(bar);
                           }}
+                          onMouseEnter={() => setActiveBar(bar)}
                           onDoubleClick={(e) => {
                             e.stopPropagation();
                             setSelectedTaskForProgress(bar);
@@ -621,6 +624,8 @@ export default function GanttPage() {
                           <>
                             <polygon
                               data-testid={`newly-critical-marker-${bar.id}`}
+                              role="img"
+                              aria-label="Việc mới trở thành găng"
                               points={`${bar.x + 8},${bar.y + ROW_HEIGHT / 2 - 6} ${bar.x + 8 + 6},${bar.y + ROW_HEIGHT / 2} ${bar.x + 8},${bar.y + ROW_HEIGHT / 2 + 6} ${bar.x + 8 - 6},${bar.y + ROW_HEIGHT / 2}`}
                               fill="#fef2f2"
                               stroke="#dc2626"
@@ -761,15 +766,23 @@ export default function GanttPage() {
                       {/* Dòng 2: Thông số lưới */}
                       <div className="grid grid-cols-2 gap-x-2 gap-y-1 mt-1 text-[11px]">
                         <div className="flex justify-between">
-                          <span className="text-slate-500">Bắt đầu:</span>
+                          <span className="text-slate-500">Bắt đầu (ES):</span>
                           <span className="font-semibold text-slate-700">{formatDate(activeBar.early_start)}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-slate-500">Kết thúc:</span>
+                          <span className="text-slate-500">Kết thúc (EF):</span>
                           <span className="font-semibold text-slate-700">{formatDate(activeBar.early_finish)}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-slate-500">Dự phòng:</span>
+                          <span className="text-slate-500">Muộn nhất bắt đầu (LS):</span>
+                          <span className="font-semibold text-slate-700">{formatDate(activeBar.late_start)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Muộn nhất kết thúc (LF):</span>
+                          <span className="font-semibold text-slate-700">{formatDate(activeBar.late_finish)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Dự phòng (Float):</span>
                           <span className={`font-semibold ${activeBar.total_float === 0 ? 'text-red-600' : 'text-slate-700'}`}>
                             {activeBar.total_float != null ? `${activeBar.total_float} ngày` : '--'}
                           </span>
@@ -786,6 +799,7 @@ export default function GanttPage() {
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedTaskForProgress(activeBar);
+                          setActiveBar(null);
                         }}
                         className="mt-1.5 w-full py-1.5 text-[11px] font-semibold rounded bg-slate-100 text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5 border border-blue-100"
                       >
