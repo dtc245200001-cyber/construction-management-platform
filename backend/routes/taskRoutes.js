@@ -16,6 +16,22 @@ const {
 const router = createProjectRouter();
 
 // POST /api/projects/:projectId/tasks — Tạo công việc mới (Task T-12)
+/**
+ * @swagger
+ * /api/projects/{projectId}/tasks:
+ *   post:
+ *     summary: API POST /:projectId/tasks
+ *     tags: [Task]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post(
   "/:projectId/tasks",
   requireAuth,
@@ -405,6 +421,27 @@ const handleUpdateTask = async (req, res, next) => {
 };
 
 // PUT /api/projects/:projectId/tasks/:taskId — Chỉnh sửa công việc (T-12, T-35)
+/**
+ * @swagger
+ * /api/projects/{projectId}/tasks/{taskId}:
+ *   put:
+ *     summary: API PUT /:projectId/tasks/:taskId
+ *     tags: [Task]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.put(
   "/:projectId/tasks/:taskId",
   requireAuth,
@@ -414,6 +451,27 @@ router.put(
 );
 
 // PATCH /api/projects/:projectId/tasks/:taskId — Cập nhật công việc (T-12, T-35)
+/**
+ * @swagger
+ * /api/projects/{projectId}/tasks/{taskId}:
+ *   patch:
+ *     summary: API PATCH /:projectId/tasks/:taskId
+ *     tags: [Task]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.patch(
   "/:projectId/tasks/:taskId",
   requireAuth,
@@ -423,6 +481,27 @@ router.patch(
 );
 
 // PATCH /api/projects/:projectId/tasks/:taskId/progress — Cập nhật tiến độ thực tế (T-35)
+/**
+ * @swagger
+ * /api/projects/{projectId}/tasks/{taskId}/progress:
+ *   patch:
+ *     summary: API PATCH /:projectId/tasks/:taskId/progress
+ *     tags: [Task]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.patch(
   "/:projectId/tasks/:taskId/progress",
   requireAuth,
@@ -432,6 +511,27 @@ router.patch(
 );
 
 // DELETE /api/projects/:projectId/tasks/:taskId — Xóa công việc
+/**
+ * @swagger
+ * /api/projects/{projectId}/tasks/{taskId}:
+ *   delete:
+ *     summary: API DELETE /:projectId/tasks/:taskId
+ *     tags: [Task]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.delete(
   "/:projectId/tasks/:taskId",
   requireAuth,

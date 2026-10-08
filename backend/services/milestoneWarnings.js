@@ -1,25 +1,5 @@
 const db = require('../config/db');
-const {
-  countWorkingDays,
-  DEFAULT_CALENDAR,
-} = require('../algorithms/workingDays');
-
-/**
- * Load the project's working calendar from the `calendars` table.
- * Falls back to DEFAULT_CALENDAR (Mon–Sat working, Sun off) when no row exists.
- *
- * @param {import('pg').PoolClient} client
- * @param {number} projectId
- * @returns {Promise<object>}
- */
-async function loadProjectCalendar(client, projectId) {
-  const res = await client.query(
-    `SELECT monday, tuesday, wednesday, thursday, friday, saturday, sunday
-     FROM calendars WHERE project_id = $1 LIMIT 1`,
-    [projectId],
-  );
-  return res.rows.length > 0 ? res.rows[0] : DEFAULT_CALENDAR;
-}
+const { countWorkingDays, DEFAULT_CALENDAR } = require('../algorithms/workingDays');
 
 /**
  * Load the project's holiday list from the `holidays` table.
@@ -58,8 +38,13 @@ async function evaluateMilestoneWarnings(projectId) {
   try {
     await client.query("BEGIN");
 
-    const calendar = await loadProjectCalendar(client, projectId);
-    const holidays = await loadProjectHolidays(client, projectId);
+    // Lịch + ngày lễ của dự án (giống cách scheduleCalculation.js đang lấy)
+    const [calRes, holRes] = await Promise.all([
+      client.query("SELECT * FROM calendars WHERE project_id = $1", [projectId]),
+      client.query("SELECT holiday_date FROM holidays WHERE project_id = $1", [projectId]),
+    ]);
+    const calendar = calRes.rows[0] || DEFAULT_CALENDAR;
+    const holidays = holRes.rows.map((r) => r.holiday_date);
 
     const milestonesRes = await client.query(`
       SELECT m.id as milestone_id, m.work_item_id, m.required_date
@@ -78,7 +63,6 @@ async function evaluateMilestoneWarnings(projectId) {
         )
         SELECT id FROM work_item_tree
       `, [row.work_item_id]);
-
       const workItemIds = descendantsRes.rows.map(r => r.id);
 
       const taskInfoRes = await client.query(`
@@ -98,46 +82,24 @@ async function evaluateMilestoneWarnings(projectId) {
         WHERE t.work_item_id = ANY($1::int[])
       `, [workItemIds]);
 
-      const { max_ef: maxEf, max_actual_end: maxActualEnd, task_count: taskCount, final_tasks_unfinished_count: finalTasksUnfinishedCount } = taskInfoRes.rows[0];
-      const today = new Date();
+      const maxEf = maxEfRes.rows[0].max_ef;
+      if (!maxEf) continue;
 
-      // No tasks or no schedule data → skip
-      if (Number(taskCount) === 0 || !maxEf) {
-        const requiredDate = new Date(row.required_date);
-        if (requiredDate < today && Number(taskCount) === 0) {
-          await client.query(`
-            UPDATE milestone_warnings
-            SET status = 'closed', closed_at = NOW()
-            WHERE milestone_id = $1 AND status = 'open'
-          `, [row.milestone_id]);
-        }
-        continue;
-      }
-
-      let effectiveEnd = new Date(maxEf);
-      const requiredDate = new Date(row.required_date);
-
-      if (Number(finalTasksUnfinishedCount) === 0 && maxActualEnd) {
-        // All final scheduled tasks have an actual end date, consider milestone complete
-        effectiveEnd = new Date(maxActualEnd);
-      } else {
-        // Not finished yet
-        if (requiredDate < today) {
-          // If deadline is passed, effective end is at least today (since it's ongoing)
-          // But if forecast is even later than today, use forecast
-          effectiveEnd = new Date(Math.max(today.getTime(), new Date(maxEf).getTime()));
-        }
-      }
-
-      // Calculate overdue: working days from day after required_date to effectiveEnd
-      // "overdue phải là số ngày LÀM VIỆC sau required_date, không tính chính deadline"
-      // So we count from the day after required_date to effectiveEnd (inclusive)
-      const dayAfterDeadline = new Date(requiredDate);
-      dayAfterDeadline.setUTCDate(dayAfterDeadline.getUTCDate() + 1);
-
+      // Đếm đúng số NGÀY LÀM VIỆC vượt mốc (không phải ngày lịch).
+      // required_date là ngày bắt buộc; nếu early_finish rơi đúng ngày đó thì
+      // chưa vượt — chỉ đếm từ ngày SAU required_date tới early_finish.
       let daysExceeded = 0;
-      if (effectiveEnd > requiredDate) {
-        daysExceeded = countWorkingDays(dayAfterDeadline, effectiveEnd, calendar, holidays);
+      const requiredDateStr = new Date(row.required_date).toISOString().slice(0, 10);
+      const maxEfStr = new Date(maxEf).toISOString().slice(0, 10);
+      if (maxEfStr > requiredDateStr) {
+        const dayAfterRequired = new Date(row.required_date);
+        dayAfterRequired.setUTCDate(dayAfterRequired.getUTCDate() + 1);
+        daysExceeded = countWorkingDays(
+          dayAfterRequired.toISOString().slice(0, 10),
+          maxEfStr,
+          calendar,
+          holidays
+        );
       }
 
       if (daysExceeded > 0) {
@@ -166,25 +128,4 @@ async function evaluateMilestoneWarnings(projectId) {
   }
 }
 
-/**
- * Close all open warnings for a specific milestone.
- * Called when milestone is deleted, deactivated, or modified.
- *
- * @param {number} milestoneId
- * @param {import('pg').PoolClient} [client]
- */
-async function closeMilestoneWarnings(milestoneId, client) {
-  const queryRunner = client || db;
-  await queryRunner.query(`
-    UPDATE milestone_warnings
-    SET status = 'closed', closed_at = NOW()
-    WHERE milestone_id = $1 AND status = 'open'
-  `, [milestoneId]);
-}
-
-module.exports = {
-  evaluateMilestoneWarnings,
-  closeMilestoneWarnings,
-  loadProjectCalendar,
-  loadProjectHolidays,
-};
+module.exports = { evaluateMilestoneWarnings };

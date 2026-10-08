@@ -19,11 +19,7 @@ async function getScheduleResults(projectId, criticalOnly = null) {
         sr.total_float,
         sr.is_critical,
         sr.calculated_at,
-        sr.planned_early_finish,
-        bi.early_start  AS baseline_start,
-        bi.early_finish AS baseline_finish,
-        (b.id IS NOT NULL) AS has_baseline,
-        COALESCE((sr.is_critical = true AND sr.planned_is_critical = false), false) AS newly_critical
+        t.was_critical_baseline
       FROM tasks t
       JOIN work_items wi
         ON wi.id = t.work_item_id
