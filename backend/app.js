@@ -181,6 +181,8 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicApiLimiter, publicRoutes);
 const milestoneRoutes = require("./routes/milestoneRoutes");
 app.use("/api/projects", milestoneRoutes);
+const baselineRoutes = require("./routes/baselineRoutes");
+app.use("/api/projects", baselineRoutes);
 
 // â”€â”€â”€ ERROR HANDLERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(notFoundHandler);
