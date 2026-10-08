@@ -89,8 +89,16 @@ beforeAll(async () => {
   if (userRes.rows.length > 0) {
     testUserId = userRes.rows[0].id;
   } else {
+    const roleRes = await db.query(`SELECT id FROM roles WHERE name = 'ban_quan_ly' LIMIT 1`);
+    
+    if (roleRes.rows.length === 0) {
+      throw new Error("Missing ban_quan_ly role in test database");
+    }
+    
+    const roleIdManager = roleRes.rows[0].id;
     const ins = await db.query(
-      `INSERT INTO users (email, name, password_hash, is_verified) VALUES ('milestone_test@test.com', 'Test User', '$argon2id$v=19$m=65536,t=3,p=4$dGVzdA$dGVzdA', true) RETURNING id`,
+      `INSERT INTO users (email, name, password_hash, role_id, is_system_admin, is_verified) VALUES ('milestone_test@test.com', 'Test User', '$argon2id$v=19$m=65536,t=3,p=4$dGVzdA$dGVzdA', $1, false, true) RETURNING id`,
+      [roleIdManager]
     );
     testUserId = ins.rows[0].id;
   }
