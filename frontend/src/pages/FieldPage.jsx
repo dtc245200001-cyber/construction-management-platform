@@ -9,6 +9,7 @@ import api from "../lib/api";
 import {
   AlertTriangle,
   CalendarDays,
+  Camera,
   CheckCircle2,
   HardHat,
   History,
@@ -16,6 +17,7 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
+import TaskLogModal from "../components/TaskLogModal";
 
 function formatDate(value) {
   if (!value) return "Chưa có";
@@ -158,6 +160,11 @@ export default function FieldPage() {
     historyError,
     setHistoryError,
   ] = useState("");
+
+  const [
+    logTask,
+    setLogTask,
+  ] = useState(null);
 
   // =========================================================
   // LOAD PROJECT ROLE (membership trong dự án hiện tại)
@@ -878,21 +885,35 @@ export default function FieldPage() {
                 </div>
               )}
 
-              {/* HISTORY BUTTON */}
+              {/* ACTION BUTTONS */}
 
-              <button
-                type="button"
-                onClick={() =>
-                  loadReportHistory(
-                    task
-                  )
-                }
-                className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                <History className="size-4" />
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    loadReportHistory(
+                      task
+                    )
+                  }
+                  className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  <History className="size-4" />
 
-                Lịch sử báo cáo
-              </button>
+                  Lịch sử báo cáo
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setLogTask(task)
+                  }
+                  className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
+                >
+                  <Camera className="size-4 text-blue-600" />
+
+                  Nhật ký & Ảnh
+                </button>
+              </div>
 
               {/* LAST REPORT */}
 
@@ -1045,6 +1066,19 @@ export default function FieldPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* =====================================================
+          TASK LOG & PHOTO ATTACHMENTS MODAL (S-23 / T-53)
+      ===================================================== */}
+      {logTask && (
+        <TaskLogModal
+          projectId={Number(currentProjectId)}
+          taskId={logTask.task_id}
+          taskName={logTask.name}
+          isOpen={Boolean(logTask)}
+          onClose={() => setLogTask(null)}
+        />
       )}
     </div>
   );

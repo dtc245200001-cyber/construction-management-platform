@@ -24,6 +24,7 @@ module.exports = [
         __filename: "readonly",
 
         // Timer globals (Node.js built-ins)
+        Buffer: "readonly",
         setTimeout: "readonly",
         clearTimeout: "readonly",
         setInterval: "readonly",

@@ -3,11 +3,10 @@ import { useOutletContext } from "react-router-dom";
 import api from "../lib/api";
 import { Bell, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, History, Flag } from "lucide-react";
 import { format, parseISO } from "date-fns";
-
 export default function MilestoneWarningsPage() {
   const context = useOutletContext();
   const currentProject = context?.currentProject;
-  const projectId = localStorage.getItem("currentProjectId") || 13;
+  const projectId = currentProject?.id || localStorage.getItem("currentProjectId") || 1;
 
   const [loading, setLoading] = useState(true);
   const [warnings, setWarnings] = useState({ open: [], closed: [] });

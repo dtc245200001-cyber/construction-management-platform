@@ -41,7 +41,7 @@ export default function GanttPage() {
 
   const ROW_HEIGHT = 40;
 
-  const currentProjectId = localStorage.getItem("currentProjectId") || 13;
+  const currentProjectId = currentProject?.id || localStorage.getItem("currentProjectId") || 1;
 
   const fetchData = async () => {
     try {

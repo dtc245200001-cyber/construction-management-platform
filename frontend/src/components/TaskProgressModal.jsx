@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import api from "../lib/api";
 import "./TaskForm.css";
-import { AlertTriangle, CheckCircle2, RotateCcw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, RotateCcw, Camera } from "lucide-react";
 import { format, parseISO } from "date-fns";
+import TaskLogModal from "./TaskLogModal";
 
 function formatPlannedDate(dateStr) {
   if (!dateStr) return "--";
@@ -47,6 +48,7 @@ export default function TaskProgressModal({
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState("");
   const [showReopenConfirm, setShowReopenConfirm] = useState(false);
+  const [showLogModal, setShowLogModal] = useState(false);
 
   useEffect(() => {
     if (!task) return;
@@ -61,6 +63,7 @@ export default function TaskProgressModal({
     );
     setServerError("");
     setShowReopenConfirm(false);
+    setShowLogModal(false);
   }, [task]);
 
   if (!isOpen || !task) return null;
@@ -91,6 +94,9 @@ export default function TaskProgressModal({
     wasCompleted &&
     (parsedPercent < 100 || !actualEndDate);
 
+  const effectiveTaskId = task?.id || task?.task_id;
+  const effectiveProjectId = projectId || task?.project_id || localStorage.getItem("currentProjectId");
+
   const performSave = async () => {
     setLoading(true);
     setServerError("");
@@ -103,7 +109,7 @@ export default function TaskProgressModal({
       };
 
       const res = await api.patch(
-        `/projects/${projectId}/tasks/${task.id}/progress`,
+        `/projects/${effectiveProjectId}/tasks/${effectiveTaskId}/progress`,
         payload
       );
 
@@ -253,6 +259,18 @@ export default function TaskProgressModal({
             </div>
           </div>
         )}
+
+        {/* NÚT MỞ NHẬT KÝ & ẢNH HIỆN TRƯỜNG (S-23 / T-53) */}
+        <div className="mb-4">
+          <button
+            type="button"
+            onClick={() => setShowLogModal(true)}
+            className="w-full py-2.5 px-3.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs sm:text-sm font-semibold rounded-xl border border-blue-200 flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-sm"
+          >
+            <Camera className="size-4 text-blue-600" />
+            <span>Xem / Đính ảnh hiện trường & Nhật ký</span>
+          </button>
+        </div>
 
         {/* FORM */}
         <form onSubmit={handleSubmit} noValidate>
@@ -431,6 +449,16 @@ export default function TaskProgressModal({
           </div>
         </form>
       </div>
+
+      {showLogModal && (
+        <TaskLogModal
+          projectId={effectiveProjectId}
+          taskId={effectiveTaskId}
+          taskName={task?.name || task?.task_name}
+          isOpen={showLogModal}
+          onClose={() => setShowLogModal(false)}
+        />
+      )}
     </div>
   );
 }
