@@ -9,12 +9,7 @@ exports.up = (pgm) => {
   ];
 
   accounts.forEach(acc => {
-    // Fix global role
-    pgm.sql(`
-      UPDATE users 
-      SET role_id = (SELECT id FROM roles WHERE name = '${acc.role}' LIMIT 1)
-      WHERE email ILIKE '${acc.email}';
-    `);
+    // Project role only
 
     // Fix project role in all projects they belong to
     pgm.sql(`
