@@ -2,7 +2,7 @@ exports.up = (pgm) => {
   // Update any system admin with role 'chu_dau_tu' to 'ban_quan_ly' globally
   pgm.sql(`
     UPDATE users 
-    SET role_id = (SELECT id FROM roles WHERE name = 'system_admin' LIMIT 1)
+    SET role_id = (SELECT id FROM roles WHERE name = 'ban_quan_ly' LIMIT 1)
     WHERE is_system_admin = true AND email = 'admin@congtrinh.vn';
   `);
 
