@@ -48,6 +48,93 @@ const upload = multer({
   fileFilter: fileFilter,
 });
 
+// GET /api/projects/:projectId/tasks/:taskId/logs
+router.get(
+  "/",
+  requireAuth,
+  checkProjectAccess,
+  allow(Object.values(ROLES)),
+  async (req, res, next) => {
+    const projectId = Number(req.params.projectId);
+    const taskId = Number(req.params.taskId);
+
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+      return res.status(400).json({ message: "taskId không hợp lệ" });
+    }
+
+    try {
+      // Verify task belongs to project
+      const taskResult = await db.query(
+        `SELECT t.id, t.name 
+         FROM tasks t 
+         JOIN work_items wi ON wi.id = t.work_item_id 
+         WHERE t.id = $1 AND wi.project_id = $2`,
+        [taskId, projectId]
+      );
+
+      if (taskResult.rows.length === 0) {
+        return res.status(404).json({ message: "Không tìm thấy task trong project" });
+      }
+
+      const logsResult = await db.query(
+        `SELECT tl.id, tl.task_id, tl.user_id, tl.content, tl.created_at, tl.updated_at,
+                u.name AS user_name, u.email AS user_email
+         FROM task_logs tl
+         JOIN users u ON u.id = tl.user_id
+         WHERE tl.task_id = $1
+         ORDER BY tl.created_at DESC, tl.id DESC`,
+        [taskId]
+      );
+
+      const logIds = logsResult.rows.map(r => r.id);
+      const attachmentsByLogId = {};
+
+      if (logIds.length > 0) {
+        const attachResult = await db.query(
+          `SELECT id, task_log_id, file_name, file_size, mime_type, created_at
+           FROM task_attachments
+           WHERE task_log_id = ANY($1::int[])
+           ORDER BY id ASC`,
+          [logIds]
+        );
+
+        for (const a of attachResult.rows) {
+          if (!attachmentsByLogId[a.task_log_id]) {
+            attachmentsByLogId[a.task_log_id] = [];
+          }
+          attachmentsByLogId[a.task_log_id].push({
+            id: a.id,
+            task_log_id: a.task_log_id,
+            file_name: a.file_name,
+            file_size: a.file_size,
+            mime_type: a.mime_type,
+            created_at: a.created_at,
+            url: `/api/projects/${projectId}/tasks/${taskId}/logs/${a.task_log_id}/attachments/${a.id}`
+          });
+        }
+      }
+
+      const formattedLogs = logsResult.rows.map(log => ({
+        id: log.id,
+        task_id: log.task_id,
+        user_id: log.user_id,
+        user_name: log.user_name,
+        user_email: log.user_email,
+        content: log.content,
+        created_at: log.created_at,
+        updated_at: log.updated_at,
+        attachments: attachmentsByLogId[log.id] || []
+      }));
+
+      return res.json({
+        data: formattedLogs
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // POST /api/projects/:projectId/tasks/:taskId/logs
 router.post(
   "/",
@@ -120,10 +207,12 @@ router.post(
           id: logId,
           task_id: taskId,
           user_id: userId,
+          user_name: req.user.name || req.user.email,
           content: content,
           created_at: logInsert.rows[0].created_at,
           attachments: attachments.map(a => ({
             id: a.id,
+            task_log_id: logId,
             file_name: a.file_name,
             file_size: a.file_size,
             mime_type: a.mime_type,
