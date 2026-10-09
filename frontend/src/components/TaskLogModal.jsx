@@ -32,6 +32,9 @@ export default function TaskLogModal({
   onClose,
   onLogAdded,
 }) {
+  const effectiveProjectId = projectId || localStorage.getItem("currentProjectId");
+  const effectiveTaskId = taskId;
+
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -46,16 +49,19 @@ export default function TaskLogModal({
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
 
-  const draftKey = `task_log_draft_${projectId}_${taskId}`;
+  const draftKey = `task_log_draft_${effectiveProjectId}_${effectiveTaskId}`;
 
   // Load logs
   const fetchLogs = async () => {
-    if (!projectId || !taskId) return;
+    if (!effectiveProjectId || !effectiveTaskId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError("");
     try {
       const res = await api.get(
-        `/projects/${projectId}/tasks/${taskId}/logs`
+        `/projects/${effectiveProjectId}/tasks/${effectiveTaskId}/logs`
       );
       setLogs(res.data?.data || []);
     } catch (err) {
@@ -68,7 +74,7 @@ export default function TaskLogModal({
   };
 
   useEffect(() => {
-    if (isOpen && projectId && taskId) {
+    if (isOpen && effectiveProjectId && effectiveTaskId) {
       fetchLogs();
 
       // Khôi phục bản nháp nếu có
@@ -196,7 +202,7 @@ export default function TaskLogModal({
 
     try {
       const res = await api.post(
-        `/projects/${projectId}/tasks/${taskId}/logs`,
+        `/projects/${effectiveProjectId}/tasks/${effectiveTaskId}/logs`,
         formData,
         {
           headers: {

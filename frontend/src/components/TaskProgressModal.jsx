@@ -94,6 +94,9 @@ export default function TaskProgressModal({
     wasCompleted &&
     (parsedPercent < 100 || !actualEndDate);
 
+  const effectiveTaskId = task?.id || task?.task_id;
+  const effectiveProjectId = projectId || task?.project_id || localStorage.getItem("currentProjectId");
+
   const performSave = async () => {
     setLoading(true);
     setServerError("");
@@ -106,7 +109,7 @@ export default function TaskProgressModal({
       };
 
       const res = await api.patch(
-        `/projects/${projectId}/tasks/${task.id}/progress`,
+        `/projects/${effectiveProjectId}/tasks/${effectiveTaskId}/progress`,
         payload
       );
 
@@ -449,9 +452,9 @@ export default function TaskProgressModal({
 
       {showLogModal && (
         <TaskLogModal
-          projectId={projectId}
-          taskId={task.id}
-          taskName={task.name}
+          projectId={effectiveProjectId}
+          taskId={effectiveTaskId}
+          taskName={task?.name || task?.task_name}
           isOpen={showLogModal}
           onClose={() => setShowLogModal(false)}
         />
