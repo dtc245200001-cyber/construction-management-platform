@@ -39,6 +39,17 @@ router.post(
     try {
       await client.query("BEGIN");
 
+      // Check lock status
+      const lockCheck = await client.query(
+        `SELECT is_locked FROM daily_log_locks WHERE project_id = $1 AND log_date = ($2::timestamptz AT TIME ZONE 'Asia/Ho_Chi_Minh')::date`,
+        [projectId, entryAtVal]
+      );
+      if (lockCheck.rows.length > 0 && lockCheck.rows[0].is_locked) {
+        await client.query("ROLLBACK");
+        return res.status(403).json({ message: "Nhật ký thi công của ngày này đã bị khóa, không thể thêm mới." });
+      }
+
+
       // Verify work_item_id exists and belongs to project
       const wiCheck = await client.query(
         "SELECT id, name, code FROM work_items WHERE id = $1 AND project_id = $2",
@@ -178,6 +189,158 @@ router.get(
       offset,
       data: dataRes.rows
     });
+  })
+);
+
+/**
+ * @swagger
+ * /api/projects/{projectId}/diary-locks/{date}:
+ *   get:
+ *     summary: Lấy trạng thái khóa nhật ký của ngày
+ *     tags: [Diary]
+ */
+router.get(
+  "/:projectId/diary-locks/:date",
+  requireAuth,
+  checkProjectAccess,
+  allow(Object.values(ROLES)),
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+    if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(req.params.date)) return res.status(400).json({ message: "Ngày không hợp lệ" });
+
+    const result = await db.query(
+      "SELECT * FROM daily_log_locks WHERE project_id = $1 AND log_date = $2",
+      [projectId, req.params.date]
+    );
+    if (result.rows.length === 0) {
+      return res.json({ is_locked: false });
+    }
+    return res.json(result.rows[0]);
+  })
+);
+
+/**
+ * @swagger
+ * /api/projects/{projectId}/diary-locks/{date}/lock:
+ *   post:
+ *     summary: Khóa nhật ký
+ *     tags: [Diary]
+ */
+router.post(
+  "/:projectId/diary-locks/:date/lock",
+  requireAuth,
+  checkProjectAccess,
+  allow([ROLES.BAN_QUAN_LY, ROLES.CHI_HUY_TRUONG]),
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+    if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(req.params.date)) return res.status(400).json({ message: "Ngày không hợp lệ" });
+
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query(
+        `INSERT INTO daily_log_locks (project_id, log_date, locked_by, is_locked, locked_at) 
+         VALUES ($1, $2, $3, true, NOW())
+         ON CONFLICT (project_id, log_date) 
+         DO UPDATE SET is_locked = true, locked_by = $3, locked_at = NOW() 
+         RETURNING *`,
+        [projectId, req.params.date, req.user.id]
+      );
+      await client.query("COMMIT");
+      try { await logAudit({ userId: req.user.id, action: "LOCK_DIARY", entity: "daily_log_locks", entityId: result.rows[0].id, details: { date: req.params.date }}); } catch(e){}
+      return res.json(result.rows[0]);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  })
+);
+
+/**
+ * @swagger
+ * /api/projects/{projectId}/diary-locks/{date}/unlock:
+ *   post:
+ *     summary: Mở khóa nhật ký
+ *     tags: [Diary]
+ */
+router.post(
+  "/:projectId/diary-locks/:date/unlock",
+  requireAuth,
+  checkProjectAccess,
+  allow([ROLES.BAN_QUAN_LY, ROLES.CHI_HUY_TRUONG]),
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+    if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(req.params.date)) return res.status(400).json({ message: "Ngày không hợp lệ" });
+
+    const { reason } = req.body;
+    if (!reason || reason.trim().length === 0) {
+      return res.status(400).json({ message: "Phải nhập lý do mở khóa" });
+    }
+
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query(
+        `UPDATE daily_log_locks SET is_locked = false, unlocked_by = $1, unlocked_at = NOW(), unlock_reason = $2
+         WHERE project_id = $3 AND log_date = $4 RETURNING *`,
+        [req.user.id, reason.trim(), projectId, req.params.date]
+      );
+      if (result.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Nhật ký chưa được khóa hoặc không tìm thấy trạng thái khóa" });
+      }
+      await client.query("COMMIT");
+      try { await logAudit({ userId: req.user.id, action: "UNLOCK_DIARY", entity: "daily_log_locks", entityId: result.rows[0].id, details: { date: req.params.date, reason: reason.trim() }}); } catch(e){}
+      return res.json(result.rows[0]);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  })
+);
+
+/**
+ * @swagger
+ * /api/projects/{projectId}/diary-locks/{date}/history:
+ *   get:
+ *     summary: Lấy lịch sử khóa/mở khóa của ngày
+ *     tags: [Diary]
+ */
+router.get(
+  "/:projectId/diary-locks/:date/history",
+  requireAuth,
+  checkProjectAccess,
+  allow(Object.values(ROLES)),
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+    if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(req.params.date)) return res.status(400).json({ message: "Ngày không hợp lệ" });
+
+    const lockResult = await db.query(
+      "SELECT id FROM daily_log_locks WHERE project_id = $1 AND log_date = $2",
+      [projectId, req.params.date]
+    );
+
+    if (lockResult.rows.length === 0) return res.json([]);
+
+    const lockId = lockResult.rows[0].id;
+    const historyResult = await db.query(
+      `SELECT a.*, u.name as user_name 
+       FROM audit_logs a 
+       JOIN users u ON u.id = a.user_id 
+       WHERE a.entity = 'daily_log_locks' AND a.entity_id = $1 
+       ORDER BY a.created_at DESC`,
+      [lockId]
+    );
+
+    return res.json(historyResult.rows);
   })
 );
 
