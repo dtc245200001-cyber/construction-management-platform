@@ -3,12 +3,12 @@
 const request = require("supertest");
 const path = require("path");
 const fs = require("fs");
+const { Buffer } = require("buffer");
 const app = require("../../app");
 const pool = require("../../config/db");
 const argon2 = require("argon2");
 
 describe("Task Logs & Attachments API Integration Tests (S-23 / T-52 / T-53)", () => {
-  let cookieAdmin;
   let cookieKySu;
   let cookieNoProject;
 
@@ -61,11 +61,6 @@ describe("Task Logs & Attachments API Integration Tests (S-23 / T-52 / T-53)", (
     );
 
     // Login
-    cookieAdmin = (
-      await request(app)
-        .post("/api/auth/login")
-        .send({ email: "admin_tlog@test.com", password: "Password123!" })
-    ).headers["set-cookie"];
     cookieKySu = (
       await request(app)
         .post("/api/auth/login")
