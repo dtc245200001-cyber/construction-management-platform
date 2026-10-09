@@ -50,7 +50,7 @@ const upload = multer({
 
 // GET /api/projects/:projectId/tasks/:taskId/logs
 router.get(
-  "/",
+  "/:projectId/tasks/:taskId/logs",
   requireAuth,
   checkProjectAccess,
   allow(Object.values(ROLES)),
@@ -137,7 +137,7 @@ router.get(
 
 // POST /api/projects/:projectId/tasks/:taskId/logs
 router.post(
-  "/",
+  "/:projectId/tasks/:taskId/logs",
   requireAuth,
   checkProjectAccess,
   allow(Object.values(ROLES)),
@@ -232,7 +232,7 @@ router.post(
 
 // GET /api/projects/:projectId/tasks/:taskId/logs/:logId/attachments/:attachmentId
 router.get(
-  "/:logId/attachments/:attachmentId",
+  "/:projectId/tasks/:taskId/logs/:logId/attachments/:attachmentId",
   requireAuth,
   checkProjectAccess,
   allow(Object.values(ROLES)),
