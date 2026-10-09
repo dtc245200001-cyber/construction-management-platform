@@ -33,8 +33,9 @@ export default function DiaryPage({ user }) {
   const [unlockReason, setUnlockReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
-  const canManageLock = user && (user.role === 'ban_quan_ly' || user.role === 'chi_huy_truong');
+  const [projectRole, setProjectRole] = useState(null);
 
+  const canManageLock = user && (user.is_system_admin || projectRole === 'ban_quan_ly');
   useEffect(() => {
     if (location.state?.openForm) {
       setShowForm(true);
@@ -42,6 +43,11 @@ export default function DiaryPage({ user }) {
   }, [location.state]);
 
   useEffect(() => {
+    // Fetch project to get membership role
+    api.get(`/projects/${projectId}`)
+      .then(res => setProjectRole(res.data?.membership))
+      .catch(console.error);
+
     // Fetch categories for filter
     api.get(`/categories/${projectId}/tree/all`)
       .then(res => setCategories(res.data || []))

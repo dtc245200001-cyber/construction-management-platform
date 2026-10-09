@@ -40,6 +40,9 @@ describe('DiaryPage', () => {
     localStorage.clear();
     
     api.get.mockImplementation((url) => {
+      if (url.includes('/projects/') && !url.includes('/diary-entries') && !url.includes('/diary-locks')) {
+        return Promise.resolve({ data: { membership: 'ban_quan_ly' } });
+      }
       if (url.includes('/tree/all')) {
         return Promise.resolve({ data: mockCategories });
       }

@@ -231,7 +231,7 @@ router.post(
   "/:projectId/diary-locks/:date/lock",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY, ROLES.CHI_HUY_TRUONG]),
+  allow([ROLES.BAN_QUAN_LY]),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });
@@ -271,7 +271,7 @@ router.post(
   "/:projectId/diary-locks/:date/unlock",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY, ROLES.CHI_HUY_TRUONG]),
+  allow([ROLES.BAN_QUAN_LY]),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });

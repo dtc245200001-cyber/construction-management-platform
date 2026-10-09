@@ -20,6 +20,8 @@ services:
     build: ./backend
     container_name: construction_backend
     environment:
+      NODE_ENV: development
+      EMAIL_PROVIDER: ethereal
       PORT: ${PORT:-3000}
       DATABASE_URL: ${DATABASE_URL:?missing}
       SESSION_SECRET: ${SESSION_SECRET:?missing}
