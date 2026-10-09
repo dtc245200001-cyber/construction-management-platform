@@ -21,7 +21,7 @@ async function seed() {
     const getRoleId = async (name) => {
       let res = await pool.query(`SELECT id FROM roles WHERE name = $1`, [name]);
       if (res.rows.length === 0) {
-        res = await pool.query(`INSERT INTO roles (name, description) VALUES ($1, $1) RETURNING id`, [name]);
+        res = await pool.query(`INSERT INTO roles (name) VALUES ($1) RETURNING id`, [name]);
       }
       return res.rows[0].id;
     }

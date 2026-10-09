@@ -128,7 +128,7 @@ export default function GanttPage() {
     try {
       setBaselineBusy(true);
       setBaselineMsg(null);
-      await api.post(`/projects/${currentProjectId}/baselines`);
+      await api.post(`/projects/${currentProjectId}/baselines/freeze`);
       const res = await api.get(`/projects/${currentProjectId}/schedule-results`);
       setTasks(res.data.data || []);
       setSummary(res.data.summary || null);
@@ -198,7 +198,7 @@ export default function GanttPage() {
   }
 
   const allStarts = validTasks.flatMap((t) =>
-    [t.early_start, t.baseline_start].filter(Boolean),
+    [t.early_start, t.planned_early_start].filter(Boolean),
   );
   const projectStartDate = allStarts.reduce((min, d) =>
     new Date(d) < new Date(min) ? d : min,
@@ -207,7 +207,7 @@ export default function GanttPage() {
   const projectEndDate = new Date(
     Math.max(
       ...validTasks.flatMap((t) =>
-        [t.early_finish, t.baseline_finish].filter(Boolean).map((d) => new Date(d)),
+        [t.early_finish, t.planned_early_finish].filter(Boolean).map((d) => new Date(d)),
       ),
     ),
   );
@@ -386,21 +386,25 @@ export default function GanttPage() {
               </button>
             </div>
           </div>
-          {summary && !summary.hasBaseline && (
+          {summary && (
             <div
               data-testid="baseline-hint"
-              className="px-4 py-2 bg-amber-50 border-b border-amber-200 text-sm text-amber-800 flex flex-wrap items-center gap-3"
+              className={`px-4 py-2 ${
+                summary.hasBaseline ? "bg-slate-50 border-b border-slate-200 text-slate-600" : "bg-amber-50 border-b border-amber-200 text-amber-800"
+              } text-sm flex flex-wrap items-center gap-3`}
             >
-              <span>Chưa chốt kế hoạch gốc nên chưa có thanh so sánh.</span>
+              <span>{summary.hasBaseline ? "Kế hoạch gốc đã được chốt. Bạn có thể chốt lại bản mới nếu có thay đổi lớn." : "Chưa chốt kế hoạch gốc nên chưa có thanh so sánh."}</span>
               <button
                 type="button"
                 onClick={handleCreateBaseline}
                 disabled={baselineBusy}
-                className="px-3 py-1 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-60"
+                className={`px-3 py-1 rounded-lg text-white text-xs font-semibold disabled:opacity-60 ${
+                  summary.hasBaseline ? "bg-slate-600 hover:bg-slate-700" : "bg-amber-600 hover:bg-amber-700"
+                }`}
               >
-                {baselineBusy ? "Đang chốt..." : "Chốt kế hoạch gốc"}
+                {baselineBusy ? "Đang xử lý..." : (summary.hasBaseline ? "Cập nhật Kế hoạch gốc" : "Chốt kế hoạch gốc")}
               </button>
-              {baselineMsg && <span className="text-red-600">{baselineMsg}</span>}
+              {baselineMsg && <span className="text-red-600 font-medium">{baselineMsg}</span>}
             </div>
           )}
           <div className="flex-1 overflow-auto bg-slate-50 relative custom-scrollbar">
@@ -451,8 +455,13 @@ export default function GanttPage() {
                           <span className="size-1.5 rounded-full bg-slate-300" />
                         )}
                       </div>
-                      <div className="truncate lg:whitespace-nowrap flex-1">
-                        {bar.name}
+                      <div className="truncate lg:whitespace-nowrap flex-1 flex items-center gap-2">
+                        <span>{bar.name}</span>
+                        {bar.has_baseline && bar.planned_early_finish && bar.early_finish && differenceInCalendarDays(parseISO(bar.early_finish), parseISO(bar.planned_early_finish)) > 0 && (
+                          <span className="inline-flex items-center rounded-md bg-red-50 px-1.5 py-0.5 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/10" title={`+${differenceInCalendarDays(parseISO(bar.early_finish), parseISO(bar.planned_early_finish))} ngày so với kế hoạch gốc`}>
+                            +{differenceInCalendarDays(parseISO(bar.early_finish), parseISO(bar.planned_early_finish))}d
+                          </span>
+                        )}
                       </div>
 
                       <button
@@ -500,6 +509,12 @@ export default function GanttPage() {
                   className="block bg-slate-50"
                   onClick={() => setActiveBar(null)}
                 >
+                  <defs>
+                    <pattern id="hatch-pattern" width="8" height="8" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
+                      <line x1="0" y1="0" x2="0" y2="8" stroke="#ffffff" strokeWidth="2" strokeOpacity="0.4" />
+                    </pattern>
+                  </defs>
+                  
                   {/* Vẽ cột ngày nghỉ bằng dải màu xám */}
                   {ticks.map((tick) => 
                     tick.isNonWorkingDay && viewMode === "day" ? (
@@ -509,8 +524,7 @@ export default function GanttPage() {
                         y={0}
                         width={PIXELS_PER_DAY}
                         height="100%"
-                        fill="#cbd5e1"
-                        opacity="0.3"
+                        fill="#F1F5F9"
                       />
                     ) : null
                   )}
@@ -571,7 +585,7 @@ export default function GanttPage() {
                           tabIndex={0}
                           aria-label={`${bar.name} - ${
                             isNewCritical ? "Việc găng mới" : bar.is_critical ? "Việc găng" : "Không găng"
-                          }`}
+                          }. Bắt đầu sớm: ${formatDate(bar.early_start)}, Kết thúc sớm: ${formatDate(bar.early_finish)}, Bắt đầu muộn: ${formatDate(bar.late_start)}, Kết thúc muộn: ${formatDate(bar.late_finish)}, Dự trữ thời gian: ${bar.total_float} ngày.`}
                           style={{
                             cursor: "pointer",
                             outline: "none",
@@ -590,6 +604,19 @@ export default function GanttPage() {
                             setActiveBar(activeBar?.id === bar.id ? null : bar);
                           }}
                         />
+
+                        {/* T-32: Sọc chéo cho việc găng */}
+                        {bar.is_critical && (
+                          <rect
+                            x={bar.x}
+                            y={bar.y + (ROW_HEIGHT - bar.height) / 2}
+                            width={bar.width}
+                            height={bar.height}
+                            fill="url(#hatch-pattern)"
+                            rx={4}
+                            style={{ pointerEvents: "none" }}
+                          />
+                        )}
 
                         {/* Phần trăm hoàn thành thực tế hiển thị trên thanh Gantt */}
                         {progressPercent > 0 && (

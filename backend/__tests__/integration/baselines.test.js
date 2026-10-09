@@ -69,33 +69,28 @@ describe("Baselines (T-41)", () => {
   });
 
   it("chốt thành công và chép bốn mốc", async () => {
-    const res = await request(app).post(`/api/projects/${projectId}/baselines`).set("Cookie", cookieManager);
-    expect(res.status).toBe(201);
-    expect(res.body.task_count).toBe(1);
+    const res = await request(app).post(`/api/projects/${projectId}/baselines/freeze`).set("Cookie", cookieManager);
+    expect(res.status).toBe(200);
+    expect(res.body.taskCount).toBe(1);
   });
 
   it("tính lại tiến độ thì baseline_items không đổi", async () => {
     await pool.query("UPDATE schedule_results SET early_start = '2026-10-10', early_finish = '2026-10-15' WHERE task_id = $1", [taskId]);
-    const r = await pool.query("SELECT to_char(early_start,'YYYY-MM-DD') AS s FROM baseline_items WHERE task_id = $1", [taskId]);
+    const r = await pool.query("SELECT to_char(planned_early_start,'YYYY-MM-DD') AS s FROM baseline_items WHERE task_id = $1", [taskId]);
     expect(r.rows[0].s).toBe("2026-10-01");
   });
 
   it("chốt lần hai: có 2 dòng lịch sử, chỉ 1 dòng đang hiệu lực", async () => {
-    const res = await request(app).post(`/api/projects/${projectId}/baselines`).set("Cookie", cookieManager);
-    expect(res.status).toBe(201);
-    const all = await pool.query("SELECT is_active FROM baselines WHERE project_id = $1", [projectId]);
-    expect(all.rows.length).toBe(2);
-    expect(all.rows.filter((r) => r.is_active).length).toBe(1);
-  });
-
-  it("GET trả lịch sử kèm người chốt", async () => {
-    const res = await request(app).get(`/api/projects/${projectId}/baselines`).set("Cookie", cookieManager);
+    const res = await request(app).post(`/api/projects/${projectId}/baselines/freeze`).set("Cookie", cookieManager);
     expect(res.status).toBe(200);
-    expect(res.body[0]).toHaveProperty("created_by_name", "Manager");
+    const all = await pool.query("SELECT version FROM baselines WHERE project_id = $1", [projectId]);
+    expect(all.rows.length).toBe(2);
+    const proj = await pool.query("SELECT current_baseline_version FROM projects WHERE id = $1", [projectId]);
+    expect(proj.rows[0].current_baseline_version).toBe(2);
   });
 
   it("vai trò khác ban quản lý bị 403", async () => {
-    const res = await request(app).post(`/api/projects/${projectId}/baselines`).set("Cookie", cookieEngineer);
+    const res = await request(app).post(`/api/projects/${projectId}/baselines/freeze`).set("Cookie", cookieEngineer);
     expect(res.status).toBe(403);
   });
 });

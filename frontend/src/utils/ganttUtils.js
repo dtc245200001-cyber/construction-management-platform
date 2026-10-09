@@ -30,11 +30,11 @@ export function mapScheduleToGantt(tasks, projectStartDate, pixelsPerDay, rowHei
 
     // T-42: toạ độ thanh kế hoạch gốc (null nếu việc này chưa có trong bản chốt)
     let baseline = null;
-    if (task.baseline_start && task.baseline_finish) {
-      const bs = parseISO(task.baseline_start);
-      const bf = parseISO(task.baseline_finish);
+    if (task.planned_early_start && task.planned_early_finish) {
+      const bs = parseISO(task.planned_early_start);
+      const bf = parseISO(task.planned_early_finish);
       baseline = {
-        x: dateToX(task.baseline_start, projectStartDate, pixelsPerDay),
+        x: dateToX(task.planned_early_start, projectStartDate, pixelsPerDay),
         width: (differenceInCalendarDays(bf, bs) + 1) * pixelsPerDay,
       };
     }
