@@ -30,7 +30,7 @@ describe('ganttUtils', () => {
       const tasks = [
         {
           id: 1, name: 'A', early_start: '2026-10-03', early_finish: '2026-10-04',
-          baseline_start: '2026-10-02', baseline_finish: '2026-10-04'
+          has_baseline: true, planned_early_start: '2026-10-02', planned_early_finish: '2026-10-04'
         },
         { id: 2, name: 'B', early_start: '2026-10-03', early_finish: '2026-10-04' },
       ];
