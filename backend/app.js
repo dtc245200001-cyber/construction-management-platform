@@ -186,6 +186,8 @@ app.use("/api/projects", milestoneRoutes);
 
 const diaryRoutes = require("./routes/diaryRoutes");
 app.use("/api/projects", diaryRoutes);
+const diaryDaysRoutes = require("./routes/diaryDaysRoutes");
+app.use("/api/projects", diaryDaysRoutes);
 const baselineRoutes = require("./routes/baselineRoutes");
 app.use("/api/projects", baselineRoutes);
 

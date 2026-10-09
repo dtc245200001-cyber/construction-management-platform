@@ -74,16 +74,25 @@ function getCurrentWeek() {
   };
 }
 
-export default function FieldPage({
-  user,
-}) {
+export default function FieldPage() {
   const currentProjectId =
     localStorage.getItem(
       "currentProjectId"
     );
 
+  // Vai trò TRONG DỰ ÁN HIỆN TẠI — không dùng user.role (vai trò
+  // toàn cục của tài khoản), vì một tài khoản có thể giữ vai trò
+  // khác nhau ở từng dự án (giống cách DiaryPage.jsx lấy membership).
+  // undefined = đang tải; null = đã tải xong nhưng không có vai trò
+  // (lỗi hoặc không phải thành viên) — phân biệt rõ 2 trạng thái này
+  // để không hiểu nhầm "đang tải" thành "không phải đội trưởng".
+  const [
+    projectRole,
+    setProjectRole,
+  ] = useState(undefined);
+
   const isTeamLeader =
-    user?.role === "doi_truong";
+    projectRole === "doi_truong";
 
   const [team, setTeam] =
     useState(null);
@@ -95,6 +104,14 @@ export default function FieldPage({
     selectedTeamId,
     setSelectedTeamId,
   ] = useState("");
+
+  // S-26 / T-59 (bổ sung): Chỉ huy trưởng / Ban quản lý / Chủ đầu tư
+  // có thể xem việc của TẤT CẢ đội cùng lúc, thay vì phải chọn từng
+  // đội một. Chỉ đọc — báo khối lượng vẫn là việc của đội trưởng.
+  const [
+    viewAllTeams,
+    setViewAllTeams,
+  ] = useState(false);
 
   const [tasks, setTasks] =
     useState([]);
@@ -143,6 +160,38 @@ export default function FieldPage({
   ] = useState("");
 
   // =========================================================
+  // LOAD PROJECT ROLE (membership trong dự án hiện tại)
+  // =========================================================
+
+  useEffect(() => {
+    if (!currentProjectId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    api
+      .get(`/projects/${currentProjectId}`)
+      .then((res) => {
+        if (!cancelled) {
+          setProjectRole(
+            res.data?.membership ||
+              null
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setProjectRole(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentProjectId]);
+
+  // =========================================================
   // LOAD TASKS
   // =========================================================
 
@@ -153,10 +202,19 @@ export default function FieldPage({
         return;
       }
 
-      // Quản lý / Chỉ huy trưởng
-      // phải chọn đội.
+      // Chưa xác định được vai trò trong dự án (đang tải membership) —
+      // chờ, tránh hiểu nhầm projectRole=undefined thành "không phải đội trưởng".
+      if (
+        projectRole === undefined
+      ) {
+        return;
+      }
+
+      // Quản lý / Chỉ huy trưởng phải chọn đội,
+      // trừ khi đang ở chế độ xem tất cả đội.
       if (
         !isTeamLeader &&
+        !viewAllTeams &&
         !selectedTeamId
       ) {
         setTeam(null);
@@ -184,6 +242,23 @@ export default function FieldPage({
           report_date:
             week.today,
         };
+
+        if (
+          !isTeamLeader &&
+          viewAllTeams
+        ) {
+          const res =
+            await api.get(
+              `/projects/${currentProjectId}/teams/all/tasks`,
+              { params }
+            );
+
+          setTeam(null);
+          setTasks(
+            res.data.tasks || []
+          );
+          return;
+        }
 
         if (selectedTeamId) {
           params.team_id =
@@ -222,7 +297,9 @@ export default function FieldPage({
     }, [
       currentProjectId,
       isTeamLeader,
+      projectRole,
       selectedTeamId,
+      viewAllTeams,
     ]);
 
   useEffect(() => {
@@ -447,41 +524,82 @@ export default function FieldPage({
           <p className="mt-1 text-sm text-slate-500">
             {team
               ? `Đội: ${team.name}`
-              : "Việc được giao và báo cáo khối lượng"}
+              : viewAllTeams
+                ? "Xem việc của tất cả đội (chỉ đọc)"
+                : "Việc được giao và báo cáo khối lượng"}
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {!isTeamLeader && (
-            <select
-              value={
-                selectedTeamId
-              }
-              onChange={(e) => {
-                setSelectedTeamId(
-                  e.target.value
-                );
+            <div className="flex min-h-12 items-center rounded-xl border border-slate-300 bg-white p-1 text-sm">
+              <button
+                type="button"
+                onClick={() => {
+                  setViewAllTeams(
+                    false
+                  );
+                  setNotice(null);
+                }}
+                className={`min-h-10 rounded-lg px-3 font-semibold transition-colors ${
+                  !viewAllTeams
+                    ? "bg-blue-600 text-white"
+                    : "text-slate-600"
+                }`}
+              >
+                Theo đội
+              </button>
 
-                setNotice(null);
-              }}
-              className="min-h-12 min-w-[180px] rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500"
-            >
-              <option value="">
-                -- Chọn đội --
-              </option>
-
-              {teams.map(
-                (item) => (
-                  <option
-                    key={item.id}
-                    value={item.id}
-                  >
-                    {item.name}
-                  </option>
-                )
-              )}
-            </select>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewAllTeams(
+                    true
+                  );
+                  setNotice(null);
+                }}
+                className={`min-h-10 rounded-lg px-3 font-semibold transition-colors ${
+                  viewAllTeams
+                    ? "bg-blue-600 text-white"
+                    : "text-slate-600"
+                }`}
+              >
+                Tất cả đội
+              </button>
+            </div>
           )}
+
+          {!isTeamLeader &&
+            !viewAllTeams && (
+              <select
+                value={
+                  selectedTeamId
+                }
+                onChange={(e) => {
+                  setSelectedTeamId(
+                    e.target.value
+                  );
+
+                  setNotice(null);
+                }}
+                className="min-h-12 min-w-[180px] rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500"
+              >
+                <option value="">
+                  -- Chọn đội --
+                </option>
+
+                {teams.map(
+                  (item) => (
+                    <option
+                      key={item.id}
+                      value={item.id}
+                    >
+                      {item.name}
+                    </option>
+                  )
+                )}
+              </select>
+            )}
 
           <button
             type="button"
@@ -525,6 +643,7 @@ export default function FieldPage({
 
       {!error &&
         !isTeamLeader &&
+        !viewAllTeams &&
         !selectedTeamId && (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
             Vui lòng chọn đội để
@@ -536,11 +655,13 @@ export default function FieldPage({
 
       {!error &&
         (isTeamLeader ||
+          viewAllTeams ||
           selectedTeamId) &&
         tasks.length === 0 && (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
-            Đội chưa có công việc
-            trong tuần này.
+            {viewAllTeams
+              ? "Chưa có đội nào có công việc trong tuần này."
+              : "Đội chưa có công việc trong tuần này."}
           </div>
         )}
 
@@ -595,6 +716,17 @@ export default function FieldPage({
                         Việc găng
                       </span>
                     )}
+
+                    {viewAllTeams &&
+                      task.team_name && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700">
+                          <HardHat className="size-3" />
+
+                          {
+                            task.team_name
+                          }
+                        </span>
+                      )}
                   </div>
 
                   <p className="mt-1 text-xs text-slate-500">
@@ -683,65 +815,68 @@ export default function FieldPage({
                 </div>
               )}
 
-              {/* REPORT INPUT */}
+              {/* REPORT INPUT — chỉ đội trưởng mới báo cáo được;
+                  xem tất cả đội là chế độ chỉ đọc. */}
 
-              <div className="mt-4">
-                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                  Khối lượng hoàn
-                  thành hôm nay
-                </label>
+              {!viewAllTeams && (
+                <div className="mt-4">
+                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    Khối lượng hoàn
+                    thành hôm nay
+                  </label>
 
-                <div className="flex gap-2">
-                  <input
-                    inputMode="decimal"
-                    type="number"
-                    min="0.01"
-                    max="9999999999.99"
-                    step="0.01"
-                    value={
-                      quantities[
+                  <div className="flex gap-2">
+                    <input
+                      inputMode="decimal"
+                      type="number"
+                      min="0.01"
+                      max="9999999999.99"
+                      step="0.01"
+                      value={
+                        quantities[
+                          task.task_id
+                        ] ?? ""
+                      }
+                      onChange={(e) =>
+                        setQuantities(
+                          (prev) => ({
+                            ...prev,
+
+                            [task.task_id]:
+                              e.target
+                                .value,
+                          })
+                        )
+                      }
+                      placeholder="0"
+                      className="min-h-12 min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-3 text-base outline-none focus:border-blue-500"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        submitReport(
+                          task
+                        )
+                      }
+                      disabled={
+                        savingId ===
                         task.task_id
-                      ] ?? ""
-                    }
-                    onChange={(e) =>
-                      setQuantities(
-                        (prev) => ({
-                          ...prev,
+                      }
+                      className="inline-flex min-h-12 min-w-[104px] touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+                    >
+                      {savingId ===
+                      task.task_id ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="size-4" />
+                      )}
 
-                          [task.task_id]:
-                            e.target
-                              .value,
-                        })
-                      )
-                    }
-                    placeholder="0"
-                    className="min-h-12 min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-3 text-base outline-none focus:border-blue-500"
-                  />
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      submitReport(
-                        task
-                      )
-                    }
-                    disabled={
-                      savingId ===
-                      task.task_id
-                    }
-                    className="inline-flex min-h-12 min-w-[104px] touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
-                  >
-                    {savingId ===
-                    task.task_id ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="size-4" />
-                    )}
-
-                    Lưu
-                  </button>
+                      Lưu
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* HISTORY BUTTON */}
 

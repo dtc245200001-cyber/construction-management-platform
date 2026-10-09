@@ -738,6 +738,259 @@ router.patch(
   })
 );
 
+// ============================================================
+// S-26 / T-59 (bổ sung)
+// Chỉ huy trưởng / Ban quản lý xem việc của TẤT CẢ đội trong
+// tuần, không phải chọn từng đội một như /my-team/tasks.
+// Đội trưởng không dùng route này (họ chỉ xem đội của mình).
+//
+// LƯU Ý THỨ TỰ: phải khai báo TRƯỚC "/:projectId/teams/:teamId/tasks"
+// ở dưới, nếu không Express sẽ khớp "all" vào :teamId và trả 400.
+// ============================================================
+
+const overviewRoles = allow([
+  ROLES.CHI_HUY_TRUONG,
+  ROLES.BAN_QUAN_LY,
+  ROLES.CHU_DAU_TU,
+]);
+
+// GET /api/projects/:projectId/teams/all/tasks
+router.get(
+  "/:projectId/teams/all/tasks",
+  requireAuth,
+  checkProjectAccess,
+  overviewRoles,
+  asyncHandler(async (req, res) => {
+    const projectId =
+      positiveId(
+        req.params.projectId
+      );
+
+    if (!projectId) {
+      return res.status(400).json({
+        message:
+          "projectId không hợp lệ",
+      });
+    }
+
+    const weekStart =
+      req.query.week_start;
+
+    const weekEnd =
+      req.query.week_end;
+
+    const reportDate =
+      req.query.report_date;
+
+    if (
+      !isValidDateOnly(
+        weekStart
+      ) ||
+      !isValidDateOnly(
+        weekEnd
+      ) ||
+      !isValidDateOnly(
+        reportDate
+      )
+    ) {
+      return res.status(400).json({
+        message:
+          "week_start, week_end và report_date phải có định dạng YYYY-MM-DD hợp lệ",
+      });
+    }
+
+    if (
+      weekStart > weekEnd
+    ) {
+      return res.status(400).json({
+        message:
+          "Khoảng tuần không hợp lệ",
+      });
+    }
+
+    if (
+      reportDate < weekStart ||
+      reportDate > weekEnd
+    ) {
+      return res.status(400).json({
+        message:
+          "report_date phải nằm trong tuần đang xem",
+      });
+    }
+
+    // Giống /my-team/tasks nhưng KHÔNG lọc theo một team_id —
+    // trả việc của mọi đội trong dự án, kèm team_id/team_name
+    // trên từng dòng để frontend tự nhóm theo đội.
+    const result =
+      await db.query(
+        `
+          SELECT
+            t.id AS task_id,
+            t.name,
+            t.duration_days,
+            t.percent_complete,
+            t.actual_end_date,
+
+            t.planned_quantity,
+            t.quantity_unit,
+
+            wi.id AS work_item_id,
+            wi.name
+              AS work_item_name,
+
+            ta.team_id,
+            tm.name
+              AS team_name,
+
+            sr.early_start,
+            sr.early_finish,
+            sr.is_critical,
+
+            COALESCE(
+              today.total_today,
+              0
+            )::numeric(12,2)::text
+              AS reported_today,
+
+            COALESCE(
+              all_report.total_reported,
+              0
+            )::numeric(12,2)::text
+              AS cumulative_reported,
+
+            last_report.last_reported_at
+
+          FROM task_assignments ta
+
+          JOIN tasks t
+            ON t.id = ta.task_id
+
+          JOIN work_items wi
+            ON wi.id =
+               t.work_item_id
+
+          JOIN teams tm
+            ON tm.id =
+               ta.team_id
+           AND tm.project_id =
+               wi.project_id
+
+          JOIN schedule_results sr
+            ON sr.task_id = t.id
+
+          LEFT JOIN LATERAL (
+            SELECT
+              SUM(qr.quantity)
+                AS total_today
+
+            FROM task_quantity_reports qr
+
+            WHERE qr.project_id =
+                  wi.project_id
+              AND qr.task_id =
+                  t.id
+              AND qr.team_id =
+                  ta.team_id
+              AND qr.report_date =
+                  $4::date
+          ) today ON TRUE
+
+          LEFT JOIN LATERAL (
+            SELECT
+              SUM(qr.quantity)
+                AS total_reported
+
+            FROM task_quantity_reports qr
+
+            WHERE qr.project_id =
+                  wi.project_id
+              AND qr.task_id =
+                  t.id
+              AND qr.team_id =
+                  ta.team_id
+          ) all_report ON TRUE
+
+          LEFT JOIN LATERAL (
+            SELECT
+              MAX(qr.created_at)
+                AS last_reported_at
+
+            FROM task_quantity_reports qr
+
+            WHERE qr.project_id =
+                  wi.project_id
+              AND qr.task_id =
+                  t.id
+              AND qr.team_id =
+                  ta.team_id
+          ) last_report ON TRUE
+
+          WHERE wi.project_id = $1
+
+            -- Không hiện việc đã hoàn thành.
+            AND COALESCE(
+                  t.percent_complete,
+                  0
+                ) < 100
+
+            AND t.actual_end_date
+                IS NULL
+
+            -- Chỉ việc có lịch và giao
+            -- với tuần đang xem.
+            AND sr.early_start
+                IS NOT NULL
+
+            AND sr.early_start::date
+                <= $3::date
+
+            AND COALESCE(
+                  sr.early_finish::date,
+                  sr.early_start::date
+                ) >= $2::date
+
+          ORDER BY
+            tm.name,
+            sr.early_start
+              NULLS LAST,
+            t.id
+        `,
+        [
+          projectId,
+          weekStart,
+          weekEnd,
+          reportDate,
+        ]
+      );
+
+    return res.json({
+      week: {
+        start: weekStart,
+        end: weekEnd,
+        report_date:
+          reportDate,
+      },
+
+      tasks:
+        result.rows.map(
+          (task) => ({
+            ...task,
+
+            over_planned:
+              task.planned_quantity !==
+                null &&
+              Number(
+                task.cumulative_reported
+              ) >
+                Number(
+                  task.planned_quantity
+                ),
+          })
+        ),
+    });
+  })
+);
+
 // GET /api/projects/:projectId/teams/:teamId/tasks
 router.get(
   "/:projectId/teams/:teamId/tasks",
