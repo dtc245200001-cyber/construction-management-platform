@@ -249,7 +249,7 @@ router.post(
         [projectId, req.params.date, req.user.id]
       );
       await client.query("COMMIT");
-      try { await logAudit({ userId: req.user.id, action: "LOCK_DIARY", entity: "daily_log_locks", entityId: result.rows[0].id, details: { date: req.params.date }}); } catch(e){}
+      try { await logAudit({ userId: req.user.id, action: "LOCK_DIARY", entity: "daily_log_locks", entityId: result.rows[0].id, details: { date: req.params.date }}); } catch(e){ console.error("Audit error:", e); }
       return res.json(result.rows[0]);
     } catch (error) {
       await client.query("ROLLBACK");
@@ -295,7 +295,7 @@ router.post(
         return res.status(404).json({ message: "Nhật ký chưa được khóa hoặc không tìm thấy trạng thái khóa" });
       }
       await client.query("COMMIT");
-      try { await logAudit({ userId: req.user.id, action: "UNLOCK_DIARY", entity: "daily_log_locks", entityId: result.rows[0].id, details: { date: req.params.date, reason: reason.trim() }}); } catch(e){}
+      try { await logAudit({ userId: req.user.id, action: "UNLOCK_DIARY", entity: "daily_log_locks", entityId: result.rows[0].id, details: { date: req.params.date, reason: reason.trim() }}); } catch(e){ console.error("Audit error:", e); }
       return res.json(result.rows[0]);
     } catch (error) {
       await client.query("ROLLBACK");
