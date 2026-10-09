@@ -38,6 +38,7 @@ describe('DiaryPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    localStorage.setItem('currentProjectId', '13');
     
     api.get.mockImplementation((url) => {
       if (url.includes('/projects/') && !url.includes('/diary-entries') && !url.includes('/diary-locks')) {

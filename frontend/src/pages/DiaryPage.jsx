@@ -10,6 +10,7 @@ const ALLOWED_ROLES = ['ky_su_giam_sat', 'chi_huy_truong', 'ban_quan_ly', 'doi_t
 
 
 export default function DiaryPage({ user }) {
+  const location = useLocation();
   const projectId = localStorage.getItem('currentProjectId') || 1;
 
   const [entries, setEntries] = useState([]);
