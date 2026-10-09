@@ -3,7 +3,7 @@ import api from '../lib/api';
 import { X, Search, Check, AlertCircle, Save, RotateCcw } from 'lucide-react';
 import { format, parseISO, isAfter, addMinutes } from 'date-fns';
 
-const ALLOWED_ROLES = ['ky_su_giam_sat', 'chi_huy_truong', 'ban_quan_ly', 'doi_truong'];
+const ALLOWED_ROLES = ['ky_su_giam_sat', 'chi_huy_truong', 'ban_quan_ly', 'doi_truong', 'system_admin'];
 
 export default function DiaryEntryForm({ projectId, user, onClose, onSuccess }) {
   const canWrite = ALLOWED_ROLES.includes(user?.role);

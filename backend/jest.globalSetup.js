@@ -39,7 +39,7 @@ module.exports = async () => {
     direction: "up",
     migrationsTable: "pgmigrations",
     count: Infinity,
-    noCheckOrder: true,
+    checkOrder: false,
     log: () => {}, // Tắt verbose log trong test
   });
 

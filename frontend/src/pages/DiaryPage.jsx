@@ -5,8 +5,10 @@ import { format, parseISO } from 'date-fns';
 
 import { FileText, Search, Plus, Filter, X, Clock, User, Hash, Lock, Unlock, History, AlertCircle } from 'lucide-react';
 import DiaryEntryForm from '../components/DiaryEntryForm';
+import DiaryWeekStrip from '../components/DiaryWeekStrip';
+import DiaryDayCard from '../components/DiaryDayCard';
 
-const ALLOWED_ROLES = ['ky_su_giam_sat', 'chi_huy_truong', 'ban_quan_ly', 'doi_truong'];
+const ALLOWED_ROLES = ['ky_su_giam_sat', 'chi_huy_truong', 'ban_quan_ly', 'doi_truong', 'system_admin'];
 
 
 export default function DiaryPage({ user }) {
@@ -21,6 +23,7 @@ export default function DiaryPage({ user }) {
   const todayVN = format(new Date(), 'yyyy-MM-dd');
   const [dateFilter, setDateFilter] = useState(todayVN);
   const [workItemFilter, setWorkItemFilter] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
   
   const [categories, setCategories] = useState([]);
   const [showForm, setShowForm] = useState(location.state?.openForm || false);
@@ -229,6 +232,21 @@ export default function DiaryPage({ user }) {
               <span className="text-sm ml-1 text-orange-700">Không thể thêm, sửa, hoặc xóa dữ liệu.</span>
             </div>
           </div>
+        )}
+
+        <DiaryWeekStrip 
+          projectId={projectId} 
+          selectedDate={dateFilter} 
+          onSelectDate={setDateFilter} 
+          refreshKey={refreshKey}
+        />
+
+        {dateFilter && (
+          <DiaryDayCard 
+            projectId={projectId}
+            date={dateFilter}
+            onUpdated={() => setRefreshKey(k => k + 1)}
+          />
         )}
 
         <div className="bg-white rounded-2xl border border-gray-200 p-4 flex flex-col sm:flex-row items-center gap-3 shrink-0 shadow-sm">
