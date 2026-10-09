@@ -16,6 +16,13 @@ describe("Diary Locks API Integration Tests", () => {
   let projectBId;
   let projectAWorkItemId;
 
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+  const pastDate1 = "2026-10-01";
+  const pastDate2 = "2026-10-02";
+  const pastDate3 = "2026-10-03";
+  const pastDate4 = "2026-10-04";
+  const pastDate5 = "2026-10-05";
+
   beforeAll(async () => {
     await pool.query("TRUNCATE TABLE daily_log_locks, diary_entries, work_items, project_members, projects, users RESTART IDENTITY CASCADE");
 
@@ -60,11 +67,6 @@ describe("Diary Locks API Integration Tests", () => {
       [projectAId, userBQL.rows[0].id, userCHT.rows[0].id, userKSGS.rows[0].id, userChuDauTu.rows[0].id]
     );
 
-    // Note: SysAdmin is NOT added to Project A to test bypass
-
-    // Assign BQL to Project B, but remove them from A? No, BQL is in A. Let's test KSGS trying to access B, or BQL trying to access B. 
-    // Wait, the prompt says "Ban quản lý không có quyền ở dự án khác bị 403". We will use userBQL to access projectB where they are NOT a member.
-
     const wiA = await pool.query("INSERT INTO work_items (project_id, name, code, type) VALUES ($1, 'WorkItem A', 'WIA', 'category') RETURNING id", [projectAId]);
     projectAWorkItemId = wiA.rows[0].id;
   });
@@ -73,9 +75,9 @@ describe("Diary Locks API Integration Tests", () => {
     await pool.end();
   });
 
-  it('System Admin khóa nhật ký thành công (Dù không thuộc dự án)', async () => {
+  it('System Admin khóa nhật ký ngày đã qua thành công', async () => {
     const res = await request(app)
-      .post(`/api/projects/${projectAId}/diary-locks/2026-10-01/lock`)
+      .post(`/api/projects/${projectAId}/diary-locks/${pastDate1}/lock`)
       .set('Cookie', cookieSysAdmin);
     expect(res.status).toBe(200);
     expect(res.body.is_locked).toBe(true);
@@ -83,56 +85,72 @@ describe("Diary Locks API Integration Tests", () => {
   
   it('System Admin mở khóa nhật ký thành công', async () => {
     const res = await request(app)
-      .post(`/api/projects/${projectAId}/diary-locks/2026-10-01/unlock`)
+      .post(`/api/projects/${projectAId}/diary-locks/${pastDate1}/unlock`)
       .set('Cookie', cookieSysAdmin)
       .send({ reason: "Sửa lỗi" });
     expect(res.status).toBe(200);
     expect(res.body.is_locked).toBe(false);
   });
 
-  it('Ban quản lý khóa nhật ký thành công (Thuộc dự án)', async () => {
+  it('Kỹ sư giám sát khóa nhật ký ngày đã qua thành công', async () => {
     const res = await request(app)
-      .post(`/api/projects/${projectAId}/diary-locks/2026-10-02/lock`)
-      .set('Cookie', cookieBQL);
+      .post(`/api/projects/${projectAId}/diary-locks/${pastDate2}/lock`)
+      .set('Cookie', cookieKSGS);
     expect(res.status).toBe(200);
     expect(res.body.is_locked).toBe(true);
   });
 
+  it('Kỹ sư giám sát KHÔNG được mở khóa', async () => {
+    const res = await request(app)
+      .post(`/api/projects/${projectAId}/diary-locks/${pastDate2}/unlock`)
+      .set('Cookie', cookieKSGS)
+      .send({ reason: "Thích mở" });
+    expect(res.status).toBe(403);
+  });
+
   it('Ban quản lý mở khóa nhật ký thành công (Thuộc dự án)', async () => {
     const res = await request(app)
-      .post(`/api/projects/${projectAId}/diary-locks/2026-10-02/unlock`)
+      .post(`/api/projects/${projectAId}/diary-locks/${pastDate2}/unlock`)
       .set('Cookie', cookieBQL)
       .send({ reason: "Khách yêu cầu" });
     expect(res.status).toBe(200);
     expect(res.body.is_locked).toBe(false);
   });
 
-  it('Chỉ huy trưởng gọi API khóa bị 403', async () => {
+  it('Ban quản lý KHÔNG được khóa nhật ký', async () => {
     const res = await request(app)
-      .post(`/api/projects/${projectAId}/diary-locks/2026-10-03/lock`)
-      .set('Cookie', cookieCHT);
+      .post(`/api/projects/${projectAId}/diary-locks/${pastDate3}/lock`)
+      .set('Cookie', cookieBQL);
     expect(res.status).toBe(403);
   });
 
-  it('Kỹ sư giám sát gọi API khóa bị 403', async () => {
+  it('Chỉ huy trưởng gọi API khóa bị 403', async () => {
     const res = await request(app)
-      .post(`/api/projects/${projectAId}/diary-locks/2026-10-03/lock`)
-      .set('Cookie', cookieKSGS);
+      .post(`/api/projects/${projectAId}/diary-locks/${pastDate4}/lock`)
+      .set('Cookie', cookieCHT);
     expect(res.status).toBe(403);
   });
   
   it('Ban quản lý không có quyền ở dự án khác bị 403', async () => {
     const res = await request(app)
-      .post(`/api/projects/${projectBId}/diary-locks/2026-10-04/lock`)
+      .post(`/api/projects/${projectBId}/diary-locks/${pastDate5}/lock`)
       .set('Cookie', cookieBQL);
     expect(res.status).toBe(403);
   });
 
-  it('sửa/xóa hoặc tạo nhật ký thuộc ngày đã khóa bị từ chối', async () => {
-    // 2026-10-08 is locked
-    await request(app).post(`/api/projects/${projectAId}/diary-locks/2026-10-08/lock`).set('Cookie', cookieSysAdmin);
+  it('Không thể khóa ngày hiện tại', async () => {
+    const res = await request(app)
+      .post(`/api/projects/${projectAId}/diary-locks/${todayStr}/lock`)
+      .set('Cookie', cookieSysAdmin);
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain('ngày đã qua');
+  });
 
-    const entryAt = '2026-10-08T10:00:00Z'; 
+  it('sửa/xóa hoặc tạo nhật ký thuộc ngày đã khóa bị từ chối', async () => {
+    // pastDate5 is locked
+    await request(app).post(`/api/projects/${projectAId}/diary-locks/${pastDate5}/lock`).set('Cookie', cookieSysAdmin);
+
+    const entryAt = `${pastDate5}T10:00:00Z`; 
     const res = await request(app)
       .post(`/api/projects/${projectAId}/diary-entries`)
       .set('Cookie', cookieSysAdmin)

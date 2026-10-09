@@ -35,7 +35,9 @@ export default function DiaryPage({ user }) {
 
   const [projectRole, setProjectRole] = useState(null);
 
-  const canManageLock = user && (user.is_system_admin || projectRole === 'ban_quan_ly');
+  const canLock = user && (user.is_system_admin || projectRole === 'ky_su_giam_sat');
+  const canUnlock = user && (user.is_system_admin || projectRole === 'ban_quan_ly');
+  const isPastDate = dateFilter && dateFilter < todayVN;
   useEffect(() => {
     if (location.state?.openForm) {
       setShowForm(true);
@@ -175,23 +177,27 @@ export default function DiaryPage({ user }) {
             <p className="text-gray-500 mt-1 text-sm">Ghi nhận và theo dõi các hoạt động trên công trường</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {dateFilter && canManageLock && (
+            {dateFilter && (
               lockInfo?.is_locked ? (
-                <button 
-                  onClick={() => setShowUnlockModal(true)}
-                  disabled={actionLoading}
-                  className="min-h-[44px] px-4 bg-orange-100 text-orange-700 hover:bg-orange-200 rounded-xl font-semibold flex items-center gap-2 transition-colors disabled:opacity-50"
-                >
-                  <Unlock className="size-5" /> Mở khóa sổ
-                </button>
+                canUnlock && (
+                  <button 
+                    onClick={() => setShowUnlockModal(true)}
+                    disabled={actionLoading}
+                    className="min-h-[44px] px-4 bg-orange-100 text-orange-700 hover:bg-orange-200 rounded-xl font-semibold flex items-center gap-2 transition-colors disabled:opacity-50"
+                  >
+                    <Unlock className="size-5" /> Mở khóa sổ
+                  </button>
+                )
               ) : (
-                <button 
-                  onClick={handleLock}
-                  disabled={actionLoading}
-                  className="min-h-[44px] px-4 bg-gray-800 text-white hover:bg-gray-900 rounded-xl font-semibold flex items-center gap-2 transition-colors disabled:opacity-50"
-                >
-                  <Lock className="size-5" /> Chốt sổ
-                </button>
+                canLock && isPastDate && (
+                  <button 
+                    onClick={handleLock}
+                    disabled={actionLoading}
+                    className="min-h-[44px] px-4 bg-gray-800 text-white hover:bg-gray-900 rounded-xl font-semibold flex items-center gap-2 transition-colors disabled:opacity-50"
+                  >
+                    <Lock className="size-5" /> Chốt sổ
+                  </button>
+                )
               )
             )}
             
@@ -286,6 +292,7 @@ export default function DiaryPage({ user }) {
                     <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 bg-gray-100 px-3 py-1.5 rounded-lg w-fit">
                       <Hash className="size-4 text-gray-500" />
                       {entry.work_item_code ? `${entry.work_item_code} - ${entry.work_item_name}` : entry.work_item_name}
+                      {lockInfo?.is_locked && <Lock className="size-3.5 text-orange-600 ml-1" title="Đã khóa" />}
                     </div>
                     <div className="flex items-center gap-4 text-[13px] text-gray-500 shrink-0">
                       <div className="flex items-center gap-1.5">

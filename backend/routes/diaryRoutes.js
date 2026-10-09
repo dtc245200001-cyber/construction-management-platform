@@ -231,11 +231,16 @@ router.post(
   "/:projectId/diary-locks/:date/lock",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY]),
+  allow([ROLES.KY_SU_GIAM_SAT]),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });
     if (!/^\d{4}-\d{2}-\d{2}$/.test(req.params.date)) return res.status(400).json({ message: "Ngày không hợp lệ" });
+
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+    if (req.params.date >= todayStr) {
+      return res.status(400).json({ message: "Chỉ được khóa nhật ký của ngày đã qua" });
+    }
 
     const client = await db.connect();
     try {
