@@ -332,14 +332,15 @@ describe("GanttPage - T-42", () => {
     api.post.mockResolvedValue({ data: {} });
   });
 
-  test("có kế hoạch gốc thì thấy thanh mờ, không thấy gợi ý", async () => {
+  test("có kế hoạch gốc thì thấy thanh mờ và thấy gợi ý cập nhật", async () => {
     api.get.mockResolvedValue({
       data: {
         data: [
           {
             ...rows[0],
-            baseline_start: "2026-10-08T00:00:00.000Z",
-            baseline_finish: "2026-10-12T00:00:00.000Z",
+            has_baseline: true,
+            planned_early_start: "2026-10-08T00:00:00.000Z",
+            planned_early_finish: "2026-10-12T00:00:00.000Z",
           },
         ],
         summary: { hasBaseline: true },
@@ -347,7 +348,7 @@ describe("GanttPage - T-42", () => {
     });
     render(<GanttPage />);
     expect(await screen.findByTestId("baseline-bar-1")).toBeInTheDocument();
-    expect(screen.queryByTestId("baseline-hint")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("baseline-hint")).toBeInTheDocument();
   });
 
   test("chưa chốt thì không có thanh mờ và có gợi ý chốt", async () => {
@@ -367,6 +368,6 @@ describe("GanttPage - T-42", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: /Chốt kế hoạch gốc/i }),
     );
-    expect(api.post).toHaveBeenCalledWith("/projects/4/baselines");
+    expect(api.post).toHaveBeenCalledWith("/projects/4/baselines/freeze");
   });
 });
