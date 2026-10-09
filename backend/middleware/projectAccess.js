@@ -23,6 +23,11 @@ const checkProjectAccess = asyncHandler(async (req, res, next) => {
   );
 
   if (result.rows.length === 0) {
+    if (req.user && req.user.is_system_admin) {
+      req.projectRole = "system_admin";
+      return next();
+    }
+
     logger.warn({
       userId,
       projectId,
@@ -42,6 +47,11 @@ const checkProjectAccess = asyncHandler(async (req, res, next) => {
 // Wrapper kiểm tra quyền
 const allow = (roles = []) => {
   const mw = (req, res, next) => {
+    if (req.user && req.user.is_system_admin) {
+      res.locals.roleChecked = true;
+      return next();
+    }
+
     if (!roles || roles.length === 0) {
       logger.warn({
         userId: req.user && req.user.id,

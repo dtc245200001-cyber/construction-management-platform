@@ -19,17 +19,19 @@ async function getScheduleResults(projectId, criticalOnly = null) {
         sr.total_float,
         sr.is_critical,
         sr.calculated_at,
-        t.was_critical_baseline
+        bi.planned_early_start,
+        bi.planned_early_finish,
+        bi.planned_late_start,
+        bi.planned_late_finish,
+        bi.was_critical AS was_critical_baseline,
+        (p.current_baseline_version IS NOT NULL) AS has_baseline
       FROM tasks t
-      JOIN work_items wi
-        ON wi.id = t.work_item_id
-      LEFT JOIN schedule_results sr
-        ON sr.task_id = t.id
-      LEFT JOIN baselines b
-        ON b.project_id = wi.project_id AND b.is_active = true
-      LEFT JOIN baseline_items bi
-        ON bi.baseline_id = b.id AND bi.task_id = t.id
-      WHERE wi.project_id = $1
+      JOIN work_items wi ON wi.id = t.work_item_id
+      JOIN projects p ON p.id = wi.project_id
+      LEFT JOIN schedule_results sr ON sr.task_id = t.id
+      LEFT JOIN baselines b ON b.project_id = p.id AND b.version = p.current_baseline_version
+      LEFT JOIN baseline_items bi ON bi.baseline_id = b.id AND bi.task_id = t.id
+      WHERE p.id = $1
         AND (
           $2::boolean IS NULL
           OR sr.is_critical = $2
@@ -70,17 +72,17 @@ async function getScheduleResults(projectId, criticalOnly = null) {
   }
 
   const rows = result.rows;
-  rows.summary = { currentFinish, plannedFinish, delayWorkingDays, status, hasBaseline: rows.length > 0 && rows[0].has_baseline === true, };
+  rows.summary = { currentFinish, plannedFinish, delayWorkingDays, status, hasBaseline: rows.length > 0 && rows[0].has_baseline === true };
   return rows;
 }
 
 async function getPlannedFinish(projectId) {
   const result = await db.query(
-    `SELECT MAX(sr.planned_early_finish) as max_planned 
-     FROM schedule_results sr 
-     JOIN tasks t ON t.id = sr.task_id 
-     JOIN work_items wi ON wi.id = t.work_item_id 
-     WHERE wi.project_id = $1`,
+    `SELECT MAX(bi.planned_early_finish) as max_planned 
+     FROM baseline_items bi
+     JOIN baselines b ON b.id = bi.baseline_id
+     JOIN projects p ON p.id = b.project_id AND p.current_baseline_version = b.version
+     WHERE p.id = $1`,
     [projectId]
   );
   return result.rows[0]?.max_planned || null;

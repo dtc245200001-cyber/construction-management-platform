@@ -6,7 +6,7 @@ const { checkProjectAccess, allow, createProjectRouter } = require('../middlewar
 const { ROLES } = require('../utils/constants');
 const { createEmailLog, processEmailLogs } = require('../lib/emailSender');
 const emailTemplates = require('../lib/emailTemplates');
-const { getScheduleResults } = require("../services/scheduleQuery");
+const { getScheduleResults, getPlannedFinish } = require("../services/scheduleQuery");
 const { calculateAndSaveSchedule, runScheduleJobAsync } = require("../services/scheduleCalculation");
 const { markProjectScheduleDirty } = require("../services/scheduleRecalculation");
 
@@ -367,7 +367,6 @@ router.get(
       const result = await db.query(
         `SELECT
            start_date,
-           planned_finish_date,
            (
              SELECT MAX(early_finish)
              FROM schedule_results sr
@@ -384,7 +383,8 @@ router.get(
         return res.status(404).json({ message: "Không tìm thấy dự án" });
       }
 
-      const { start_date, planned_finish_date, current_finish_date } = result.rows[0];
+      const { start_date, current_finish_date } = result.rows[0];
+      const planned_finish_date = await getPlannedFinish(projectId);
 
       return res.json({
         start_date,
@@ -393,6 +393,74 @@ router.get(
       });
     } catch (error) {
       next(error);
+    }
+  }
+);
+
+// POST /api/projects/:projectId/baselines/freeze
+/**
+ * @swagger
+ * /api/projects/{projectId}/baselines/freeze:
+ *   post:
+ *     summary: API POST /:projectId/baselines/freeze
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
+router.post(
+  "/:projectId/baselines/freeze",
+  requireAuth,
+  checkProjectAccess,
+  allow([ROLES.BAN_QUAN_LY]),
+  async (req, res, next) => {
+    const projectId = req.params.projectId;
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      
+      // Get current version
+      const projRes = await client.query("SELECT current_baseline_version FROM projects WHERE id = $1 FOR UPDATE", [projectId]);
+      if (projRes.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Không tìm thấy dự án" });
+      }
+      
+      const nextVersion = (projRes.rows[0].current_baseline_version || 0) + 1;
+      
+      // Create baseline
+      const baseRes = await client.query(
+        "INSERT INTO baselines (project_id, version, frozen_by) VALUES ($1, $2, $3) RETURNING id",
+        [projectId, nextVersion, req.session.user.id]
+      );
+      const baselineId = baseRes.rows[0].id;
+      
+      // Copy schedule_results to baseline_items
+      const copyRes = await client.query(`
+        INSERT INTO baseline_items (baseline_id, task_id, planned_early_start, planned_early_finish, planned_late_start, planned_late_finish, was_critical)
+        SELECT $1, sr.task_id, sr.early_start, sr.early_finish, sr.late_start, sr.late_finish, sr.is_critical
+        FROM schedule_results sr
+        JOIN tasks t ON sr.task_id = t.id
+        JOIN work_items wi ON t.work_item_id = wi.id
+        WHERE wi.project_id = $2
+      `, [baselineId, projectId]);
+      
+      // Update project
+      await client.query("UPDATE projects SET current_baseline_version = $1 WHERE id = $2", [nextVersion, projectId]);
+      
+      await client.query("COMMIT");
+      return res.json({ message: "Chốt kế hoạch gốc thành công", version: nextVersion, taskCount: copyRes.rowCount });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      next(error);
+    } finally {
+      client.release();
     }
   }
 );
@@ -645,6 +713,85 @@ router.post(
       return res.status(201).json({ message: "Đã thêm thành viên vào dự án" });
     } catch (error) {
       next(error);
+    }
+  }
+);
+
+// DELETE /api/projects/:projectId/members/:userId
+/**
+ * @swagger
+ * /api/projects/{projectId}/members/{userId}:
+ *   delete:
+ *     summary: API DELETE /:projectId/members/:userId
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
+router.delete(
+  "/:projectId/members/:userId",
+  requireAuth,
+  checkProjectAccess,
+  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU]),
+  createAuditMiddleware('REMOVE_PROJECT_MEMBER', 'project_members'),
+  async (req, res, next) => {
+    const { projectId, userId } = req.params;
+    const client = await db.connect();
+    
+    try {
+      await client.query("BEGIN");
+      
+      // 1. Kiểm tra thành viên cần xoá có tồn tại trong dự án không
+      const memberRes = await client.query(
+        "SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2 FOR UPDATE",
+        [projectId, userId]
+      );
+      
+      if (memberRes.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Không tìm thấy thành viên trong dự án" });
+      }
+      
+      const targetRole = memberRes.rows[0].role;
+      
+      // 2. Ràng buộc: Không được gỡ ban quản lý cuối cùng
+      if (targetRole === ROLES.BAN_QUAN_LY) {
+        const bqlCountRes = await client.query(
+          "SELECT COUNT(*) as count FROM project_members WHERE project_id = $1 AND role = $2",
+          [projectId, ROLES.BAN_QUAN_LY]
+        );
+        const bqlCount = parseInt(bqlCountRes.rows[0].count, 10);
+        
+        if (bqlCount <= 1) {
+          await client.query("ROLLBACK");
+          return res.status(409).json({ message: "Không thể gỡ, đây là Ban quản lý duy nhất còn lại của dự án" });
+        }
+      }
+      
+      // 3. Tiến hành gỡ
+      await client.query(
+        "DELETE FROM project_members WHERE project_id = $1 AND user_id = $2",
+        [projectId, userId]
+      );
+      
+      await client.query("COMMIT");
+      return res.json({ message: "Đã gỡ thành viên khỏi dự án thành công" });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      next(error);
+    } finally {
+      client.release();
     }
   }
 );
