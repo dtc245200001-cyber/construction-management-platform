@@ -84,7 +84,7 @@ describe("Task Logs & Attachments API Integration Tests (S-23 / T-52 / T-53)", (
 
     // Create Work Item & Task in Project A
     const wiA = await pool.query(
-      "INSERT INTO work_items (project_id, code, name, duration) VALUES ($1, 'WI-01', 'Hạng mục 1', 10) RETURNING id",
+      "INSERT INTO work_items (project_id, code, name) VALUES ($1, 'WI-01', 'Hạng mục 1') RETURNING id",
       [projectId]
     );
     const tA = await pool.query(
@@ -99,7 +99,7 @@ describe("Task Logs & Attachments API Integration Tests (S-23 / T-52 / T-53)", (
     );
     otherProjectId = pB.rows[0].id;
     const wiB = await pool.query(
-      "INSERT INTO work_items (project_id, code, name, duration) VALUES ($1, 'WI-B1', 'Hạng mục B', 10) RETURNING id",
+      "INSERT INTO work_items (project_id, code, name) VALUES ($1, 'WI-B1', 'Hạng mục B') RETURNING id",
       [otherProjectId]
     );
     const tB = await pool.query(
