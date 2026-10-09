@@ -130,8 +130,7 @@ function WBSPage() {
   const [selectedWorkItem, setSelectedWorkItem] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
 
-  // Giữ projectId theo phiên bản mới nhất từ main
-  const projectId = localStorage.getItem("currentProjectId") || 13;
+  const projectId = currentProject?.id || localStorage.getItem("currentProjectId") || 1;
 
   // State cho Modal Thêm / Sửa hạng mục (T-05 / T-09).
   // Công việc (task) luôn được thêm / sửa qua TaskForm dùng chung (T-12).

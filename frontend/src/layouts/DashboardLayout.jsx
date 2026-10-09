@@ -73,10 +73,19 @@ export default function DashboardLayout({ user, setUser }) {
 
   React.useEffect(() => {
     // Fetch all projects for the switcher
-    api.get('/projects').then(res => setProjects(res.data.projects || [])).catch(console.error);
+    api.get('/projects').then(res => {
+      const projs = res.data.projects || [];
+      setProjects(projs);
+      const stored = localStorage.getItem('currentProjectId');
+      if (!stored && projs.length > 0) {
+        localStorage.setItem('currentProjectId', projs[0].id);
+        setCurrentProject(projs[0]);
+      }
+    }).catch(console.error);
 
-    if (currentProjectId) {
-      api.get(`/projects/${currentProjectId}`)
+    const activeProjectId = localStorage.getItem('currentProjectId') || currentProjectId;
+    if (activeProjectId) {
+      api.get(`/projects/${activeProjectId}`)
         .then(res => setCurrentProject(res.data.project))
         .catch(err => console.error(err));
     }
