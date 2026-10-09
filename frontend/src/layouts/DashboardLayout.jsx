@@ -300,7 +300,7 @@ export default function DashboardLayout({ user, setUser }) {
               </div>
               <div className="hidden sm:block text-left">
                 <p className="text-sm font-semibold">{user?.name || 'Hương Lan'}</p>
-                <p className="text-xs text-muted-foreground">{user?.role === 'ban_quan_ly' ? 'Ban quản lý' : user?.role === 'chi_huy_truong' ? 'Chỉ huy trưởng' : user?.role === 'doi_truong' ? 'Đội trưởng' : user?.role || 'Ban quản lý'}</p>
+                <p className="text-xs text-muted-foreground">{user?.role === 'ban_quan_ly' ? 'Ban quản lý' : user?.role === 'chi_huy_truong' ? 'Chỉ huy trưởng' : user?.role === 'doi_truong' ? 'Đội trưởng' : user?.role === 'ky_su_giam_sat' ? 'Kỹ sư giám sát' : user?.role === 'chu_dau_tu' ? 'Chủ đầu tư' : user?.role === 'ke_toan' ? 'Kế toán' : user?.role || 'Ban quản lý'}</p>
               </div>
               <ChevronDown className="size-4 text-muted-foreground" />
             </button>
