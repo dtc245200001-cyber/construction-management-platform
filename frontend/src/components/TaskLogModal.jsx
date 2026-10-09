@@ -11,6 +11,9 @@ import {
   Clock,
   Loader2,
   FileText,
+  ChevronLeft,
+  ChevronRight,
+  ZoomIn,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import {
@@ -21,8 +24,9 @@ import {
 } from "../utils/imageCompressor";
 
 /**
- * TaskLogModal (S-23 / T-53)
- * Modal ghi nhật ký & đính kèm nhiều ảnh nén phía client trước khi upload qua API T52.
+ * TaskLogModal (S-23 / T-53 / T-54)
+ * Modal ghi nhật ký & đính kèm nhiều ảnh nén phía client (T53).
+ * Hỗ trợ tải trước tối đa 10 thumbnail, lazy-load các ảnh tiếp theo và xem ảnh gốc theo yêu cầu (T54).
  */
 export default function TaskLogModal({
   projectId,
@@ -45,6 +49,10 @@ export default function TaskLogModal({
   const [compressing, setCompressing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [viewingImageIndex, setViewingImageIndex] = useState(null);
+
+  const allAttachments = logs.flatMap((l) => l.attachments || []);
+  let globalAttachmentCounter = 0;
 
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
@@ -160,6 +168,29 @@ export default function TaskLogModal({
     });
   };
 
+  // Helper chuẩn hóa đường dẫn ảnh đính kèm
+  const getAttachmentUrl = (url) => {
+    if (!url) return "";
+    if (
+      url.startsWith("http://") ||
+      url.startsWith("https://") ||
+      url.startsWith("blob:") ||
+      url.startsWith("data:")
+    ) {
+      return url;
+    }
+    const baseUrl = api.defaults?.baseURL || "";
+    if (baseUrl && baseUrl.startsWith("http")) {
+      try {
+        const origin = new URL(baseUrl).origin;
+        return `${origin}${url.startsWith("/") ? "" : "/"}${url}`;
+      } catch {
+        return url;
+      }
+    }
+    return url;
+  };
+
   // Gửi nhật ký kèm ảnh đã nén lên API T52
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
@@ -167,7 +198,10 @@ export default function TaskLogModal({
 
     // Lọc các ảnh hợp lệ đã nén thành công và < 1.048.576 byte (AC2)
     const validImagesToUpload = selectedImages.filter(
-      (img) => img.status === "ready" && img.file && isUnderSizeLimit(img.file)
+      (img) =>
+        (img.status === "ready" || img.status === "upload_failed") &&
+        img.file &&
+        isUnderSizeLimit(img.file)
     );
 
     const hasFailedImages = selectedImages.some(
@@ -247,13 +281,13 @@ export default function TaskLogModal({
         err.message ||
         "Lỗi mạng khi tải ảnh lên. Dữ liệu và ảnh đã được giữ lại để thử lại.";
       setSubmitError(errMsg);
-      // Đánh dấu ảnh lỗi upload để có nút thử lại
+      // Đánh dấu ảnh upload_failed để có thể bấm Thử lại mà không làm mất file
       setSelectedImages((prev) =>
-        prev.map((img) => ({
-          ...img,
-          status: "error",
-          error: errMsg,
-        }))
+        prev.map((img) =>
+          img.file && isUnderSizeLimit(img.file)
+            ? { ...img, status: "upload_failed", error: errMsg }
+            : img
+        )
       );
     } finally {
       setSubmitting(false);
@@ -417,6 +451,14 @@ export default function TaskLogModal({
                             )}
                           </div>
                         )}
+                        {img.status === "upload_failed" && (
+                          <div
+                            className="text-amber-600 font-semibold mt-0.5 text-[10px] truncate"
+                            title={img.error || "Tải lên chưa thành công"}
+                          >
+                            {img.error || "Chưa tải lên được"}
+                          </div>
+                        )}
                         {img.status === "error" && (
                           <div
                             className="text-red-500 font-semibold mt-0.5 text-[10px] truncate"
@@ -505,9 +547,19 @@ export default function TaskLogModal({
                 <span className="text-xs">Đang tải nhật ký...</span>
               </div>
             ) : error ? (
-              <div className="p-4 bg-red-50 text-red-600 rounded-xl text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" />
-                <span>{error}</span>
+              <div className="p-4 bg-red-50 text-red-600 rounded-xl text-xs flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{error}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={fetchLogs}
+                  className="px-2.5 py-1 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Tải lại
+                </button>
               </div>
             ) : logs.length === 0 ? (
               <div className="py-10 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-slate-400 gap-2 bg-slate-50/50">
@@ -560,7 +612,7 @@ export default function TaskLogModal({
                         </p>
                       )}
 
-                      {/* Attachments */}
+                      {/* Attachments (T54 / AC1 & AC2) */}
                       {log.attachments && log.attachments.length > 0 && (
                         <div className="pt-1">
                           <div className="text-xs font-semibold text-slate-500 mb-2 flex items-center gap-1">
@@ -570,21 +622,25 @@ export default function TaskLogModal({
                             </span>
                           </div>
                           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
-                            {log.attachments.map((att) => (
-                              <div
-                                key={att.id}
-                                className="group relative aspect-square bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-sm"
-                              >
-                                <img
-                                  src={att.url}
-                                  alt={att.file_name}
-                                  className="w-full h-full object-cover"
+                            {log.attachments.map((att) => {
+                              const currentGlobalIndex = globalAttachmentCounter++;
+                              return (
+                                <AttachmentThumbnail
+                                  key={att.id}
+                                  attachment={att}
+                                  globalIndex={currentGlobalIndex}
+                                  onView={(selectedAtt) => {
+                                    const foundIdx = allAttachments.findIndex(
+                                      (a) => a.id === selectedAtt.id
+                                    );
+                                    setViewingImageIndex(
+                                      foundIdx >= 0 ? foundIdx : 0
+                                    );
+                                  }}
+                                  getAttachmentUrl={getAttachmentUrl}
                                 />
-                                <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent p-1.5 text-[10px] text-white truncate">
-                                  {att.file_name}
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -607,6 +663,311 @@ export default function TaskLogModal({
           >
             Đóng
           </button>
+        </div>
+      </div>
+
+      {/* Full-size Image Viewer (T54 / AC2) */}
+      {viewingImageIndex !== null && (
+        <ImageViewerModal
+          images={allAttachments}
+          currentIndex={viewingImageIndex}
+          onClose={() => setViewingImageIndex(null)}
+          onSelectIndex={(idx) => setViewingImageIndex(idx)}
+          getAttachmentUrl={getAttachmentUrl}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * AttachmentThumbnail (T54 / AC1)
+ * Hiển thị thumbnail với ưu tiên tải trước cho 10 ảnh đầu tiên,
+ * lazy-loading cho các ảnh còn lại, có placeholder và nút thử lại khi lỗi.
+ */
+export function AttachmentThumbnail({
+  attachment,
+  globalIndex = 0,
+  onView,
+  getAttachmentUrl,
+}) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+
+  const isPriority = globalIndex < 10;
+  const rawUrl = getAttachmentUrl ? getAttachmentUrl(attachment.url) : attachment.url;
+  const imageUrl =
+    retryCount > 0
+      ? `${rawUrl}${rawUrl.includes("?") ? "&" : "?"}retry=${retryCount}`
+      : rawUrl;
+
+  const handleRetry = (e) => {
+    e.stopPropagation();
+    setError(false);
+    setLoading(true);
+    setRetryCount((prev) => prev + 1);
+  };
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onView && onView(attachment, globalIndex)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          if (onView) onView(attachment, globalIndex);
+        }
+      }}
+      className="group relative aspect-square bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all cursor-pointer"
+      title={`Bấm để xem ảnh gốc: ${attachment.file_name}`}
+      data-testid={`thumbnail-item-${attachment.id}`}
+    >
+      {/* Loading Skeleton */}
+      {loading && !error && (
+        <div
+          data-testid="thumbnail-loading"
+          className="absolute inset-0 bg-slate-200 animate-pulse flex items-center justify-center text-slate-400 z-10"
+        >
+          <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+        </div>
+      )}
+
+      {/* Error State */}
+      {error ? (
+        <div
+          data-testid="thumbnail-error"
+          className="absolute inset-0 bg-red-50 text-red-600 flex flex-col items-center justify-center p-2 text-center z-10"
+        >
+          <AlertTriangle className="w-5 h-5 mb-1 text-red-500" />
+          <span className="text-[10px] font-semibold mb-1 truncate max-w-full">
+            Lỗi tải ảnh
+          </span>
+          <button
+            type="button"
+            data-testid="thumbnail-retry-btn"
+            onClick={handleRetry}
+            className="px-2 py-0.5 bg-white border border-red-200 text-red-700 text-[10px] font-medium rounded hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+          >
+            <RefreshCw className="w-2.5 h-2.5" />
+            Thử lại
+          </button>
+        </div>
+      ) : (
+        <img
+          src={imageUrl}
+          alt={attachment.file_name}
+          loading={isPriority ? "eager" : "lazy"}
+          fetchPriority={isPriority ? "high" : "auto"}
+          data-priority={isPriority ? "true" : "false"}
+          onLoad={() => setLoading(false)}
+          onError={() => {
+            setLoading(false);
+            setError(true);
+          }}
+          className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 ${
+            loading ? "opacity-0" : "opacity-100"
+          }`}
+        />
+      )}
+
+      {/* Zoom overlay on hover */}
+      {!error && !loading && (
+        <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+          <div className="p-2 bg-white/90 backdrop-blur-sm rounded-full text-slate-800 shadow-md">
+            <ZoomIn className="w-4 h-4" />
+          </div>
+        </div>
+      )}
+
+      {/* Caption bar */}
+      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-1.5 text-[10px] text-white flex items-center justify-between pointer-events-none">
+        <span className="truncate max-w-[70%]" title={attachment.file_name}>
+          {attachment.file_name}
+        </span>
+        {attachment.file_size && (
+          <span className="text-[9px] text-slate-300 font-mono">
+            {formatFileSize(attachment.file_size)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * ImageViewerModal (T54 / AC2)
+ * Trình xem ảnh gốc chất lượng cao chỉ tải theo yêu cầu khi người dùng click vào thumbnail.
+ */
+export function ImageViewerModal({
+  images = [],
+  currentIndex = 0,
+  onClose,
+  onSelectIndex,
+  getAttachmentUrl,
+}) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+
+  const currentImage = images[currentIndex];
+
+  useEffect(() => {
+    setLoading(true);
+    setError(false);
+    setRetryCount(0);
+  }, [currentIndex]);
+
+  // Phím tắt bàn phím: Escape để đóng, Trái/Phải để chuyển ảnh
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        if (onClose) onClose();
+      } else if (e.key === "ArrowLeft" && currentIndex > 0) {
+        if (onSelectIndex) onSelectIndex(currentIndex - 1);
+      } else if (e.key === "ArrowRight" && currentIndex < images.length - 1) {
+        if (onSelectIndex) onSelectIndex(currentIndex + 1);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentIndex, images.length, onClose, onSelectIndex]);
+
+  if (!currentImage) return null;
+
+  const rawUrl = getAttachmentUrl ? getAttachmentUrl(currentImage.url) : currentImage.url;
+  const fullImageUrl =
+    retryCount > 0
+      ? `${rawUrl}${rawUrl.includes("?") ? "&" : "?"}retry=${retryCount}`
+      : rawUrl;
+
+  const handleRetry = () => {
+    setError(false);
+    setLoading(true);
+    setRetryCount((prev) => prev + 1);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-2 sm:p-6 animate-in fade-in duration-200"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Xem ảnh: ${currentImage.file_name}`}
+      data-testid="image-viewer-modal"
+    >
+      <div
+        className="relative w-full max-w-5xl max-h-[95vh] flex flex-col items-center justify-center"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Top bar controls */}
+        <div className="w-full flex items-center justify-between text-white pb-3 px-2">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold truncate max-w-xs sm:max-w-md">
+              {currentImage.file_name}
+            </span>
+            {currentImage.file_size && (
+              <span className="text-xs text-slate-400 font-mono bg-white/10 px-2 py-0.5 rounded">
+                {formatFileSize(currentImage.file_size)}
+              </span>
+            )}
+            <span className="text-xs text-slate-400">
+              ({currentIndex + 1} / {images.length})
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-full transition-colors cursor-pointer"
+              title="Đóng (Esc)"
+              aria-label="Đóng xem ảnh"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+
+        {/* Main Image Stage */}
+        <div className="relative w-full flex items-center justify-center min-h-[300px] max-h-[80vh] overflow-hidden rounded-2xl bg-black/50 border border-white/10">
+          {/* Loading Indicator */}
+          {loading && !error && (
+            <div
+              data-testid="full-image-loading"
+              className="absolute inset-0 flex flex-col items-center justify-center text-white/80 gap-3 z-10"
+            >
+              <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+              <span className="text-xs font-medium">Đang tải ảnh gốc...</span>
+            </div>
+          )}
+
+          {/* Error State */}
+          {error ? (
+            <div
+              data-testid="full-image-error"
+              className="flex flex-col items-center justify-center text-white p-6 text-center gap-3 z-10"
+            >
+              <AlertTriangle className="w-10 h-10 text-red-400" />
+              <p className="text-sm font-semibold text-red-300">
+                Không thể tải ảnh gốc
+              </p>
+              <p className="text-xs text-slate-400">
+                Vui lòng kiểm tra lại kết nối mạng hoặc thử lại.
+              </p>
+              <button
+                type="button"
+                onClick={handleRetry}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl flex items-center gap-2 transition-colors cursor-pointer shadow"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Thử lại tải ảnh
+              </button>
+            </div>
+          ) : (
+            <img
+              src={fullImageUrl}
+              alt={currentImage.file_name}
+              data-testid="full-size-image"
+              onLoad={() => setLoading(false)}
+              onError={() => {
+                setLoading(false);
+                setError(true);
+              }}
+              className={`max-h-[80vh] max-w-full object-contain transition-opacity duration-300 ${
+                loading ? "opacity-0" : "opacity-100"
+              }`}
+            />
+          )}
+
+          {/* Navigation Prev/Next buttons */}
+          {images.length > 1 && (
+            <>
+              {currentIndex > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onSelectIndex && onSelectIndex(currentIndex - 1)}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 p-2.5 bg-black/60 hover:bg-black/80 text-white rounded-full transition-all backdrop-blur-sm z-20 cursor-pointer shadow-lg"
+                  title="Ảnh trước (Mũi tên trái)"
+                  aria-label="Ảnh trước"
+                >
+                  <ChevronLeft className="w-6 h-6" />
+                </button>
+              )}
+              {currentIndex < images.length - 1 && (
+                <button
+                  type="button"
+                  onClick={() => onSelectIndex && onSelectIndex(currentIndex + 1)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 bg-black/60 hover:bg-black/80 text-white rounded-full transition-all backdrop-blur-sm z-20 cursor-pointer shadow-lg"
+                  title="Ảnh tiếp theo (Mũi tên phải)"
+                  aria-label="Ảnh tiếp theo"
+                >
+                  <ChevronRight className="w-6 h-6" />
+                </button>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>
