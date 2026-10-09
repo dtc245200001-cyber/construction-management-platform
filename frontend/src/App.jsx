@@ -207,10 +207,10 @@ function App() {
           />
 
           {/* S-26 / T-59 / T-60 */}
-          <Route
-            path="/field"
-            element={<FieldPage />}
-          />
+<Route
+  path="/field"
+  element={<FieldPage user={user} />}
+/>
 
           <Route
             path="/diary"
