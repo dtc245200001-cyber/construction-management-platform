@@ -46,6 +46,9 @@ describe('DiaryPage', () => {
       if (url.includes('/diary-entries')) {
         return Promise.resolve({ data: mockEntries });
       }
+      if (url.includes('/diary-locks/')) {
+        return Promise.resolve({ data: { is_locked: false } });
+      }
       return Promise.reject(new Error('not mocked'));
     });
     
