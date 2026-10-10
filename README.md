@@ -53,6 +53,13 @@ Toàn bộ các cấu hình được quản lý qua biến môi trường. Vui l
   docker compose up -d
   ```
 - **Port Conflict (Cổng đã được sử dụng):** Nếu cổng 5432, 3000 hoặc 5173 đã bị chiếm dụng, hãy tắt các dịch vụ đang chạy cổng này hoặc đổi port trong file `.env` và `docker-compose.yml`.
+- **Login hoạt động trên online nhưng không hoạt động trên localhost:** Đây thường là lỗi cookie/session cross-site. Khi frontend chạy ở localhost nhưng backend đang ở domain khác, browser sẽ chặn cookie nếu `SameSite`/`Secure` không phù hợp. Cần thêm domain của frontend vào `CORS_ORIGINS` và thiết lập:
+  ```bash
+  CORS_ORIGINS=http://localhost:5173,https://your-online-domain.com
+  COOKIE_SAMESITE=none
+  COOKIE_SECURE=true
+  ```
+  Nếu chạy local hoàn toàn trên localhost, giữ `COOKIE_SAMESITE=lax` và `COOKIE_SECURE=false`.
 
 ## 4. Triển khai (Deployment)
 
