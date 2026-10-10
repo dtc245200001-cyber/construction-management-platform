@@ -118,6 +118,7 @@ app.use(pinoHttp);
 
 // Session
 const sameSite = process.env.COOKIE_SAMESITE || (isProd ? "none" : "lax");
+const cookieSecure = process.env.COOKIE_SECURE === "true" || isProd;
 app.use(
   session({
     name: "cmp.sid",
@@ -132,7 +133,7 @@ app.use(
     }),
     cookie: {
       httpOnly: true,
-      secure: isProd,
+      secure: cookieSecure,
       sameSite,
       maxAge: 12 * 60 * 60 * 1000, // 12 giá»
     },
