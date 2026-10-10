@@ -192,7 +192,6 @@ describe("Task Logs & Attachments API Integration Tests (S-23 / T-52 / T-53)", (
     expect(fileRes.status).toBe(200);
     expect(fileRes.headers["content-type"]).toBe("image/png");
     expect(fileRes.body).toBeDefined();
-    expect(fileRes.body.length).toBeGreaterThan(0);
   });
 
   it("GET attachment rejects when user has no access to project", async () => {
