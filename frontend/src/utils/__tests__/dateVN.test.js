@@ -6,6 +6,7 @@ import {
   weekDays,
   formatDayVN,
   formatShortDayVN,
+  formatDateVN,
 } from '../dateVN';
 
 // S-22 / T-51 — Tests cho helper ngày giờ Việt Nam dùng ở dải tuần.
@@ -70,6 +71,22 @@ describe('dateVN (S-22 / T-51)', () => {
       const s = formatDayVN('2026-10-09');
       expect(s).toContain('09/10/2026');
       expect(s).toMatch(/Thứ/);
+    });
+  });
+
+  // S-25 — hiển thị khoảng chồng lịch, không qua Date nên không lệch múi giờ
+  describe('formatDateVN', () => {
+    it('đổi YYYY-MM-DD sang DD/MM/YYYY', () => {
+      expect(formatDateVN('2026-10-15')).toBe('15/10/2026');
+    });
+
+    it('bỏ phần giờ phía sau', () => {
+      expect(formatDateVN('2026-10-15T00:00:00.000Z')).toBe('15/10/2026');
+    });
+
+    it('rỗng → chuỗi rỗng, sai định dạng → giữ nguyên', () => {
+      expect(formatDateVN(null)).toBe('');
+      expect(formatDateVN('abc')).toBe('abc');
     });
   });
 });

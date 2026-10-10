@@ -67,6 +67,19 @@ export function formatDayVN(iso) {
 }
 
 /**
+ * Định dạng ngày DD/MM/YYYY từ chuỗi YYYY-MM-DD, không qua Date nên
+ * không lệch theo múi giờ thiết bị. Ví dụ: "2026-10-15" → "15/10/2026".
+ * @param {string} iso - YYYY-MM-DD (phần thừa phía sau bị bỏ qua)
+ * @returns {string} chuỗi gốc nếu không đúng định dạng, "" nếu rỗng
+ */
+export function formatDateVN(iso) {
+  if (!iso) return "";
+  const match = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return String(iso);
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
+/**
  * Định dạng ngắn: "T2 09/10"
  * @param {string} iso - YYYY-MM-DD
  * @returns {string}
