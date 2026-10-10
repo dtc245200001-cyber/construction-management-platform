@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useOutletContext } from "react-router-dom";
+import * as XLSX from "xlsx";
 import api from "../lib/api";
 import TaskForm from "../components/TaskForm";
 import { format, parseISO } from "date-fns";
@@ -144,6 +145,11 @@ function WBSPage() {
   });
 
   const [modalLoading, setModalLoading] = useState(false);
+
+  // Nhập / Xuất Excel (khối "Thao tác nhanh")
+  const fileInputRef = useRef(null);
+  const [importPreview, setImportPreview] = useState(null); // { rows, skipped, fileName }
+  const [importLoading, setImportLoading] = useState(false);
 
   // NFR T-12: Kiểm tra hạng mục lá (không có work_item con nào)
   const isLeafCategory = (node) => {
@@ -380,6 +386,273 @@ const closeTaskForm = () => {
   };
 
   const renderDate = (date) => date ? format(parseISO(date), 'dd/MM/yyyy') : '--';
+
+  // ─── Xuất báo cáo WBS ra Excel (.xlsx) ──────────────────────────────────
+  // Dùng dữ liệu đã có trên trang (rolledItems), không gọi API thêm.
+  // Cột: STT, Tên, Loại, Ngày bắt đầu, Số ngày, Ràng buộc — khớp bảng đang hiển thị.
+  const handleExportExcel = () => {
+    const rows = [];
+
+    const walk = (nodes, indexStr) => {
+      nodes.forEach((node, i) => {
+        const idx = indexStr ? `${indexStr}.${i + 1}` : `${i + 1}`;
+        const isCategory = node.type === "category";
+        const constraint = !isCategory && node.predecessors?.length
+          ? node.predecessors
+              .map((p) => `${taskIdToIndexMap[p.id] || p.id}${p.type !== "FS" ? p.type : ""}`)
+              .join(", ")
+          : "";
+
+        rows.push({
+          "STT": idx,
+          "Tên": node.name,
+          "Loại": isCategory ? "Hạng mục" : "Công việc",
+          "Ngày bắt đầu": isCategory ? renderDate(node.start_date) : renderDate(node.start_date),
+          "Số ngày": isCategory ? "" : (node.duration_days ?? ""),
+          "Ràng buộc": constraint,
+        });
+
+        if (node.children?.length) walk(node.children, idx);
+      });
+    };
+
+    walk(rolledItems, "");
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = [{ wch: 10 }, { wch: 40 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 16 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "WBS");
+
+    const projectLabel = (currentProject?.name || "du-an").replace(/[^\p{L}\p{N}_-]+/gu, "_");
+    const dateLabel = format(new Date(), "yyyyMMdd-HHmm");
+    XLSX.writeFile(wb, `WBS_${projectLabel}_${dateLabel}.xlsx`);
+  };
+
+  // ─── Nhập Excel: đọc file, dựng lại cây theo đúng cấu trúc file Xuất báo cáo ──
+  // File nhập có cùng cột với file xuất (STT, Tên, Loại, Ngày bắt đầu, Số ngày, Ràng buộc).
+  // Cây cha-con được dựng lại từ STT dạng "1", "1.1", "1.1.2"... (độ sâu = số dấu chấm).
+  // Ràng buộc chỉ áp dụng giữa các công việc NẰM TRONG CHÍNH FILE này (tham chiếu ra
+  // ngoài file bị bỏ qua, vì STT đó không tồn tại trong lần nhập này).
+  // Ngày bắt đầu trong file KHÔNG được dùng lại — hệ thống luôn tự tính lại theo lịch CPM
+  // của dự án đích sau khi tạo xong tất cả công việc.
+  const parseSttDepth = (sttRaw) => {
+    const stt = String(sttRaw ?? "").trim();
+    if (!stt) return null;
+    return stt.split(".").length;
+  };
+
+  const handleImportFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // cho phép chọn lại cùng file lần sau
+    if (!file) return;
+
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const raw = XLSX.utils.sheet_to_json(ws, { defval: "" });
+
+      const existingCategoryNames = new Set();
+      const collectNames = (nodes) => nodes.forEach((n) => {
+        if (n.type === "category") existingCategoryNames.add(normalize(n.name));
+        collectNames(n.children || []);
+      });
+      collectNames(rolledItems);
+
+      const nodes = []; // { stt, depth, name, type, code, durationDays, constraintRaw, rowNum }
+      const skipped = [];
+
+      raw.forEach((r, i) => {
+        const rowNum = i + 2; // dòng Excel thực tế (có header ở dòng 1)
+        const name = String(r["Tên"] ?? r["Ten"] ?? r["name"] ?? "").trim();
+        const typeRaw = String(r["Loại"] ?? r["Loai"] ?? r["type"] ?? "").trim().toLowerCase();
+        const isTask = typeRaw.includes("công việc") || typeRaw.includes("cong viec") || typeRaw === "task";
+        const sttRaw = r["STT"] ?? r["stt"] ?? "";
+        const depth = parseSttDepth(sttRaw);
+
+        if (!name) {
+          skipped.push({ row: rowNum, reason: "Thiếu tên" });
+          return;
+        }
+        if (name.length > 255) {
+          skipped.push({ row: rowNum, reason: "Tên vượt quá 255 ký tự" });
+          return;
+        }
+        if (!depth) {
+          skipped.push({ row: rowNum, reason: "Thiếu cột STT nên không xác định được vị trí trong cây" });
+          return;
+        }
+
+        let durationDays = null;
+        if (isTask) {
+          durationDays = parseInt(r["Số ngày"] ?? r["So ngay"] ?? r["duration_days"], 10);
+          if (!Number.isInteger(durationDays) || durationDays <= 0) {
+            skipped.push({ row: rowNum, reason: "Công việc thiếu 'Số ngày' hợp lệ (số nguyên dương)" });
+            return;
+          }
+        }
+
+        nodes.push({
+          stt: String(sttRaw).trim(),
+          depth,
+          name,
+          type: isTask ? "task" : "category",
+          code: String(r["Mã"] ?? r["code"] ?? "").trim(),
+          durationDays,
+          constraintRaw: String(r["Ràng buộc"] ?? r["Rang buoc"] ?? "").trim(),
+          rowNum,
+        });
+      });
+
+      // Dựng quan hệ cha-con dựa trên STT: cha của 1 dòng là dòng gần nhất phía TRÊN có depth = depth-1.
+      // Dùng ngăn xếp theo depth để quét một lượt (giả định file đã liệt kê đúng thứ tự cây, giống hệt lúc xuất).
+      const stack = []; // [{ depth, node }]
+      const rootNames = new Set();
+
+      for (const node of nodes) {
+        while (stack.length && stack[stack.length - 1].depth >= node.depth) stack.pop();
+        const parent = stack[stack.length - 1]?.node || null;
+
+        node.parent = parent;
+        node.children = [];
+        node.skip = false;
+        if (parent) parent.children.push(node);
+        // Node vẫn được push vào stack dù bị đánh dấu skip, để các dòng con cháu phía dưới
+        // (depth lớn hơn) tiếp tục bám đúng theo cấu trúc STT của file, không bị lệch cha.
+        stack.push({ depth: node.depth, node });
+
+        if (node.type === "task" && (!parent || parent.type !== "category")) {
+          skipped.push({ row: node.rowNum, reason: `Công việc "${node.name}" không nằm trong hạng mục nào (sai cấu trúc STT)` });
+          node.skip = true;
+          continue;
+        }
+        if (node.type === "category" && parent === null) {
+          const key = normalize(node.name);
+          if (existingCategoryNames.has(key) || rootNames.has(key)) {
+            skipped.push({ row: node.rowNum, reason: `Hạng mục gốc "${node.name}" đã tồn tại` });
+            node.skip = true;
+            continue;
+          }
+          rootNames.add(key);
+        }
+      }
+
+      // NFR T-12: hạng mục có work_item con thì không được chứa công việc trực tiếp.
+      // Nếu 1 hạng mục trong file vừa có hạng mục con vừa có công việc con -> bỏ qua các công việc đó
+      // (giữ lại các hạng mục con, vì chúng vẫn hợp lệ). Node cha bị skip (ví dụ hạng mục gốc trùng
+      // tên) thì toàn bộ con cháu cũng bị bỏ qua, vì không còn work_item cha hợp lệ để gắn vào.
+      const flatValid = [];
+      const collectValid = (list, ancestorSkipped) => {
+        for (const n of list) {
+          const effectiveSkip = n.skip || ancestorSkipped;
+          if (effectiveSkip) {
+            if (ancestorSkipped && !n.skip) {
+              skipped.push({ row: n.rowNum, reason: `Bỏ qua vì hạng mục cha không được tạo` });
+            }
+            collectValid(n.children, true);
+            continue;
+          }
+          if (n.type === "task" && n.parent.children.some((c) => c.type === "category")) {
+            skipped.push({ row: n.rowNum, reason: `Công việc "${n.name}" cùng cấp với hạng mục con khác, không thể tạo trực tiếp` });
+            collectValid(n.children, true);
+            continue;
+          }
+          flatValid.push(n);
+          collectValid(n.children, false);
+        }
+      };
+      collectValid(nodes.filter((n) => !n.parent), false);
+
+      setImportPreview({ rows: flatValid, skipped, fileName: file.name });
+    } catch (err) {
+      alert("Không đọc được file Excel: " + (err.message || "Định dạng không hợp lệ"));
+    }
+  };
+
+  const handleImportConfirm = async () => {
+    if (!importPreview?.rows?.length) return;
+    setImportLoading(true);
+
+    const sttToTaskId = new Map(); // STT trong file -> task_id thật vừa tạo (để nối ràng buộc)
+    const failed = [];
+    let categoryCount = 0;
+    let taskCount = 0;
+
+    // 1) Tạo hạng mục trước (cha trước con, vì file đã liệt kê theo đúng thứ tự cây lúc xuất).
+    for (const node of importPreview.rows) {
+      if (node.type !== "category") continue;
+      try {
+        const res = await api.post(`/categories/${projectId}`, {
+          name: node.name,
+          code: node.code || undefined,
+          parent_id: node.parent?.realId ?? null,
+        });
+        node.realId = res.data.id;
+        categoryCount++;
+      } catch (err) {
+        failed.push(`[Hạng mục] ${node.name}: ${err.response?.data?.message || err.message}`);
+      }
+    }
+
+    // 2) Tạo công việc (cần work_item_id của hạng mục lá vừa tạo ở bước 1).
+    for (const node of importPreview.rows) {
+      if (node.type !== "task") continue;
+      const workItemId = node.parent?.realId;
+      if (!workItemId) {
+        failed.push(`[Công việc] ${node.name}: hạng mục cha chưa được tạo thành công`);
+        continue;
+      }
+      try {
+        const res = await api.post(`/projects/${projectId}/tasks`, {
+          work_item_id: workItemId,
+          name: node.name,
+          duration_days: node.durationDays,
+        });
+        node.realId = res.data.id;
+        sttToTaskId.set(node.stt, res.data.id);
+        taskCount++;
+      } catch (err) {
+        failed.push(`[Công việc] ${node.name}: ${err.response?.data?.message || err.message}`);
+      }
+    }
+
+    // 3) Tạo lại ràng buộc GIỮA CÁC CÔNG VIỆC TRONG CHÍNH FILE NÀY (bỏ qua tham chiếu ra ngoài file).
+    let dependencyCount = 0;
+    for (const node of importPreview.rows) {
+      if (node.type !== "task" || !node.realId || !node.constraintRaw) continue;
+
+      for (const part of node.constraintRaw.split(",").map((s) => s.trim()).filter(Boolean)) {
+        const m = part.match(/^([\d.]+)\s*(FS|SS|FF|SF)?$/i);
+        if (!m) continue;
+        const predecessorStt = m[1];
+        const dependencyType = (m[2] || "FS").toUpperCase();
+        const predecessorId = sttToTaskId.get(predecessorStt);
+        if (!predecessorId) continue; // tham chiếu ra ngoài file nhập này -> bỏ qua
+
+        try {
+          await api.post(`/projects/${projectId}/dependencies`, {
+            predecessor_id: predecessorId,
+            successor_id: node.realId,
+            dependency_type: dependencyType,
+          });
+          dependencyCount++;
+        } catch (err) {
+          failed.push(`[Ràng buộc] ${predecessorStt} → ${node.name}: ${err.response?.data?.message || err.message}`);
+        }
+      }
+    }
+
+    setImportLoading(false);
+    setImportPreview(null);
+    await fetchWBS();
+
+    const summary = `Đã nhập ${categoryCount} hạng mục, ${taskCount} công việc, ${dependencyCount} ràng buộc.`;
+    if (failed.length) {
+      alert(`${summary}\nLỗi:\n` + failed.join("\n"));
+    } else {
+      alert(summary);
+    }
+  };
 
   const renderRow = (node, level, indexStr, colorIndex = 0) => {
     const isExpanded = search.trim() ? true : expanded.has(node.id);
@@ -719,25 +992,46 @@ const visibleItems = useMemo(() => {
           <div className="bg-white rounded-2xl border border-[#E6EBF3] p-5 shadow-[0_1px_2px_rgba(16,24,40,.04),0_4px_12px_rgba(16,24,40,.04)]">
             <h3 className="font-bold text-[#0F1B3D] mb-4">Thao tác nhanh</h3>
             <div className="grid grid-cols-2 gap-3">
-              <div 
+              <button
+                type="button"
                 onClick={openAddRootModal}
                 className="bg-[#F4F7FC] p-3 rounded-xl flex flex-col items-center justify-center gap-2 hover:-translate-y-0.5 hover:border-[#1F63E0] border border-transparent transition-all cursor-pointer"
               >
                 <div className="size-10 bg-white rounded-full flex items-center justify-center text-[#1F63E0] shadow-sm"><Plus className="size-5" /></div>
                 <span className="text-[12px] font-medium text-[#0F1B3D]">Thêm hạng mục</span>
-              </div>
-              <div className="bg-[#F4F7FC] p-3 rounded-xl flex flex-col items-center justify-center gap-2 hover:-translate-y-0.5 hover:border-[#16A34A] border border-transparent transition-all cursor-pointer">
+              </button>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="bg-[#F4F7FC] p-3 rounded-xl flex flex-col items-center justify-center gap-2 hover:-translate-y-0.5 hover:border-[#16A34A] border border-transparent transition-all cursor-pointer"
+              >
                 <div className="size-10 bg-white rounded-full flex items-center justify-center text-[#16A34A] shadow-sm"><FileSpreadsheet className="size-5" /></div>
                 <span className="text-[12px] font-medium text-[#0F1B3D]">Nhập Excel</span>
-              </div>
-              <div className="bg-[#F4F7FC] p-3 rounded-xl flex flex-col items-center justify-center gap-2 hover:-translate-y-0.5 hover:border-[#8B5CF6] border border-transparent transition-all cursor-pointer">
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={handleImportFileChange}
+              />
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                className="bg-[#F4F7FC] p-3 rounded-xl flex flex-col items-center justify-center gap-2 hover:-translate-y-0.5 hover:border-[#8B5CF6] border border-transparent transition-all cursor-pointer"
+              >
                 <div className="size-10 bg-white rounded-full flex items-center justify-center text-[#8B5CF6] shadow-sm"><Download className="size-5" /></div>
                 <span className="text-[12px] font-medium text-[#0F1B3D]">Xuất báo cáo</span>
-              </div>
-              <div className="bg-[#F4F7FC] p-3 rounded-xl flex flex-col items-center justify-center gap-2 hover:-translate-y-0.5 hover:border-[#1F63E0] border border-transparent transition-all cursor-pointer">
+              </button>
+              <button
+                type="button"
+                disabled
+                title="Sơ đồ WBS dạng cây/sơ đồ chưa có trong hệ thống — sẽ bổ sung sau"
+                className="bg-[#F4F7FC] p-3 rounded-xl flex flex-col items-center justify-center gap-2 border border-transparent opacity-50 cursor-not-allowed"
+              >
                 <div className="size-10 bg-white rounded-full flex items-center justify-center text-[#1F63E0] shadow-sm"><Network className="size-5" /></div>
                 <span className="text-[12px] font-medium text-[#0F1B3D]">Sơ đồ WBS</span>
-              </div>
+              </button>
             </div>
           </div>
 
@@ -839,6 +1133,89 @@ const visibleItems = useMemo(() => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal xem trước Nhập Excel (khối "Thao tác nhanh") */}
+      {importPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl border border-[#E6EBF3] animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-4 border-b border-[#EEF2F7]">
+              <div className="flex items-center gap-3">
+                <div className="size-10 rounded-xl bg-green-50 text-[#16A34A] flex items-center justify-center">
+                  <FileSpreadsheet className="size-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-[#0F1B3D] text-[16px]">Xem trước nhập Excel</h3>
+                  <p className="text-xs text-[#64748B]">File: <span className="font-semibold text-[#0F1B3D]">{importPreview.fileName}</span></p>
+                </div>
+              </div>
+              <button
+                onClick={() => setImportPreview(null)}
+                disabled={importLoading}
+                className="size-8 rounded-lg text-[#64748B] hover:bg-slate-100 flex items-center justify-center cursor-pointer"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="mt-4 max-h-[260px] overflow-y-auto space-y-2">
+              {importPreview.rows.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-[#16A34A] mb-1.5">
+                    {importPreview.rows.length} dòng sẽ được thêm
+                    ({importPreview.rows.filter((r) => r.type === "category").length} hạng mục,{" "}
+                    {importPreview.rows.filter((r) => r.type === "task").length} công việc):
+                  </p>
+                  <ul className="text-xs text-[#0F1B3D] space-y-1">
+                    {importPreview.rows.map((r, i) => (
+                      <li key={i} className="px-2 py-1 bg-[#F4F7FC] rounded-lg flex items-center gap-2" style={{ paddingLeft: `${(r.depth - 1) * 16 + 8}px` }}>
+                        {r.type === "category" ? <FolderOpen className="size-3.5 text-[#8B5CF6] shrink-0" /> : <FileText className="size-3.5 text-[#15803D] shrink-0" />}
+                        <span>{r.name}</span>
+                        {r.type === "task" && <span className="text-[#64748B]">({r.durationDays} ngày)</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {importPreview.skipped.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-red-500 mb-1.5 mt-3">
+                    {importPreview.skipped.length} dòng bị bỏ qua:
+                  </p>
+                  <ul className="text-xs text-red-600 space-y-1">
+                    {importPreview.skipped.map((s, i) => (
+                      <li key={i} className="px-2 py-1 bg-red-50 rounded-lg">Dòng {s.row}: {s.reason}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {importPreview.rows.length === 0 && importPreview.skipped.length === 0 && (
+                <p className="text-sm text-[#64748B] text-center py-4">File không có dữ liệu.</p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#EEF2F7] mt-4">
+              <button
+                type="button"
+                onClick={() => setImportPreview(null)}
+                disabled={importLoading}
+                className="h-10 px-4 rounded-xl text-sm font-medium text-[#475569] hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleImportConfirm}
+                disabled={importLoading || importPreview.rows.length === 0}
+                className="h-10 px-5 rounded-xl text-sm font-semibold text-white bg-[#16A34A] hover:bg-[#128A3C] transition-colors shadow-sm cursor-pointer disabled:opacity-60"
+              >
+                {importLoading ? "Đang nhập..." : `Xác nhận nhập ${importPreview.rows.length} hạng mục`}
+              </button>
+            </div>
           </div>
         </div>
       )}

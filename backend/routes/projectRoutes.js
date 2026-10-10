@@ -657,22 +657,24 @@ router.post(
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
         
         const client = await db.connect();
+        let invitationId;
         try {
           await client.query("BEGIN");
           const invRes = await client.query(
-            `INSERT INTO invitations (email, token_hash, invited_by, expires_at, project_id, project_role) 
+            `INSERT INTO invitations (email, token_hash, invited_by, expires_at, project_id, project_role)
              VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
             [email, tokenHash, req.session.user.id, expiresAt, req.params.projectId, role]
           );
-          
-          await createEmailLog(client, invRes.rows[0].id, email);
+          invitationId = invRes.rows[0].id;
+
+          await createEmailLog(client, invitationId, email);
           await client.query("COMMIT");
 
           // Bất đồng bộ gửi email
           const baseUrl = process.env.APP_BASE_URL || 'http://localhost:5173';
           const emailData = emailTemplates.renderProjectInvite({ inviterName: req.session.user.name || 'Người quản lý', projectName: 'Dự án', role, token, isNewUser: true, baseUrl });
           processEmailLogs({
-            id: invRes.rows[0].id,
+            id: invitationId,
             email,
             ...emailData
           }).catch(e => console.error(e));
@@ -683,8 +685,14 @@ router.post(
         } finally {
           client.release();
         }
-        
-        return res.status(201).json({ message: "Người dùng chưa có tài khoản. Đã gửi thư mời tham gia hệ thống và dự án." });
+
+        // invitation_id được trả về để frontend theo dõi trạng thái gửi email thật
+        // (xem GET /:projectId/invitations/:invId/status) — việc gửi mail chạy bất đồng bộ
+        // phía trên nên tại thời điểm response này, trạng thái vẫn còn là 'pending'.
+        return res.status(201).json({
+          message: "Người dùng chưa có tài khoản. Đã gửi thư mời tham gia hệ thống và dự án.",
+          invitation_id: invitationId,
+        });
       }
       
       const userId = userResult.rows[0].id;
@@ -925,7 +933,61 @@ router.post(
   }
 );
 
+// GET /api/projects/:projectId/invitations/:invId/status — Trạng thái gửi email thật
+// (dùng để frontend poll ngắn sau khi bấm "Gửi lời mời" / "Gửi lại", vì việc gửi mail
+// chạy bất đồng bộ nên response của POST không biết được kết quả sent/error).
+/**
+ * @swagger
+ * /api/projects/{projectId}/invitations/{invId}/status:
+ *   get:
+ *     summary: API GET /:projectId/invitations/:invId/status
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: invId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
+router.get(
+  "/:projectId/invitations/:invId/status",
+  requireAuth,
+  checkProjectAccess,
+  allow([ROLES.CHI_HUY_TRUONG, ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY]),
+  async (req, res, next) => {
+    try {
+      const { projectId, invId } = req.params;
 
+      const result = await db.query(
+        `SELECT e.status, i.expires_at <= CURRENT_TIMESTAMP as is_expired
+         FROM invitations i
+         LEFT JOIN (
+           SELECT invitation_id, status, ROW_NUMBER() OVER(PARTITION BY invitation_id ORDER BY id DESC) as rn
+           FROM email_logs
+         ) e ON i.id = e.invitation_id AND e.rn = 1
+         WHERE i.id = $1 AND i.project_id = $2`,
+        [invId, projectId]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ message: "Không tìm thấy thư mời" });
+      }
+
+      const { status, is_expired } = result.rows[0];
+      return res.json({ status: status || "pending", is_expired });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 // POST /api/projects/:projectId/schedule/recalculate
 /**
