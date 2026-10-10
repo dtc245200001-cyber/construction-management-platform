@@ -12,6 +12,16 @@ const router = express.Router();
 router.use(requireSystemAdmin);
 
 // POST /api/admin/invitations - System Admin invites a new user to the system
+/**
+ * @swagger
+ * /api/admin/invitations:
+ *   post:
+ *     summary: API POST /invitations
+ *     tags: [Admin]
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post('/invitations', createAuditMiddleware('CREATE_INVITATION', 'invitations'), async (req, res, next) => {
   const { email, projectId, role } = req.body;
   if (!email) {
@@ -89,6 +99,16 @@ router.post('/invitations', createAuditMiddleware('CREATE_INVITATION', 'invitati
 });
 
 // GET /api/admin/users - Get all users (System Admin only)
+/**
+ * @swagger
+ * /api/admin/users:
+ *   get:
+ *     summary: API GET /users
+ *     tags: [Admin]
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get('/users', async (req, res, next) => {
   const client = await db.connect();
   try {
@@ -105,6 +125,16 @@ router.get('/users', async (req, res, next) => {
 });
 
 // GET /api/admin/projects - Get all projects
+/**
+ * @swagger
+ * /api/admin/projects:
+ *   get:
+ *     summary: API GET /projects
+ *     tags: [Admin]
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get('/projects', async (req, res, next) => {
   const client = await db.connect();
   try {
@@ -131,6 +161,16 @@ router.get('/projects', async (req, res, next) => {
 });
 
 // POST /api/admin/projects - Create a project and assign PM
+/**
+ * @swagger
+ * /api/admin/projects:
+ *   post:
+ *     summary: API POST /projects
+ *     tags: [Admin]
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post('/projects', createAuditMiddleware('CREATE_PROJECT', 'projects'), async (req, res, next) => {
   const { name, code, pm_email } = req.body;
   if (!name || !code || !pm_email) {
@@ -188,6 +228,22 @@ router.post('/projects', createAuditMiddleware('CREATE_PROJECT', 'projects'), as
 });
 
 // POST /api/admin/projects/:projectId/assign-pm - Fail-safe PM assignment
+/**
+ * @swagger
+ * /api/admin/projects/{projectId}/assign-pm:
+ *   post:
+ *     summary: API POST /projects/:projectId/assign-pm
+ *     tags: [Admin]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post('/projects/:projectId/assign-pm', createAuditMiddleware('ASSIGN_PM_FAILSAFE', 'projects'), async (req, res, next) => {
   const { projectId } = req.params;
   const { pm_email } = req.body;
@@ -235,6 +291,16 @@ router.post('/projects/:projectId/assign-pm', createAuditMiddleware('ASSIGN_PM_F
 
 
 // GET /api/admin/audit-logs - Get all audit logs
+/**
+ * @swagger
+ * /api/admin/audit-logs:
+ *   get:
+ *     summary: API GET /audit-logs
+ *     tags: [Admin]
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get('/audit-logs', async (req, res, next) => {
   const client = await db.connect();
   try {
@@ -254,6 +320,22 @@ router.get('/audit-logs', async (req, res, next) => {
 });
 
 // POST /api/admin/users/:userId/lock - Lock a user account
+/**
+ * @swagger
+ * /api/admin/users/{userId}/lock:
+ *   post:
+ *     summary: API POST /users/:userId/lock
+ *     tags: [Admin]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post('/users/:userId/lock', createAuditMiddleware('LOCK_USER', 'users'), async (req, res, next) => {
   const { userId } = req.params;
   // Lock for 100 years basically
@@ -270,6 +352,22 @@ router.post('/users/:userId/lock', createAuditMiddleware('LOCK_USER', 'users'), 
 });
 
 // POST /api/admin/users/:userId/unlock - Unlock a user account
+/**
+ * @swagger
+ * /api/admin/users/{userId}/unlock:
+ *   post:
+ *     summary: API POST /users/:userId/unlock
+ *     tags: [Admin]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post('/users/:userId/unlock', createAuditMiddleware('UNLOCK_USER', 'users'), async (req, res, next) => {
   const { userId } = req.params;
   try {
@@ -284,6 +382,22 @@ router.post('/users/:userId/unlock', createAuditMiddleware('UNLOCK_USER', 'users
 });
 
 // POST /api/admin/users/:userId/reset-password - Reset password for a user
+/**
+ * @swagger
+ * /api/admin/users/{userId}/reset-password:
+ *   post:
+ *     summary: API POST /users/:userId/reset-password
+ *     tags: [Admin]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post('/users/:userId/reset-password', createAuditMiddleware('RESET_PASSWORD', 'users'), async (req, res, next) => {
   const { userId } = req.params;
   const { newPassword } = req.body;

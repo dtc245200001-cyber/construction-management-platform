@@ -5,7 +5,7 @@
 
 "use strict";
 
-require("dotenv").config();
+require("dotenv").config({ path: require("path").resolve(__dirname, "../.env") });
 
 const express = require("express");
 const cors = require("cors");
@@ -20,6 +20,7 @@ const categoryRoutes = require("./routes/categoryRoutes");
 const projectRoutes = require("./routes/projectRoutes");
 const dependencyRoutes = require("./routes/dependencyRoutes");
 const taskRoutes = require("./routes/taskRoutes");
+const teamsRoutes = require("./routes/teamsRoutes");
 const { notFoundHandler, errorHandler } = require("./middleware/errorHandler");
 const logger = require("./utils/logger");
 const swaggerUi = require("swagger-ui-express");
@@ -41,7 +42,7 @@ const SESSION_SECRET = process.env.SESSION_SECRET || "dev-secret-key-unsafe";
 // â”€â”€â”€ CORS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Äá»c danh sÃ¡ch origin Ä‘Æ°á»£c phÃ©p tá»« CORS_ORIGINS (phÃ¢n tÃ¡ch báº±ng dáº¥u pháº©y).
 // VÃ­ dá»¥: CORS_ORIGINS=http://localhost:5173,https://app.example.com
-const allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5173")
+const allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5173,http://127.0.0.1:5173")
   .split(",")
   .map((o) => o.trim().replace(/\/$/, ""))
   .filter(Boolean);
@@ -127,7 +128,7 @@ app.use(
     store: new PgSession({
       pool,
       tableName: "session",
-      pruneSessionInterval: 60, // giÃ¢y â€” dá»n session háº¿t háº¡n má»—i phÃºt
+      pruneSessionInterval: process.env.NODE_ENV === 'test' ? false : 60, // giÃ¢y â€” dá»n session háº¿t háº¡n má»—i phÃºt
     }),
     cookie: {
       httpOnly: true,
@@ -170,6 +171,9 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/projects", dependencyRoutes);
 app.use("/api/projects", taskRoutes);
+app.use("/api/projects", teamsRoutes);
+const taskLogRoutes = require("./routes/taskLogRoutes");
+app.use("/api/projects", taskLogRoutes);
 const adminRoutes = require("./routes/adminRoutes");
 const { router: publicRoutes, setNewsletterLimiter, setInvitationLimiter } = require("./routes/publicRoutes");
 
@@ -179,9 +183,19 @@ setInvitationLimiter(invitationLimiter);
 
 app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicApiLimiter, publicRoutes);
+const milestoneRoutes = require("./routes/milestoneRoutes");
+app.use("/api/projects", milestoneRoutes);
+
+const diaryRoutes = require("./routes/diaryRoutes");
+app.use("/api/projects", diaryRoutes);
+const diaryDaysRoutes = require("./routes/diaryDaysRoutes");
+app.use("/api/projects", diaryDaysRoutes);
+const baselineRoutes = require("./routes/baselineRoutes");
+app.use("/api/projects", baselineRoutes);
 
 // â”€â”€â”€ ERROR HANDLERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(notFoundHandler);
 app.use(errorHandler);
 
 module.exports = app;
+

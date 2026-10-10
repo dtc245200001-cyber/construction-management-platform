@@ -4,7 +4,7 @@
     "calculatedBy": "Học",
     "calculatedDate": "2026-09-30",
     "method": "Tính tay CPM độc lập với code được kiểm thử",
-    "note": "Mạng mẫu 10 công việc. T-23 chịu trách nhiệm bổ sung các mạng chuyên kiểm đủ 4 loại quan hệ và lag âm."
+    "note": "Mạng mẫu 10 công việc. T-23 chịu trách nhiệm bổ sung các mạng chuyên kiểm đủ 4 loại quan hệ và lag âm. Mạng bổ sung của T-23 và các ca từng loại quan hệ nằm trong khoá networks."
   },
   "projectStart": 0,
   "tasks": [
@@ -235,5 +235,1295 @@
     "G",
     "I",
     "J"
-  ]
+  ],
+  "networks": [
+    {
+      "id": "T23-N1",
+      "name": "Đủ bốn loại quan hệ và độ trễ âm",
+      "kind": "t23",
+      "description": "Mạng 7 việc dùng đủ bốn loại quan hệ FS, SS, FF, SF và một độ trễ âm (FS lag -1). Việc F xong ngày 8 trong khi G chỉ bắt đầu được ngày 11 nên F có độ trễ cho phép 3 ngày; các việc A, B, C, D, E, G đều găng, hai nhánh qua B và qua C cùng găng.",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
+      "projectStart": 0,
+      "tasks": [
+        {
+          "id": "A",
+          "duration": 4
+        },
+        {
+          "id": "B",
+          "duration": 3
+        },
+        {
+          "id": "C",
+          "duration": 5
+        },
+        {
+          "id": "D",
+          "duration": 2
+        },
+        {
+          "id": "E",
+          "duration": 4
+        },
+        {
+          "id": "F",
+          "duration": 3
+        },
+        {
+          "id": "G",
+          "duration": 2
+        }
+      ],
+      "dependencies": [
+        {
+          "from": "A",
+          "to": "B",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "from": "A",
+          "to": "C",
+          "type": "SS",
+          "lag": 1
+        },
+        {
+          "from": "B",
+          "to": "D",
+          "type": "FF",
+          "lag": 0
+        },
+        {
+          "from": "C",
+          "to": "D",
+          "type": "SF",
+          "lag": 6
+        },
+        {
+          "from": "D",
+          "to": "E",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "from": "C",
+          "to": "F",
+          "type": "FS",
+          "lag": -1
+        },
+        {
+          "from": "E",
+          "to": "G",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "from": "F",
+          "to": "G",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "topologicalOrder": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G"
+      ],
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 4,
+          "LS": 0,
+          "LF": 4,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 4,
+          "EF": 7,
+          "LS": 4,
+          "LF": 7,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "C",
+          "ES": 1,
+          "EF": 6,
+          "LS": 1,
+          "LF": 6,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "D",
+          "ES": 5,
+          "EF": 7,
+          "LS": 5,
+          "LF": 7,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "E",
+          "ES": 7,
+          "EF": 11,
+          "LS": 7,
+          "LF": 11,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "F",
+          "ES": 5,
+          "EF": 8,
+          "LS": 8,
+          "LF": 11,
+          "float": 3,
+          "critical": false
+        },
+        {
+          "id": "G",
+          "ES": 11,
+          "EF": 13,
+          "LS": 11,
+          "LF": 13,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 13,
+      "criticalPath": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "G"
+      ]
+    },
+    {
+      "id": "T23-N2",
+      "name": "Hai nhánh song song lệch nhau 3 ngày",
+      "kind": "t23",
+      "description": "nhánh ngắn C-E xong ngày 9, F bắt đầu ngày 12, nên độ trễ cho phép của nhánh ngắn = 12 - 9 = 3.",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
+      "projectStart": 0,
+      "tasks": [
+        {
+          "id": "A",
+          "duration": 2
+        },
+        {
+          "id": "B",
+          "duration": 6
+        },
+        {
+          "id": "C",
+          "duration": 2
+        },
+        {
+          "id": "D",
+          "duration": 4
+        },
+        {
+          "id": "E",
+          "duration": 2
+        },
+        {
+          "id": "F",
+          "duration": 1
+        }
+      ],
+      "dependencies": [
+        {
+          "from": "A",
+          "to": "B",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "from": "A",
+          "to": "C",
+          "type": "FS",
+          "lag": 3
+        },
+        {
+          "from": "B",
+          "to": "D",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "from": "C",
+          "to": "E",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "from": "D",
+          "to": "F",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "from": "E",
+          "to": "F",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "topologicalOrder": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F"
+      ],
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 2,
+          "LS": 0,
+          "LF": 2,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 2,
+          "EF": 8,
+          "LS": 2,
+          "LF": 8,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "C",
+          "ES": 5,
+          "EF": 7,
+          "LS": 8,
+          "LF": 10,
+          "float": 3,
+          "critical": false
+        },
+        {
+          "id": "D",
+          "ES": 8,
+          "EF": 12,
+          "LS": 8,
+          "LF": 12,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "E",
+          "ES": 7,
+          "EF": 9,
+          "LS": 10,
+          "LF": 12,
+          "float": 3,
+          "critical": false
+        },
+        {
+          "id": "F",
+          "ES": 12,
+          "EF": 13,
+          "LS": 12,
+          "LF": 13,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 13,
+      "criticalPath": [
+        "A",
+        "B",
+        "D",
+        "F"
+      ]
+    },
+    {
+      "id": "REL-FS",
+      "name": "REL-FS",
+      "kind": "single-relation",
+      "description": "B bắt đầu sau A kết thúc nên ES(B) = EF(A) + 0 = 3",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
+      "projectStart": 0,
+      "tasks": [
+        {
+          "id": "A",
+          "duration": 3
+        },
+        {
+          "id": "B",
+          "duration": 2
+        }
+      ],
+      "dependencies": [
+        {
+          "from": "A",
+          "to": "B",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "topologicalOrder": [
+        "A",
+        "B"
+      ],
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 3,
+          "LS": 0,
+          "LF": 3,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 3,
+          "EF": 5,
+          "LS": 3,
+          "LF": 5,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 5,
+      "criticalPath": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "REL-SS",
+      "name": "REL-SS",
+      "kind": "single-relation",
+      "description": "B bắt đầu sau A bắt đầu 2 ngày nên ES(B)=0+2=2",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
+      "projectStart": 0,
+      "tasks": [
+        {
+          "id": "A",
+          "duration": 4
+        },
+        {
+          "id": "B",
+          "duration": 3
+        }
+      ],
+      "dependencies": [
+        {
+          "from": "A",
+          "to": "B",
+          "type": "SS",
+          "lag": 2
+        }
+      ],
+      "topologicalOrder": [
+        "A",
+        "B"
+      ],
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 4,
+          "LS": 0,
+          "LF": 4,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 2,
+          "EF": 5,
+          "LS": 2,
+          "LF": 5,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 5,
+      "criticalPath": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "REL-FF",
+      "name": "REL-FF",
+      "kind": "single-relation",
+      "description": "B kết thúc sau A kết thúc 1 ngày nên EF(B)=5+1=6, ES(B)=6-2=4",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
+      "projectStart": 0,
+      "tasks": [
+        {
+          "id": "A",
+          "duration": 5
+        },
+        {
+          "id": "B",
+          "duration": 2
+        }
+      ],
+      "dependencies": [
+        {
+          "from": "A",
+          "to": "B",
+          "type": "FF",
+          "lag": 1
+        }
+      ],
+      "topologicalOrder": [
+        "A",
+        "B"
+      ],
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 5,
+          "LS": 0,
+          "LF": 5,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 4,
+          "EF": 6,
+          "LS": 4,
+          "LF": 6,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 6,
+      "criticalPath": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "REL-SF",
+      "name": "REL-SF",
+      "kind": "single-relation",
+      "description": "B kết thúc sau A bắt đầu 4 ngày nên EF(B)=0+4=4, ES(B)=4-2=2",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
+      "projectStart": 0,
+      "tasks": [
+        {
+          "id": "A",
+          "duration": 3
+        },
+        {
+          "id": "B",
+          "duration": 2
+        }
+      ],
+      "dependencies": [
+        {
+          "from": "A",
+          "to": "B",
+          "type": "SF",
+          "lag": 4
+        }
+      ],
+      "topologicalOrder": [
+        "A",
+        "B"
+      ],
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 3,
+          "LS": 0,
+          "LF": 3,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 2,
+          "EF": 4,
+          "LS": 2,
+          "LF": 4,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 4,
+      "criticalPath": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "REL-LAGAM",
+      "name": "REL-LAGAM",
+      "kind": "single-relation",
+      "description": "B bắt đầu trước khi A kết thúc 2 ngày nên ES(B)=4-2=2",
+      "calculatedBy": null,
+      "calculatedDate": null,
+      "verifiedBy": null,
+      "verifiedDate": null,
+      "projectStart": 0,
+      "tasks": [
+        {
+          "id": "A",
+          "duration": 4
+        },
+        {
+          "id": "B",
+          "duration": 3
+        }
+      ],
+      "dependencies": [
+        {
+          "from": "A",
+          "to": "B",
+          "type": "FS",
+          "lag": -2
+        }
+      ],
+      "topologicalOrder": [
+        "A",
+        "B"
+      ],
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 4,
+          "LS": 0,
+          "LF": 4,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 2,
+          "EF": 5,
+          "LS": 2,
+          "LF": 5,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 5,
+      "criticalPath": [
+        "A",
+        "B"
+      ]
+    }
+  ],
+  "workingDaysTestCases": {
+    "metadata": {
+      "source": "T-39 / S-17",
+      "calculatedBy": "Học",
+      "calculatedDate": "2026-10-07",
+      "method": "Tính tay ngày làm việc độc lập với code kiểm thử (Default 6-day calendar: Mon-Sat true, Sun false)",
+      "note": "Bộ 6 ca tính tay kiểm tra hàm cộng ngày làm việc (addWorkingDays) và đếm ngày làm việc (countWorkingDays)"
+    },
+    "defaultCalendar": {
+      "monday": true,
+      "tuesday": true,
+      "wednesday": true,
+      "thursday": true,
+      "friday": true,
+      "saturday": true,
+      "sunday": false
+    },
+    "cases": [
+      {
+        "id": "case1_cross_sunday",
+        "name": "Ca 1: Cộng ngày và đếm ngày chạy qua Chủ nhật",
+        "startDate": "2026-01-09",
+        "endDate": "2026-01-13",
+        "n": 3,
+        "holidays": [],
+        "expectedAdd": "2026-01-13",
+        "expectedCount": 4,
+        "explanation": "09/01 (T6 làm) + 3 ngày làm việc: T7 10/01 (+1), CN 11/01 (nghỉ bỏ qua), T2 12/01 (+2), T3 13/01 (+3) -> đích 13/01. Đếm 09/01 đến 13/01: T6(1), T7(2), CN(0), T2(3), T3(4) -> 4 ngày làm việc."
+      },
+      {
+        "id": "case2_holiday_on_weekday",
+        "name": "Ca 2: Có ngày nghỉ lễ rơi vào ngày làm việc trong tuần",
+        "startDate": "2026-01-05",
+        "endDate": "2026-01-09",
+        "n": 3,
+        "holidays": [
+          {
+            "holiday_date": "2026-01-07",
+            "name": "Nghỉ lễ giữa tuần"
+          }
+        ],
+        "expectedAdd": "2026-01-09",
+        "expectedCount": 4,
+        "explanation": "05/01 (T2 làm) + 3 ngày làm việc: T3 06/01 (+1), T4 07/01 (lễ bỏ qua), T5 08/01 (+2), T6 09/01 (+3) -> đích 09/01. Đếm 05/01 đến 09/01: T2(1), T3(2), T4(lễ 0), T5(3), T6(4) -> 4 ngày làm việc."
+      },
+      {
+        "id": "case3_holiday_on_sunday",
+        "name": "Ca 3: Ngày nghỉ lễ trùng vào ngày Chủ nhật (chỉ trừ 1 lần, không trừ 2 lần)",
+        "startDate": "2026-01-05",
+        "endDate": "2026-01-12",
+        "n": 1,
+        "addFrom": "2026-01-10",
+        "holidays": [
+          {
+            "holiday_date": "2026-01-11",
+            "name": "Lễ trùng Chủ nhật"
+          }
+        ],
+        "expectedAdd": "2026-01-12",
+        "expectedCount": 7,
+        "explanation": "Chủ nhật 11/01 vốn là ngày nghỉ, lễ trùng vào đó chỉ tính là 1 ngày nghỉ, không trừ lặp. 05/01 đến 12/01 gồm 8 ngày lịch trừ 1 ngày CN/lễ -> còn đúng 7 ngày làm việc. 10/01 (T7) + 1 ngày làm việc = 12/01 (T2)."
+      },
+      {
+        "id": "case4_multiple_weeks_and_holidays",
+        "name": "Ca 4: Cộng nhiều ngày làm việc qua nhiều tuần và ngày lễ",
+        "startDate": "2026-01-05",
+        "endDate": "2026-01-20",
+        "n": 12,
+        "holidays": [
+          {
+            "holiday_date": "2026-01-08",
+            "name": "Nghỉ lễ"
+          }
+        ],
+        "expectedAdd": "2026-01-20",
+        "expectedCount": 13,
+        "explanation": "Từ 05/01 + 12 ngày làm việc: Tuần 1 được 4 ngày (T3, T4, T6, T7 - T5 lễ), Tuần 2 được 6 ngày (T2-T7), Tuần 3 được 2 ngày (T2 19/01, T3 20/01) -> Đích 20/01. Đếm 05/01 đến 20/01 gồm 16 ngày lịch - 3 ngày nghỉ (1 lễ + 2 CN) = 13 ngày làm việc."
+      },
+      {
+        "id": "case5_long_range_with_holidays_and_sundays",
+        "name": "Ca 5: Đếm số ngày làm việc khoảng dài có cả Chủ nhật và nhiều ngày lễ",
+        "startDate": "2026-01-01",
+        "endDate": "2026-01-15",
+        "holidays": [
+          {
+            "holiday_date": "2026-01-01",
+            "name": "Tết Dương Lịch"
+          },
+          {
+            "holiday_date": "2026-01-11",
+            "name": "Lễ trùng Chủ nhật"
+          }
+        ],
+        "expectedCount": 12,
+        "explanation": "Khoảng 01/01 đến 15/01 có 15 ngày lịch. Ngày nghỉ: 01/01 (lễ), 04/01 (CN), 11/01 (CN trùng lễ - trừ 1 lần). Tổng nghỉ = 3. Số ngày làm việc = 15 - 3 = 12 ngày."
+      },
+      {
+        "id": "case6_edge_cases_start_end_holiday_sunday",
+        "name": "Ca 6: Các trường hợp biên (Start/End rơi vào ngày Chủ nhật hoặc ngày Lễ, n = 0)",
+        "startDate": "2026-01-11",
+        "endDate": "2026-01-11",
+        "n": 0,
+        "holidays": [
+          {
+            "holiday_date": "2026-01-11",
+            "name": "Lễ trùng Chủ nhật"
+          }
+        ],
+        "expectedAdd": "2026-01-11",
+        "expectedCount": 0,
+        "edgeCases": [
+          {
+            "desc": "Start và End cùng là Chủ nhật/Lễ -> 0 ngày làm việc",
+            "start": "2026-01-11",
+            "end": "2026-01-11",
+            "expectedCount": 0
+          },
+          {
+            "desc": "Start T7, End CN -> 1 ngày làm việc (T7)",
+            "start": "2026-01-10",
+            "end": "2026-01-11",
+            "expectedCount": 1
+          },
+          {
+            "desc": "Start CN, cộng 1 ngày làm việc -> T2",
+            "start": "2026-01-11",
+            "n": 1,
+            "expectedAdd": "2026-01-12"
+          },
+          {
+            "desc": "Cộng 0 ngày làm việc -> giữ nguyên ngày bắt đầu",
+            "start": "2026-01-09",
+            "n": 0,
+            "expectedAdd": "2026-01-09"
+          }
+        ],
+        "explanation": "Xử lý chính xác các trường hợp biên tại điểm mốc ngày nghỉ và n=0."
+      }
+    ]
+  },
+  "actualScenarios": [
+    {
+      "id": "ca1_viec_gang_tre_3",
+      "today": null,
+      "actuals": {
+        "D": {
+          "actualStart": 7,
+          "actualEnd": 15,
+          "percent": 100
+        }
+      },
+      "calculatedBy": "TẠM - script tham chiếu, CHƯA tính tay",
+      "calculatedDate": "2026-10-07",
+      "provisional": true,
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 3,
+          "LS": 0,
+          "LF": 3,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 3,
+          "EF": 7,
+          "LS": 3,
+          "LF": 7,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "C",
+          "ES": 3,
+          "EF": 5,
+          "LS": 8,
+          "LF": 10,
+          "float": 5,
+          "critical": false
+        },
+        {
+          "id": "D",
+          "ES": 7,
+          "EF": 15,
+          "LS": 7,
+          "LF": 15,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "E",
+          "ES": 7,
+          "EF": 10,
+          "LS": 11,
+          "LF": 14,
+          "float": 4,
+          "critical": false
+        },
+        {
+          "id": "F",
+          "ES": 5,
+          "EF": 9,
+          "LS": 10,
+          "LF": 14,
+          "float": 5,
+          "critical": false
+        },
+        {
+          "id": "G",
+          "ES": 15,
+          "EF": 17,
+          "LS": 15,
+          "LF": 17,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "H",
+          "ES": 10,
+          "EF": 13,
+          "LS": 14,
+          "LF": 17,
+          "float": 4,
+          "critical": false
+        },
+        {
+          "id": "I",
+          "ES": 17,
+          "EF": 19,
+          "LS": 17,
+          "LF": 19,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "J",
+          "ES": 19,
+          "EF": 20,
+          "LS": 19,
+          "LF": 20,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 20
+    },
+    {
+      "id": "ca2_khong_gang_tre_it_hon_float",
+      "today": null,
+      "actuals": {
+        "C": {
+          "actualStart": 3,
+          "actualEnd": 6,
+          "percent": 100
+        }
+      },
+      "calculatedBy": "TẠM - script tham chiếu, CHƯA tính tay",
+      "calculatedDate": "2026-10-07",
+      "provisional": true,
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 3,
+          "LS": 0,
+          "LF": 3,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 3,
+          "EF": 7,
+          "LS": 3,
+          "LF": 7,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "C",
+          "ES": 3,
+          "EF": 6,
+          "LS": 4,
+          "LF": 7,
+          "float": 1,
+          "critical": false
+        },
+        {
+          "id": "D",
+          "ES": 7,
+          "EF": 12,
+          "LS": 7,
+          "LF": 12,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "E",
+          "ES": 7,
+          "EF": 10,
+          "LS": 8,
+          "LF": 11,
+          "float": 1,
+          "critical": false
+        },
+        {
+          "id": "F",
+          "ES": 6,
+          "EF": 10,
+          "LS": 7,
+          "LF": 11,
+          "float": 1,
+          "critical": false
+        },
+        {
+          "id": "G",
+          "ES": 12,
+          "EF": 14,
+          "LS": 12,
+          "LF": 14,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "H",
+          "ES": 10,
+          "EF": 13,
+          "LS": 11,
+          "LF": 14,
+          "float": 1,
+          "critical": false
+        },
+        {
+          "id": "I",
+          "ES": 14,
+          "EF": 16,
+          "LS": 14,
+          "LF": 16,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "J",
+          "ES": 16,
+          "EF": 17,
+          "LS": 16,
+          "LF": 17,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 17
+    },
+    {
+      "id": "ca3_khong_gang_tre_qua_float",
+      "today": null,
+      "actuals": {
+        "E": {
+          "actualStart": 7,
+          "actualEnd": 13,
+          "percent": 100
+        }
+      },
+      "calculatedBy": "TẠM - script tham chiếu, CHƯA tính tay",
+      "calculatedDate": "2026-10-07",
+      "provisional": true,
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 3,
+          "LS": 0,
+          "LF": 3,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 3,
+          "EF": 7,
+          "LS": 3,
+          "LF": 7,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "C",
+          "ES": 3,
+          "EF": 5,
+          "LS": 7,
+          "LF": 9,
+          "float": 4,
+          "critical": false
+        },
+        {
+          "id": "D",
+          "ES": 7,
+          "EF": 12,
+          "LS": 9,
+          "LF": 14,
+          "float": 2,
+          "critical": false
+        },
+        {
+          "id": "E",
+          "ES": 7,
+          "EF": 13,
+          "LS": 7,
+          "LF": 13,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "F",
+          "ES": 5,
+          "EF": 9,
+          "LS": 9,
+          "LF": 13,
+          "float": 4,
+          "critical": false
+        },
+        {
+          "id": "G",
+          "ES": 13,
+          "EF": 15,
+          "LS": 14,
+          "LF": 16,
+          "float": 1,
+          "critical": false
+        },
+        {
+          "id": "H",
+          "ES": 13,
+          "EF": 16,
+          "LS": 13,
+          "LF": 16,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "I",
+          "ES": 16,
+          "EF": 18,
+          "LS": 16,
+          "LF": 18,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "J",
+          "ES": 18,
+          "EF": 19,
+          "LS": 18,
+          "LF": 19,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 19
+    },
+    {
+      "id": "ca4a_dang_lam_hom_nay_som",
+      "today": 8,
+      "actuals": {
+        "D": {
+          "actualStart": 7,
+          "actualEnd": null,
+          "percent": 40
+        }
+      },
+      "calculatedBy": "TẠM - script tham chiếu, CHƯA tính tay",
+      "calculatedDate": "2026-10-07",
+      "provisional": true,
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 3,
+          "LS": 0,
+          "LF": 3,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 3,
+          "EF": 7,
+          "LS": 3,
+          "LF": 7,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "C",
+          "ES": 3,
+          "EF": 5,
+          "LS": 5,
+          "LF": 7,
+          "float": 2,
+          "critical": false
+        },
+        {
+          "id": "D",
+          "ES": 7,
+          "EF": 12,
+          "LS": 7,
+          "LF": 12,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "E",
+          "ES": 7,
+          "EF": 10,
+          "LS": 8,
+          "LF": 11,
+          "float": 1,
+          "critical": false
+        },
+        {
+          "id": "F",
+          "ES": 5,
+          "EF": 9,
+          "LS": 7,
+          "LF": 11,
+          "float": 2,
+          "critical": false
+        },
+        {
+          "id": "G",
+          "ES": 12,
+          "EF": 14,
+          "LS": 12,
+          "LF": 14,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "H",
+          "ES": 10,
+          "EF": 13,
+          "LS": 11,
+          "LF": 14,
+          "float": 1,
+          "critical": false
+        },
+        {
+          "id": "I",
+          "ES": 14,
+          "EF": 16,
+          "LS": 14,
+          "LF": 16,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "J",
+          "ES": 16,
+          "EF": 17,
+          "LS": 16,
+          "LF": 17,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 17
+    },
+    {
+      "id": "ca4b_dang_lam_hom_nay_tre",
+      "today": 11,
+      "actuals": {
+        "D": {
+          "actualStart": 7,
+          "actualEnd": null,
+          "percent": 40
+        }
+      },
+      "calculatedBy": "TẠM - script tham chiếu, CHƯA tính tay",
+      "calculatedDate": "2026-10-07",
+      "provisional": true,
+      "expected": [
+        {
+          "id": "A",
+          "ES": 0,
+          "EF": 3,
+          "LS": 0,
+          "LF": 3,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "B",
+          "ES": 3,
+          "EF": 7,
+          "LS": 3,
+          "LF": 7,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "C",
+          "ES": 3,
+          "EF": 5,
+          "LS": 7,
+          "LF": 9,
+          "float": 4,
+          "critical": false
+        },
+        {
+          "id": "D",
+          "ES": 7,
+          "EF": 14,
+          "LS": 7,
+          "LF": 14,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "E",
+          "ES": 7,
+          "EF": 10,
+          "LS": 10,
+          "LF": 13,
+          "float": 3,
+          "critical": false
+        },
+        {
+          "id": "F",
+          "ES": 5,
+          "EF": 9,
+          "LS": 9,
+          "LF": 13,
+          "float": 4,
+          "critical": false
+        },
+        {
+          "id": "G",
+          "ES": 14,
+          "EF": 16,
+          "LS": 14,
+          "LF": 16,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "H",
+          "ES": 10,
+          "EF": 13,
+          "LS": 13,
+          "LF": 16,
+          "float": 3,
+          "critical": false
+        },
+        {
+          "id": "I",
+          "ES": 16,
+          "EF": 18,
+          "LS": 16,
+          "LF": 18,
+          "float": 0,
+          "critical": true
+        },
+        {
+          "id": "J",
+          "ES": 18,
+          "EF": 19,
+          "LS": 18,
+          "LF": 19,
+          "float": 0,
+          "critical": true
+        }
+      ],
+      "projectFinish": 19
+    }
+  ],
+  "actualScenariosNote": "actualEnd là MỐC EF (offset ngày làm việc, kết thúc xong ở mốc đó), không phải ngày cuối cùng làm việc; today là offset ngày làm việc; \"phần còn lại\" = ceil(thời lượng × (100 − percent) / 100)."
 }

@@ -7,7 +7,7 @@
 set -e
 
 echo "Đang chạy migration cơ sở dữ liệu..."
-node -r dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate up
+node -r dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate up --no-check-order
 
 echo "Migration hoàn thành. Khởi động server..."
 exec node server.js

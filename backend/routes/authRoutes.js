@@ -40,6 +40,35 @@ let DUMMY_HASH = null;
 // ĐĂNG KÝ
 // ============================================================
 
+/**
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     summary: Đăng ký tài khoản mới
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               confirmPassword:
+ *                 type: string
+ *               token:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Đăng ký thành công
+ *       400:
+ *         description: Lỗi dữ liệu đầu vào
+ */
 router.post(
   "/register",
   asyncHandler(async (req, res) => {
@@ -197,6 +226,29 @@ router.post(
 // ĐĂNG NHẬP
 // ============================================================
 
+/**
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: Đăng nhập
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Đăng nhập thành công, trả về Set-Cookie session
+ *       401:
+ *         description: Sai email hoặc mật khẩu
+ */
 router.post(
   "/login",
   asyncHandler(async (req, res) => {
@@ -561,6 +613,20 @@ router.post(
 // KIỂM TRA SESSION
 // ============================================================
 
+/**
+ * @swagger
+ * /api/auth/me:
+ *   get:
+ *     summary: Lấy thông tin user hiện tại (kiểm tra session)
+ *     tags: [Auth]
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Trả về thông tin user
+ *       401:
+ *         description: Chưa đăng nhập
+ */
 router.get("/me", (req, res) => {
   if (!req.session || !req.session.user) {
     return res.status(401).json({
@@ -577,6 +643,18 @@ router.get("/me", (req, res) => {
 // ĐĂNG XUẤT
 // ============================================================
 
+/**
+ * @swagger
+ * /api/auth/logout:
+ *   post:
+ *     summary: Đăng xuất khỏi hệ thống
+ *     tags: [Auth]
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Đăng xuất thành công, xóa cookie
+ */
 router.post(
   "/logout",
   asyncHandler(async (req, res) => {

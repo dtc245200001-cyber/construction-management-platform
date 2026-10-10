@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { format, parseISO, differenceInCalendarDays } from "date-fns";
 import api from "../lib/api";
 import {
   Home,
@@ -35,7 +36,7 @@ import heroImage from "../assets/hero-site.jpg";
 const navItems = [
   { label: "Tổng quan", icon: Home, active: true },
   { label: "Cơ cấu công việc (WBS)", icon: Network },
-  { label: "Tiến độ & Đường găng", icon: TrendingUp },
+  { label: "Bảng đường găng (CPM)", icon: TrendingUp },
   { label: "Hiện trường & Giao việc", icon: Camera },
   { label: "Nhật ký thi công", icon: FileText },
   { label: "Nghiệm thu khối lượng", icon: CheckSquare },
@@ -43,47 +44,9 @@ const navItems = [
   { label: "Thành viên & Tổ đội", icon: Users },
 ];
 
-const summary = [
-  { icon: Building2, label: "Dự án An Phú", sub: "Tổng quan công trình", strong: true },
-  { icon: CalendarDays, label: "Ngày bắt đầu", value: "25/09/2026" },
-  { icon: UsersRound, label: "Số lượng nhân sự", value: "5 người" },
-  { icon: CalendarDays, label: "Thời gian sprint", value: "1 tuần" },
-];
+// Removed static summary
 
-const tasks = [
-  {
-    code: "CV-02 Ép cọc",
-    team: "Đội nền móng 01",
-    progress: "62%",
-    due: "Ngày 15",
-    status: "GĂNG",
-    tone: "danger"
-  },
-  {
-    code: "CV-03 Đài móng",
-    team: "Đội kết cấu 01",
-    progress: "20%",
-    due: "Ngày 23",
-    status: "GĂNG",
-    tone: "danger"
-  },
-  {
-    code: "CV-07 Điện nước âm sàn",
-    team: "Đội MEP",
-    progress: "40%",
-    due: "Ngày 29",
-    status: "Đúng tiến độ",
-    tone: "success"
-  },
-  {
-    code: "CV-01 Đào hố móng",
-    team: "Đội nền móng 01",
-    progress: "100%",
-    due: "Ngày 5",
-    status: "Chờ nghiệm thu",
-    tone: "warning"
-  },
-];
+// Removed static tasks
 
 const todayWork = [
   { title: "Móng cọc - Khu A", sub: "Đội nền móng · 3/5", time: "08:00", dot: "bg-info" },
@@ -128,9 +91,65 @@ const toneIcon = {
 };
 
 export default function LandingPage({ user, setUser }) {
-  return (
+  const currentProjectId = localStorage.getItem('currentProjectId') || 1;
+  const [projectData, setProjectData] = useState({
+    name: "Đang tải...",
+    startDate: null,
+    membersCount: 0,
+    plannedFinish: null,
+    currentFinish: null,
+    actualProgress: 0,
+    plannedProgress: 0,
+    criticalTaskCount: 0,
+    criticalTasks: []
+  });
 
-        <main className="grid flex-1 gap-5 p-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [projRes, sumRes, resRes, memRes] = await Promise.all([
+          api.get(`/projects/${currentProjectId}`),
+          api.get(`/projects/${currentProjectId}/schedule-summary`).catch(() => ({ data: {} })),
+          api.get(`/projects/${currentProjectId}/schedule-results`).catch(() => ({ data: { data: [] } })),
+          api.get(`/projects/${currentProjectId}/members`).catch(() => ({ data: { members: [] } }))
+        ]);
+
+        const proj = projRes.data.project || {};
+        const sum = sumRes.data || {};
+        const results = resRes.data.data || [];
+        const mems = memRes.data.members || [];
+
+        const criticalTasks = results.filter(t => t.is_critical && t.percent_complete < 100);
+        
+        let actualProg = 0;
+        if (results.length > 0) {
+          actualProg = Math.round(results.reduce((acc, t) => acc + (t.percent_complete || 0), 0) / results.length);
+        }
+
+        setProjectData({
+          name: proj.name || "Chưa có tên",
+          startDate: proj.start_date,
+          membersCount: mems.length,
+          plannedFinish: sum.planned_finish_date,
+          currentFinish: sum.current_finish_date,
+          actualProgress: actualProg,
+          plannedProgress: sum.planned_progress || actualProg, // For now planned matches actual if empty
+          criticalTaskCount: results.filter(t => t.is_critical).length,
+          criticalTasks: criticalTasks.slice(0, 5) // top 5
+        });
+      } catch (error) {
+        console.error("Error loading dashboard data", error);
+      }
+    }
+    if (currentProjectId) loadData();
+  }, [currentProjectId]);
+
+  const delayDays = projectData.currentFinish && projectData.plannedFinish 
+    ? differenceInCalendarDays(parseISO(projectData.currentFinish), parseISO(projectData.plannedFinish)) 
+    : 0;
+
+  return (
+        <main className="grid flex-1 gap-5 p-6 xl:grid-cols-[minmax(0,1fr)_340px] overflow-y-auto">
           {/* Left column */}
           <div className="flex min-w-0 flex-col gap-5">
             {/* Hero */}
@@ -155,26 +174,44 @@ export default function LandingPage({ user, setUser }) {
                 </p>
 
                 <div className="card-surface mt-6 grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4">
-                  {summary.map((item) => (
-                    <div key={item.label} className="flex items-center gap-3">
-                      <div className="flex size-11 items-center justify-center rounded-xl bg-info-soft text-info">
-                        <item.icon className="size-5" />
-                      </div>
-                      <div className="min-w-0">
-                        {item.strong ? (
-                          <>
-                            <p className="truncate text-sm font-semibold">{item.label}</p>
-                            <p className="truncate text-xs text-muted-foreground">{item.sub}</p>
-                          </>
-                        ) : (
-                          <>
-                            <p className="text-xs text-muted-foreground">{item.label}</p>
-                            <p className="whitespace-nowrap text-sm font-semibold">{item.value}</p>
-                          </>
-                        )}
-                      </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex size-11 items-center justify-center rounded-xl bg-info-soft text-info">
+                      <Building2 className="size-5" />
                     </div>
-                  ))}
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">Dự án {projectData.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">Tổng quan công trình</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex size-11 items-center justify-center rounded-xl bg-info-soft text-info">
+                      <CalendarDays className="size-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground">Ngày bắt đầu</p>
+                      <p className="whitespace-nowrap text-sm font-semibold">
+                        {projectData.startDate ? format(parseISO(projectData.startDate), 'dd/MM/yyyy') : '--'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex size-11 items-center justify-center rounded-xl bg-info-soft text-info">
+                      <UsersRound className="size-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground">Số lượng nhân sự</p>
+                      <p className="whitespace-nowrap text-sm font-semibold">{projectData.membersCount} người</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex size-11 items-center justify-center rounded-xl bg-info-soft text-info">
+                      <CalendarDays className="size-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground">Thời gian sprint</p>
+                      <p className="whitespace-nowrap text-sm font-semibold">1 tuần</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>
@@ -188,14 +225,17 @@ export default function LandingPage({ user, setUser }) {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-info-foreground">Tiến độ thực tế</p>
-                    <p className="whitespace-nowrap text-2xl font-bold">68%</p>
+                    <p className="whitespace-nowrap text-2xl font-bold">{projectData.actualProgress}%</p>
                   </div>
                 </div>
                 <p className="mt-4 text-xs text-muted-foreground">
-                  ↘ Kế hoạch 72% · <span className="text-danger-foreground">Chênh −4%</span>
+                  ↘ Kế hoạch {projectData.plannedProgress}% 
+                  {projectData.actualProgress < projectData.plannedProgress && 
+                    <span className="text-danger-foreground"> · Chênh -{projectData.plannedProgress - projectData.actualProgress}%</span>
+                  }
                 </p>
                 <div className="mt-3 h-2 rounded-full bg-muted">
-                  <div className="h-2 w-[68%] rounded-full bg-info" />
+                  <div className="h-2 rounded-full bg-info" style={{ width: `${projectData.actualProgress}%` }} />
                 </div>
               </article>
 
@@ -206,12 +246,20 @@ export default function LandingPage({ user, setUser }) {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-danger-foreground">Dự kiến hoàn thành</p>
-                    <p className="whitespace-nowrap text-xl font-bold">18/12/2026</p>
+                    <p className="whitespace-nowrap text-xl font-bold">
+                      {projectData.currentFinish ? format(parseISO(projectData.currentFinish), 'dd/MM/yyyy') : '--'}
+                    </p>
                   </div>
                 </div>
-                <p className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-danger/25 bg-card px-2.5 py-1.5 text-xs text-danger-foreground">
-                  <AlertCircle className="size-3.5" /> Trễ 9 ngày so với kế hoạch gốc
-                </p>
+                {delayDays > 0 ? (
+                  <p className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-danger/25 bg-card px-2.5 py-1.5 text-xs text-danger-foreground">
+                    <AlertCircle className="size-3.5" /> Trễ {delayDays} ngày so với kế hoạch gốc
+                  </p>
+                ) : (
+                  <p className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-card px-2.5 py-1.5 text-xs text-success-foreground">
+                    <AlertCircle className="size-3.5" /> Đúng tiến độ gốc
+                  </p>
+                )}
               </article>
 
               <article className="card-surface bg-success-soft/50 p-5">
@@ -223,7 +271,7 @@ export default function LandingPage({ user, setUser }) {
                     <p className="text-sm font-medium text-success-foreground">
                       Công việc đường găng
                     </p>
-                    <p className="whitespace-nowrap text-2xl font-bold">6 việc</p>
+                    <p className="whitespace-nowrap text-2xl font-bold">{projectData.criticalTaskCount} việc</p>
                   </div>
                 </div>
                 <p className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-warning/30 bg-card px-2.5 py-1.5 text-xs text-warning-foreground">
@@ -277,33 +325,28 @@ export default function LandingPage({ user, setUser }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {tasks.map((t) => (
-                      <tr key={t.code} className="border-b border-border/70 last:border-0">
+                    {projectData.criticalTasks.length === 0 ? (
+                      <tr><td colSpan="6" className="px-3 py-8 text-center text-muted-foreground font-medium">Không có công việc ưu tiên nào</td></tr>
+                    ) : projectData.criticalTasks.map((t) => (
+                      <tr key={t.task_id} className="border-b border-border/70 last:border-0">
                         <td className="px-3 py-4">
                           <span className="flex items-center gap-3 font-medium">
-                            <span
-                              className={[
-                                "h-6 w-1.5 rounded-full",
-                                t.tone === "danger" ? "bg-danger" : "bg-success",
-                              ].join(" ")}
-                            />
-                            {t.code}
+                            <span className="h-6 w-1.5 rounded-full bg-danger" />
+                            {t.task_name}
                           </span>
                         </td>
-                        <td className="px-3 py-4 text-muted-foreground">{t.team}</td>
-                        <td className="px-3 py-4">{t.progress}</td>
-                        <td className="px-3 py-4">{t.due}</td>
+                        <td className="px-3 py-4 text-muted-foreground">{t.assignee || 'Chưa giao'}</td>
+                        <td className="px-3 py-4">{t.percent_complete || 0}%</td>
+                        <td className="px-3 py-4">{t.early_finish ? format(parseISO(t.early_finish), 'dd/MM/yyyy') : '--'}</td>
                         <td className="px-3 py-4">
-                          <span
-                            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold ${toneChip[t.tone]}`}
-                          >
-                            ◆ {t.status}
+                          <span className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold bg-danger-soft text-danger-foreground border-danger/25">
+                            ◆ GĂNG
                           </span>
                         </td>
                         <td className="px-3 py-4">
-                          <button className="rounded-lg border border-info/30 px-3 py-1.5 text-xs font-medium text-info transition-colors hover:bg-info-soft">
+                          <Link to="/schedule" className="rounded-lg border border-info/30 px-3 py-1.5 text-xs font-medium text-info transition-colors hover:bg-info-soft">
                             Cập nhật
-                          </button>
+                          </Link>
                         </td>
                       </tr>
                     ))}

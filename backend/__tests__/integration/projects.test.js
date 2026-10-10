@@ -7,7 +7,7 @@ const pool = require("../../config/db");
 const backendDir = path.join(__dirname, "../..");
 
 function runMigration(direction) {
-  execFileSync("npx", ["node-pg-migrate", direction, "-m", "migrations"], {
+  execFileSync("npx", ["node-pg-migrate", direction, "-m", "migrations", "--no-check-order"], {
     cwd: backendDir,
     env: process.env,
     stdio: "pipe",
@@ -76,7 +76,7 @@ describe("Projects Integration Tests", () => {
       expect(res.status).toBe(403);
     });
 
-    it("System Admin can create project", async () => {
+    it("System Admin can create project and auto-seeds default calendar", async () => {
       const res = await request(app).post("/api/projects").set("Cookie", cookieAdmin).send({
         name: "Admin Project",
         code: "APJ",
@@ -84,9 +84,80 @@ describe("Projects Integration Tests", () => {
       });
       expect(res.status).toBe(201);
       expect(res.body.project.name).toBe("Admin Project");
-      
+
+      const { rows: calendarRows } = await pool.query(
+        `SELECT monday, tuesday, wednesday, thursday, friday, saturday, sunday
+         FROM calendars
+         WHERE project_id = $1`,
+        [res.body.project.id]
+      );
+
+      expect(calendarRows).toHaveLength(1);
+      expect(calendarRows[0]).toEqual({
+        monday: true,
+        tuesday: true,
+        wednesday: true,
+        thursday: true,
+        friday: true,
+        saturday: true,
+        sunday: false,
+      });
+
       const { rows } = await pool.query("SELECT role FROM project_members WHERE project_id = $1", [res.body.project.id]);
       expect(rows[0].role).toBe("ban_quan_ly");
+    });
+
+    it("Enforces unique constraint on holidays (project_id, holiday_date)", async () => {
+      // Get the admin project ID created previously
+      const projRes = await pool.query("SELECT id FROM projects WHERE code = 'APJ'");
+      const projectId = projRes.rows[0].id;
+
+      // 1. Insert first holiday
+      const h1 = await pool.query(
+        "INSERT INTO holidays (project_id, holiday_date, name) VALUES ($1, $2, $3) RETURNING *",
+        [projectId, "2026-05-01", "Labor Day"]
+      );
+      expect(h1.rows).toHaveLength(1);
+      expect(h1.rows[0].name).toBe("Labor Day");
+
+      // 2. Duplicate holiday on same project and same date must fail
+      let duplicateError;
+      try {
+        await pool.query(
+          "INSERT INTO holidays (project_id, holiday_date, name) VALUES ($1, $2, $3)",
+          [projectId, "2026-05-01", "Duplicate Labor Day"]
+        );
+      } catch (err) {
+        duplicateError = err;
+      }
+      expect(duplicateError).toBeDefined();
+      expect(duplicateError.code).toBe("23505"); // PostgreSQL unique_violation code
+
+      // 3. Same holiday date on a different project must succeed
+      const otherProjRes = await pool.query(
+        "INSERT INTO projects (name, code, status, actual_progress, planned_progress) VALUES ('Other P', 'OP1', 'Chuẩn bị', 0, 0) RETURNING id"
+      );
+      const otherProjectId = otherProjRes.rows[0].id;
+
+      const hOther = await pool.query(
+        "INSERT INTO holidays (project_id, holiday_date, name) VALUES ($1, $2, $3) RETURNING *",
+        [otherProjectId, "2026-05-01", "Labor Day"]
+      );
+      expect(hOther.rows).toHaveLength(1);
+    });
+
+    it("Rollbacks transaction cleanly when project creation encounters an error", async () => {
+      // Duplicate code will trigger error and rollback
+      const duplicateRes = await request(app).post("/api/projects").set("Cookie", cookieAdmin).send({
+        name: "Duplicate APJ Project",
+        code: "APJ",
+        location: "Danang"
+      });
+      expect(duplicateRes.status).toBe(400);
+
+      // Verify no orphan project or calendar exists for the failed name
+      const { rows: pRows } = await pool.query("SELECT id FROM projects WHERE name = 'Duplicate APJ Project'");
+      expect(pRows).toHaveLength(0);
     });
   });
 

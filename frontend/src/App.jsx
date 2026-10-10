@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import api from './lib/api';
 import './App.css';
@@ -23,6 +23,13 @@ import NotFoundPage from './pages/NotFoundPage';
 import ComingSoonPage from './pages/ComingSoonPage';
 import InvitationAcceptPage from './pages/InvitationAcceptPage';
 import SchedulePage from './pages/SchedulePage';
+import GanttPage from './pages/GanttPage';
+import MilestoneWarningsPage from './pages/MilestoneWarningsPage';
+import ProjectCalendarPage from './pages/ProjectCalendarPage';
+import DiaryPage from './pages/DiaryPage';
+
+// S-26 / T-60
+import FieldPage from './pages/FieldPage';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -34,11 +41,12 @@ function App() {
         const response = await api.get('/auth/me');
         setUser(response.data.user);
       } catch (error) {
-        console.error("Không thể kiểm tra session", error);
+        console.error('Không thể kiểm tra session', error);
       } finally {
         setCheckingSession(false);
       }
     };
+
     checkSession();
   }, []);
 
@@ -54,41 +62,158 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
+
+        {/* ================= LOGIN ================= */}
         <Route element={<AuthLayout />}>
           <Route path="/login" element={<LoginPage setUser={setUser} />} />
         </Route>
-        
-        <Route path="/invitations/:token/accept" element={<InvitationAcceptPage />} />
 
-        {/* Public Routes with Header & Footer */}
+        <Route
+          path="/invitations/:token/accept"
+          element={<InvitationAcceptPage />}
+        />
+
+        {/* ================= PUBLIC ================= */}
         <Route element={<PublicLayout user={user} setUser={setUser} />}>
-          <Route path="/" element={<HomePage user={user} />} />
-          <Route path="/du-an" element={<PublicProjectsPage />} />
-          <Route path="/du-an/:id" element={<PublicProjectDetailPage user={user} />} />
-          <Route path="/nha-thau" element={<ComingSoonPage title="Trang danh bạ nhà thầu" />} />
-          <Route path="/vat-tu" element={<ComingSoonPage title="Trang vật tư thiết bị" />} />
-          <Route path="/tin-tuc" element={<ComingSoonPage title="Trang tin tức" />} />
-          <Route path="/lien-he" element={<ComingSoonPage title="Trang liên hệ" />} />
-          <Route path="/gioi-thieu" element={<ComingSoonPage title="Trang giới thiệu" />} />
-          <Route path="/dieu-khoan" element={<ComingSoonPage title="Trang điều khoản sử dụng" />} />
-          <Route path="/bao-mat" element={<ComingSoonPage title="Trang chính sách bảo mật" />} />
-          <Route path="/huong-dan" element={<ComingSoonPage title="Trang hướng dẫn sử dụng" />} />
-          <Route path="/faq" element={<ComingSoonPage title="Câu hỏi thường gặp" />} />
-          <Route path="*" element={<NotFoundPage />} />
+          <Route
+            path="/"
+            element={<HomePage user={user} />}
+          />
+
+          <Route
+            path="/du-an"
+            element={<PublicProjectsPage />}
+          />
+
+          <Route
+            path="/du-an/:id"
+            element={<PublicProjectDetailPage user={user} />}
+          />
+
+          <Route
+            path="/nha-thau"
+            element={<ComingSoonPage title="Trang danh bạ nhà thầu" />}
+          />
+
+          <Route
+            path="/vat-tu"
+            element={<ComingSoonPage title="Trang vật tư thiết bị" />}
+          />
+
+          <Route
+            path="/tin-tuc"
+            element={<ComingSoonPage title="Trang tin tức" />}
+          />
+
+          <Route
+            path="/lien-he"
+            element={<ComingSoonPage title="Trang liên hệ" />}
+          />
+
+          <Route
+            path="/gioi-thieu"
+            element={<ComingSoonPage title="Trang giới thiệu" />}
+          />
+
+          <Route
+            path="/dieu-khoan"
+            element={<ComingSoonPage title="Trang điều khoản sử dụng" />}
+          />
+
+          <Route
+            path="/bao-mat"
+            element={<ComingSoonPage title="Trang chính sách bảo mật" />}
+          />
+
+          <Route
+            path="/huong-dan"
+            element={<ComingSoonPage title="Trang hướng dẫn sử dụng" />}
+          />
+
+          <Route
+            path="/faq"
+            element={<ComingSoonPage title="Câu hỏi thường gặp" />}
+          />
+
+          <Route
+            path="*"
+            element={<NotFoundPage />}
+          />
         </Route>
 
-        {/* Project Selection (Full screen) */}
-        <Route path="/projects" element={user ? <ProjectsPage user={user} setUser={setUser} /> : <Navigate to="/login" replace />} />
+        {/* ================= CHỌN DỰ ÁN ================= */}
+        <Route
+          path="/projects"
+          element={
+            user
+              ? <ProjectsPage user={user} setUser={setUser} />
+              : <Navigate to="/login" replace />
+          }
+        />
 
-        {/* Admin Dashboard */}
-        <Route path="/admin" element={user ? <AdminPage user={user} /> : <Navigate to="/login" replace />} />
+        {/* ================= ADMIN ================= */}
+        <Route
+          path="/admin"
+          element={
+            user
+              ? <AdminPage user={user} />
+              : <Navigate to="/login" replace />
+          }
+        />
 
-        {/* Dashboard Layout (With Sidebar) */}
-        <Route element={user ? <DashboardLayout user={user} setUser={setUser} /> : <Navigate to="/login" replace />}>
-          <Route path="/dashboard" element={<LandingPage user={user} setUser={setUser} />} />
-          <Route path="/wbs" element={<WBSPage user={user} />} />
-          <Route path="/schedule" element={<SchedulePage user={user} />} />
-          <Route path="/members" element={<MembersPage user={user} />} />
+        {/* ================= DASHBOARD ================= */}
+        <Route
+          element={
+            user
+              ? <DashboardLayout user={user} setUser={setUser} />
+              : <Navigate to="/login" replace />
+          }
+        >
+          <Route
+            path="/dashboard"
+            element={<LandingPage user={user} setUser={setUser} />}
+          />
+
+          <Route
+            path="/wbs"
+            element={<WBSPage user={user} />}
+          />
+
+          <Route
+            path="/schedule"
+            element={<SchedulePage user={user} />}
+          />
+
+          <Route
+            path="/gantt"
+            element={<GanttPage />}
+          />
+
+          <Route
+            path="/warnings"
+            element={<MilestoneWarningsPage user={user} />}
+          />
+
+          <Route
+            path="/calendar"
+            element={<ProjectCalendarPage user={user} />}
+          />
+
+          {/* S-26 / T-59 / T-60 */}
+<Route
+  path="/field"
+  element={<FieldPage user={user} />}
+/>
+
+          <Route
+            path="/diary"
+            element={<DiaryPage user={user} />}
+          />
+
+          <Route
+            path="/members"
+            element={<MembersPage user={user} />}
+          />
         </Route>
 
       </Routes>

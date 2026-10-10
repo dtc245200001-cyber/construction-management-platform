@@ -301,7 +301,7 @@ navigate(
                   </div>
 
                   <button type="submit" className="nl-submit-btn" style={{marginTop: "calc(var(--u) * 28)"}} disabled={loading}>
-                    {loading ? "Đang đăng ký..." : "Đang đăng ký"}
+                    {loading ? "Đang đăng ký..." : "Đăng ký"}
                     {!loading && <ArrowRight />}
                   </button>
 

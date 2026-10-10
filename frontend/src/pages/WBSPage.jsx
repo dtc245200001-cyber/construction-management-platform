@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useOutletContext } from "react-router-dom";
 import api from "../lib/api";
 import TaskForm from "../components/TaskForm";
 import { format, parseISO } from "date-fns";
 import { 
-  Search, Plus, List, LayoutGrid, MoreHorizontal, 
+  Search, Plus, List, LayoutGrid,
   ChevronRight, ChevronDown, FolderOpen, FileText, 
-  Check, Lightbulb, X, FileSpreadsheet, Download, Share2, Network,
-  Maximize2, Minimize2, Pencil, Trash2, PlusCircle, FolderPlus
+  Lightbulb, X, FileSpreadsheet, Download, Network,
+  Maximize2, Minimize2, Pencil, Trash2, PlusCircle, FolderPlus, CalendarRange, Flag
 } from "lucide-react";
-import { PieChart, Pie, Cell } from "recharts";
 
 function buildTree(data) {
   const map = {};
@@ -25,6 +25,46 @@ function buildTree(data) {
     }
   });
   return roots;
+}
+
+const toTime = (value) => {
+  if (!value) return null;
+  const t = new Date(value).getTime();
+  return Number.isNaN(t) ? null : t;
+};
+
+/**
+ * T-09: Ngày của hạng mục được tổng hợp hoàn toàn ở frontend (không lưu DB):
+ * - Bắt đầu = ngày bắt đầu sớm nhất (min ES) của mọi con cháu
+ * - Kết thúc = ngày kết thúc muộn nhất (max EF) của mọi con cháu
+ * Hạng mục chưa có công việc nào được tính lịch thì để null.
+ * Trả về cây mới, không thay đổi cây đầu vào.
+ */
+export function rollupCategoryDates(nodes) {
+  return (nodes || []).map((node) => {
+    if (node.type !== "category") return node;
+
+    const children = rollupCategoryDates(node.children);
+    let start = null;
+    let end = null;
+    let startTime = Infinity;
+    let endTime = -Infinity;
+
+    for (const child of children) {
+      const s = toTime(child.start_date);
+      if (s !== null && s < startTime) {
+        startTime = s;
+        start = child.start_date;
+      }
+      const e = toTime(child.end_date);
+      if (e !== null && e > endTime) {
+        endTime = e;
+        end = child.end_date;
+      }
+    }
+
+    return { ...node, children, start_date: start, end_date: end };
+  });
 }
 
 const COLORS = [
@@ -71,6 +111,18 @@ function WBSPage() {
   const [expanded, setExpanded] = useState(new Set());
   const [search, setSearch] = useState("");
   const [showRightPanel, setShowRightPanel] = useState(true);
+  const context = useOutletContext();
+  const currentProject = context?.currentProject;
+
+  // T-43: Milestones
+  const [milestones, setMilestones] = useState({});
+  const [milestoneModalConfig, setMilestoneModalConfig] = useState({
+    isOpen: false,
+    workItem: null,
+    date: "",
+    error: ""
+  });
+
   // =========================
   // T-12 TASK FORM
   // =========================
@@ -78,18 +130,16 @@ function WBSPage() {
   const [selectedWorkItem, setSelectedWorkItem] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
 
-  // Giữ projectId theo phiên bản mới nhất từ main
-  const projectId = localStorage.getItem("currentProjectId") || 13;
+  const projectId = currentProject?.id || localStorage.getItem("currentProjectId") || 1;
 
-  // State cho Modal Thêm / Sửa theo chuẩn T-05 / T-09 / T-12
+  // State cho Modal Thêm / Sửa hạng mục (T-05 / T-09).
+  // Công việc (task) luôn được thêm / sửa qua TaskForm dùng chung (T-12).
   const [modalConfig, setModalConfig] = useState({
     isOpen: false,
-    mode: "add_root", // 'add_root' | 'add_child' | 'edit_category' | 'edit_task'
-    entryType: "category", // 'category' | 'task'
+    mode: "add_root", // 'add_root' | 'add_child' | 'edit_category'
     targetNode: null,
     name: "",
     code: "",
-    duration_days: 1,
     error: "",
   });
 
@@ -105,9 +155,26 @@ function WBSPage() {
 
     return node.children.every((child) => child.type === "task");
   };
+
+  const flattenTasks = (nodes) =>
+  nodes.flatMap((n) => [
+    ...(n.type === "task" ? [n] : []),
+    ...flattenTasks(n.children || []),
+  ]);
+
   const openCreateTaskForm = (workItem) => {
   setSelectedWorkItem(workItem);
   setEditingTask(null);
+  setShowTaskForm(true);
+};
+
+const openEditTaskForm = (node) => {
+  setEditingTask({
+    id: node.task_id,
+    name: node.name,
+    duration_days: node.duration_days,
+  });
+  setSelectedWorkItem(null);
   setShowTaskForm(true);
 };
 
@@ -122,6 +189,15 @@ const closeTaskForm = () => {
       const res = await api.get(`/categories/${projectId}/tree/all`);
       const roots = buildTree(res.data);
       setItems(roots);
+      
+      try {
+        const msRes = await api.get(`/projects/${projectId}/milestones`);
+        const msMap = {};
+        msRes.data.forEach(m => msMap[m.work_item_id] = m);
+        setMilestones(msMap);
+      } catch (err) {
+        console.error("Failed to load milestones:", err);
+      }
       
       const initExpanded = new Set();
       const traverse = (node, level) => {
@@ -156,26 +232,20 @@ const closeTaskForm = () => {
     setModalConfig({
       isOpen: true,
       mode: "add_root",
-      entryType: "category",
       targetNode: null,
       name: "",
       code: "",
-      duration_days: 1,
       error: "",
     });
   };
 
   const openAddChildModal = (node) => {
-    const isLeaf = isLeafCategory(node);
     setModalConfig({
       isOpen: true,
       mode: "add_child",
-      // Nếu là hạng mục lá, mặc định có thể chọn Task hoặc Category; nếu không thì chỉ Category
-      entryType: isLeaf ? "task" : "category",
       targetNode: node,
       name: "",
       code: "",
-      duration_days: 1,
       error: "",
     });
   };
@@ -184,49 +254,62 @@ const closeTaskForm = () => {
     setModalConfig({
       isOpen: true,
       mode: "edit_category",
-      entryType: "category",
       targetNode: node,
       name: node.name,
       code: node.code || "",
-      duration_days: 1,
       error: "",
     });
   };
 
-  const openEditTaskModal = (node) => {
-    setModalConfig({
+  const openMilestoneModal = (node) => {
+    setMilestoneModalConfig({
       isOpen: true,
-      mode: "edit_task",
-      entryType: "task",
-      targetNode: node,
-      name: node.name,
-      code: "",
-      duration_days: node.duration_days || 1,
-      error: "",
+      workItem: node,
+      date: milestones[node.id] ? milestones[node.id].required_date.split('T')[0] : "",
+      error: ""
     });
+  };
+
+  const handleMilestoneSubmit = async (e) => {
+    e.preventDefault();
+    if (!milestoneModalConfig.date) {
+      setMilestoneModalConfig(prev => ({ ...prev, error: "Vui lòng chọn ngày bắt buộc" }));
+      return;
+    }
+    try {
+      setModalLoading(true);
+      await api.post(`/projects/${projectId}/work-items/${milestoneModalConfig.workItem.id}/milestones`, {
+        required_date: milestoneModalConfig.date
+      });
+      setMilestoneModalConfig(prev => ({ ...prev, isOpen: false, error: "" }));
+      await fetchWBS();
+    } catch (err) {
+      setMilestoneModalConfig(prev => ({
+        ...prev,
+        error: err.response?.data?.message || err.message || "Lỗi khi lưu mốc"
+      }));
+    } finally {
+      setModalLoading(false);
+    }
   };
 
   const closeModal = () => {
     setModalConfig(prev => ({ ...prev, isOpen: false, error: "" }));
   };
 
+  // Chọn "Công việc thi công" trong modal mục con -> chuyển sang TaskForm dùng chung
+  const switchToTaskForm = () => {
+    const node = modalConfig.targetNode;
+    closeModal();
+    openCreateTaskForm(node);
+  };
+
   const handleModalSubmit = async (e) => {
     e.preventDefault();
     const trimmedName = modalConfig.name.trim();
     if (!trimmedName) {
-      setModalConfig(prev => ({
-        ...prev,
-        error: modalConfig.entryType === "task" ? "Vui lòng nhập tên công việc" : "Vui lòng nhập tên hạng mục",
-      }));
+      setModalConfig(prev => ({ ...prev, error: "Vui lòng nhập tên hạng mục" }));
       return;
-    }
-
-    if (modalConfig.entryType === "task") {
-      const days = Number(modalConfig.duration_days);
-      if (!Number.isInteger(days) || days <= 0) {
-        setModalConfig(prev => ({ ...prev, error: "Thời lượng thi công phải là số nguyên dương (> 0)" }));
-        return;
-      }
     }
 
     try {
@@ -240,34 +323,16 @@ const closeTaskForm = () => {
           parent_id: null,
         });
       } else if (modalConfig.mode === "add_child") {
-        if (modalConfig.entryType === "task") {
-          await api.post(`/projects/${projectId}/tasks`, {
-            work_item_id: modalConfig.targetNode.id,
-            name: trimmedName,
-            duration_days: Number(modalConfig.duration_days),
-          });
-        } else {
-          await api.post(`/categories/${projectId}`, {
-            name: trimmedName,
-            code: modalConfig.code.trim() || undefined,
-            parent_id: modalConfig.targetNode.id,
-          });
-        }
+        await api.post(`/categories/${projectId}`, {
+          name: trimmedName,
+          code: modalConfig.code.trim() || undefined,
+          parent_id: modalConfig.targetNode.id,
+        });
         // Tự động mở rộng node cha để thấy con mới tạo
         setExpanded(prev => new Set([...prev, modalConfig.targetNode.id]));
       } else if (modalConfig.mode === "edit_category") {
         await api.put(`/categories/${projectId}/${modalConfig.targetNode.id}`, {
           name: trimmedName,
-        });
-      } else if (modalConfig.mode === "edit_task") {
-        const realTaskId =
-          modalConfig.targetNode.task_id ||
-          (typeof modalConfig.targetNode.id === "string"
-            ? modalConfig.targetNode.id.replace("task-", "")
-            : modalConfig.targetNode.id);
-        await api.put(`/projects/${projectId}/tasks/${realTaskId}`, {
-          name: trimmedName,
-          duration_days: Number(modalConfig.duration_days),
         });
       }
 
@@ -314,61 +379,10 @@ const closeTaskForm = () => {
     }
   };
 
-  const updateStatus = async (id, newStatus) => {
-    // Node loại [Công việc] từ bảng tasks không đi qua các endpoint sửa/xoá của categories
-    if (typeof id === 'string' && id.startsWith('task-')) {
-      return;
-    }
-    try {
-      await api.put(`/categories/${projectId}/${id}`, { status: newStatus });
-      fetchWBS();
-    } catch (err) {
-      alert("Lỗi cập nhật trạng thái: " + (err.response?.data?.message || err.message));
-    }
-  };
-
-  const renderStatus = (node) => {
-    const status = node.status;
-    let colorClass = "bg-[#DBEAFE] text-[#1D4ED8]";
-    let dotClass = "bg-current";
-    let icon = <span className={`size-1.5 rounded-full ${dotClass}`}></span>;
-    let label = "To Do";
-
-    switch (status) {
-      case 'Đang thực hiện': 
-        colorClass = "bg-[#DCFCE7] text-[#15803D]"; label = "In Progress"; break;
-      case 'Đang chờ': 
-        colorClass = "bg-[#FFEDD5] text-[#EA7A0B]"; label = "Pending"; break;
-      case 'Hoàn thành': 
-        colorClass = "bg-[#DCFCE7] text-green-800"; icon = <Check className="size-3" />; label = "Done"; break;
-      case 'Trễ hạn': 
-        colorClass = "bg-[#FEE2E2] text-red-700"; label = "Overdue"; break;
-    }
-
-    return (
-      <div className="relative group cursor-pointer">
-        <select 
-          value={status || 'Chưa bắt đầu'}
-          onChange={(e) => updateStatus(node.id, e.target.value)}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-        >
-          <option value="Chưa bắt đầu">To Do</option>
-          <option value="Đang thực hiện">In Progress</option>
-          <option value="Đang chờ">Pending</option>
-          <option value="Hoàn thành">Done</option>
-          <option value="Trễ hạn">Overdue</option>
-        </select>
-        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${colorClass} whitespace-nowrap`}>
-          {icon} {label}
-        </span>
-      </div>
-    );
-  };
-
   const renderDate = (date) => date ? format(parseISO(date), 'dd/MM/yyyy') : '--';
 
   const renderRow = (node, level, indexStr, colorIndex = 0) => {
-    const isExpanded = expanded.has(node.id);
+    const isExpanded = search.trim() ? true : expanded.has(node.id);
     const isCategory = node.type === 'category';
     const indent = level * 36;
     const color = COLORS[colorIndex % COLORS.length];
@@ -376,7 +390,7 @@ const closeTaskForm = () => {
     if (isCategory) {
       return (
         <React.Fragment key={node.id}>
-          <tr className={`h-[52px] ${color.bg} rounded-xl border-b border-white`}>
+          <tr className={`h-[52px] ${color.bg} rounded-xl border-b border-white group`}>
             <td className="px-4 font-bold text-[#0F1B3D]" style={{ paddingLeft: `${indent + 16}px` }}>
               <div className="flex items-center gap-2">
                 <button onClick={() => toggleExpand(node.id)} className="p-1 hover:bg-black/5 rounded">
@@ -387,25 +401,34 @@ const closeTaskForm = () => {
                 </div>
                 {isExpanded ? <FolderOpen className={`size-4 ${color.text}`} /> : <FolderOpen className={`size-4 ${color.text}`} />}
                 <span className="text-[14px]">{node.name}</span>
+                {milestones[node.id] && (
+                  <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-red-100 text-red-600" title="Mốc bàn giao bắt buộc">
+                    <Flag className="size-3" />
+                    {renderDate(milestones[node.id].required_date)}
+                  </span>
+                )}
               </div>
             </td>
             <td className="px-4">
               <span className="inline-flex px-2 py-0.5 rounded text-[11px] font-medium bg-[#EEF2FF] text-[#4F46E5]">Hạng mục</span>
             </td>
+            <td className="px-4"></td>
             <td className="px-4 text-sm text-[#475569]">{renderDate(node.start_date)}</td>
             <td className="px-4 text-sm text-[#475569]">{renderDate(node.end_date)}</td>
-            <td className="px-4">{renderStatus(node)}</td>
-            <td className="px-4">
-              <div className="flex items-center gap-2">
-                <div className="flex-1 h-2 bg-black/10 rounded-full overflow-hidden">
-                  <div className={`h-full bg-current ${color.text}`} style={{ width: `${node.progress || 0}%` }}></div>
-                </div>
-                <span className={`text-xs font-bold ${color.text}`}>{node.progress || 0}%</span>
-              </div>
-            </td>
-            <td className="px-4 text-right">
+            <td className={`px-4 text-right sticky right-0 z-10 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] transition-colors ${color.bg}`}>
  <div className="flex items-center justify-end gap-1">
-  {/* T-12: Thêm công việc */}
+  {/* T-43: Đặt mốc */}
+  <button
+    type="button"
+    onClick={() => openMilestoneModal(node)}
+    title="Đặt mốc bàn giao"
+    className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors cursor-pointer"
+  >
+    <Flag className="size-4" />
+  </button>
+
+  {/* T-12: Thêm công việc — chỉ hạng mục lá mới được chứa công việc */}
+  {isLeafCategory(node) && (
   <button
     type="button"
     onClick={() => openCreateTaskForm(node)}
@@ -414,6 +437,7 @@ const closeTaskForm = () => {
   >
     <Plus className="size-4" />
   </button>
+  )}
 
   {/* Main: Thêm hạng mục con */}
   <button
@@ -452,7 +476,7 @@ const closeTaskForm = () => {
       );
     } else {
       return (
-        <tr key={node.id} className="h-[46px] bg-white border-b border-[#EEF2F7] hover:bg-[#F5F8FF] transition-colors">
+        <tr key={node.id} className="h-[46px] bg-white border-b border-[#EEF2F7] hover:bg-[#F5F8FF] transition-colors group">
           <td className="px-4" style={{ paddingLeft: `${indent + 44}px` }}>
             <div className="flex items-center gap-2 text-[14px]">
               <span className="text-xs text-[#64748B] font-medium">{indexStr}</span>
@@ -468,21 +492,29 @@ const closeTaskForm = () => {
           <td className="px-4">
             <span className="inline-flex px-2 py-0.5 rounded text-[11px] font-medium bg-[#DCFCE7] text-[#15803D]">Công việc</span>
           </td>
+          <td className="px-4 text-sm text-[#475569]">
+            {node.predecessors?.length > 0 ? (
+              <div className="flex flex-wrap gap-1 max-w-[150px]">
+                {node.predecessors.map((p, idx) => {
+                  const refIdx = taskIdToIndexMap[p.id] || p.id;
+                  const type = p.type !== 'FS' ? p.type : '';
+                  return (
+                    <span key={idx} className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[11px] font-mono border border-slate-200" title={`Ràng buộc: ${p.type}`}>
+                      {refIdx}{type}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : (
+              <span className="text-slate-300">-</span>
+            )}
+          </td>
           <td className="px-4 text-sm text-[#475569]">{renderDate(node.start_date)}</td>
           <td className="px-4 text-sm text-[#475569]">{renderDate(node.end_date)}</td>
-          <td className="px-4">{renderStatus(node)}</td>
-          <td className="px-4">
-            <div className="flex items-center gap-2">
-              <div className="flex-1 h-2 bg-[#E5EAF3] rounded-full overflow-hidden">
-                <div className="h-full bg-[#1F63E0]" style={{ width: `${node.progress || 0}%` }}></div>
-              </div>
-              <span className="text-xs font-medium text-[#64748B]">{node.progress || 0}%</span>
-            </div>
-          </td>
-          <td className="px-4 text-right">
+          <td className="px-4 text-right sticky right-0 bg-white group-hover:bg-[#F5F8FF] z-10 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] transition-colors">
             <div className="flex items-center justify-end gap-1">
               <button
-                onClick={() => openEditTaskModal(node)}
+                onClick={() => openEditTaskForm (node)}
                 title="Sửa công việc"
                 className="p-1.5 text-[#475569] hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
               >
@@ -502,33 +534,66 @@ const closeTaskForm = () => {
     }
   };
 
-  // Tính toán số liệu cho Panel Phải
-  const stats = useMemo(() => {
-    let total = 0, doing = 0, waiting = 0, done = 0;
-    const countNodes = (n) => {
-      if (n.type === 'task') {
-        total++;
-        if (n.status === 'Đang thực hiện') doing++;
-        else if (n.status === 'Chưa bắt đầu' || n.status === 'Đang chờ') waiting++;
-        else if (n.status === 'Hoàn thành') done++;
-      }
-      n.children.forEach(countNodes);
-    };
-    items.forEach(countNodes);
-    const overallProgress = total > 0 ? Math.round((done + doing*0.5) / total * 100) : 0;
-    return { total, doing, waiting, done, overallProgress };
-  }, [items]);
+  // T-09: Cây đã tổng hợp ngày hạng mục (min ES / max EF) — tính thuần frontend
+  const rolledItems = useMemo(() => rollupCategoryDates(items), [items]);
 
-  const chartData = [
-    { name: "Hoàn thành", value: stats.done, color: "#22C55E" },
-    { name: "Còn lại", value: stats.total - stats.done, color: "#E8EDF5" }
-  ];
+  // Tạo map ánh xạ từ task_id sang STT (VD: 1.1, 1.2.1) để hiển thị trong cột Ràng buộc
+  const taskIdToIndexMap = useMemo(() => {
+    const map = {};
+    const traverse = (nodes, parentIndexStr = "") => {
+      nodes.forEach((node, i) => {
+        const idx = parentIndexStr ? `${parentIndexStr}.${i + 1}` : `${i + 1}`;
+        if (node.type === "task" && node.task_id) {
+          map[node.task_id] = idx;
+        }
+        if (node.children) traverse(node.children, idx);
+      });
+    };
+    traverse(rolledItems);
+    return map;
+  }, [rolledItems]);
+
+  // Tính toán số liệu cho Panel Phải (không còn trạng thái / tiến độ)
+  const stats = useMemo(() => {
+    let totalTasks = 0, totalCategories = 0;
+    const countNodes = (n) => {
+      if (n.type === 'task') totalTasks++;
+      else totalCategories++;
+      (n.children || []).forEach(countNodes);
+    };
+    rolledItems.forEach(countNodes);
+
+    // Khung thời gian dự án = min/max ngày của các hạng mục gốc
+    const [span] = rollupCategoryDates([{ type: 'category', children: rolledItems }]);
+    return { totalTasks, totalCategories, start: span.start_date, end: span.end_date };
+  }, [rolledItems]);
+
+  const normalize = (s) =>
+  (s || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase();
+
+const visibleItems = useMemo(() => {
+  const q = normalize(search.trim());
+  if (!q) return rolledItems;
+
+  const filterNode = (n) => {
+    if (normalize(n.name).includes(q)) return n; // khớp thì giữ cả nhánh con
+    const kids = (n.children || []).map(filterNode).filter(Boolean);
+    return kids.length ? { ...n, children: kids } : null;
+  };
+
+  return rolledItems.map(filterNode).filter(Boolean);
+}, [rolledItems, search]);
 
   return (
-    <div className="flex-1 min-h-screen bg-[#F3F6FB] text-[#0F1B3D] flex flex-col overflow-hidden">
-      <div className="flex-1 flex overflow-hidden p-6 gap-6 max-w-[1672px] mx-auto w-full">
+    <div className="flex-1 min-h-0 bg-[#F3F6FB] text-[#0F1B3D] flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row p-4 sm:p-6 gap-6 max-w-[1672px] mx-auto w-full">
         {/* Main Content */}
-        <div className="flex-1 flex flex-col gap-6 overflow-hidden">
+        <div className="flex-1 flex flex-col gap-6 overflow-hidden min-w-0">
           
           {/* Hero Banner */}
           <div className="relative h-[115px] rounded-2xl overflow-hidden shrink-0 flex items-center p-6 shadow-sm">
@@ -540,14 +605,14 @@ const closeTaskForm = () => {
               </div>
               <div>
                 <h1 className="text-white text-[30px] font-bold leading-tight">Cơ cấu công việc (WBS)</h1>
-                <p className="text-white/90 text-[15px] mt-1">Quản lý cấu trúc hạng mục phân cấp của dự án</p>
+                <p className="text-white/90 text-[18px] font-medium mt-1.5">{currentProject ? `Dự án: ${currentProject.name}` : 'Quản lý cấu trúc hạng mục phân cấp của dự án'}</p>
               </div>
             </div>
           </div>
 
           {/* Toolbar */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="relative w-[290px]">
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <div className="relative w-full sm:w-[290px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-[#64748B]" />
               <input 
                 type="text" 
@@ -557,9 +622,6 @@ const closeTaskForm = () => {
                 onChange={e => setSearch(e.target.value)}
               />
             </div>
-            <select className="h-11 px-4 rounded-[10px] border border-[#E6EBF3] bg-white text-[14px] outline-none">
-              <option>Tất cả trạng thái</option>
-            </select>
             <select className="h-11 px-4 rounded-[10px] border border-[#E6EBF3] bg-white text-[14px] outline-none">
               <option>Tất cả thời gian</option>
             </select>
@@ -584,27 +646,28 @@ const closeTaskForm = () => {
           </div>
 
           {/* WBS Table Card */}
-          <div className="flex-1 bg-white rounded-2xl border border-[#E6EBF3] shadow-[0_1px_2px_rgba(16,24,40,.04),0_4px_12px_rgba(16,24,40,.04)] flex flex-col overflow-hidden">
-            <div className="overflow-auto flex-1">
+          <div className="flex-1 bg-white rounded-2xl border border-[#E6EBF3] shadow-[0_1px_2px_rgba(16,24,40,.04),0_4px_12px_rgba(16,24,40,.04)] flex flex-col overflow-hidden min-w-0">
+            <div className="overflow-x-auto overflow-y-auto flex-1 min-w-0">
               <table className="w-full text-left border-collapse min-w-[900px]">
                 <thead className="bg-white sticky top-0 z-10 shadow-sm">
                   <tr>
                     <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] min-w-[360px] whitespace-nowrap">STT / Tên công việc / Hạng mục</th>
                     <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[110px] whitespace-nowrap">Loại</th>
+                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[120px] whitespace-nowrap">Ràng buộc</th>
                     <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[120px] whitespace-nowrap">Bắt đầu</th>
                     <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[120px] whitespace-nowrap">Kết thúc</th>
-                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[150px] whitespace-nowrap">Trạng thái</th>
-                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[160px] whitespace-nowrap">Tiến độ</th>
-                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[50px]"></th>
+                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[50px] sticky right-0 bg-white z-20 shadow-[-4px_0_12px_rgba(0,0,0,0.05)]"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan="7" className="p-8 text-center text-gray-500">Đang tải dữ liệu...</td></tr>
+                    <tr><td colSpan="6" className="p-8 text-center text-gray-500">Đang tải dữ liệu...</td></tr>
                   ) : items.length === 0 ? (
-                    <tr><td colSpan="7" className="p-16 text-center text-gray-500">Chưa có hạng mục nào.</td></tr>
+                    <tr><td colSpan="6" className="p-16 text-center text-gray-500">Chưa có hạng mục nào.</td></tr>
+                  ) : visibleItems.length === 0 ? (
+                    <tr><td colSpan="6" className="p-16 text-center text-gray-500">Không tìm thấy kết quả.</td></tr>
                   ) : (
-                    items.map((root, i) => renderRow(root, 0, (i+1).toString(), i))
+                    visibleItems.map((root, i) => renderRow(root, 0, (i+1).toString(), i))
                   )}
                 </tbody>
               </table>
@@ -612,52 +675,43 @@ const closeTaskForm = () => {
           </div>
         </div>
 
-        {/* Right Panel (320px) */}
+        {/* Right Panel */}
         {showRightPanel && (
-        <div className="w-[320px] shrink-0 flex flex-col gap-5 overflow-y-auto pr-1 pb-4">
+        <div className="w-full lg:w-[320px] shrink-0 flex flex-col gap-5 lg:overflow-y-auto pr-1 pb-4">
           
-          {/* Tổng quan dự án */}
+          {/* Tổng quan dự án (đã bỏ trạng thái / tiến độ, giữ tổng số công việc) */}
           <div className="bg-white rounded-2xl border border-[#E6EBF3] p-5 shadow-[0_1px_2px_rgba(16,24,40,.04),0_4px_12px_rgba(16,24,40,.04)]">
             <h3 className="font-bold text-[#0F1B3D] mb-4">Tổng quan dự án</h3>
-            <div className="flex items-center gap-4 mb-6">
-              <div className="size-[130px] shrink-0 relative flex items-center justify-center">
-                <PieChart width={130} height={130}>
-                  <Pie data={chartData} innerRadius={50} outerRadius={65} dataKey="value" stroke="none" startAngle={90} endAngle={-270}>
-                    {chartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                </PieChart>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-[28px] font-bold leading-none text-[#0F1B3D]">{stats.overallProgress}%</span>
-                  <span className="text-[12px] text-[#64748B] mt-1">Hoàn thành</span>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl bg-[#EAF2FF] p-4">
+                <div className="flex items-center gap-2 text-[12px] text-[#475569]">
+                  <FileText className="size-4 text-[#1F63E0]" /> Tổng công việc
+                </div>
+                <div data-testid="wbs-total-tasks" className="mt-2 text-[28px] font-bold leading-none text-[#0F1B3D]">
+                  {stats.totalTasks}
                 </div>
               </div>
-              <div className="flex flex-col gap-2.5 text-[12px]">
-                <div className="flex items-center gap-2"><div className="size-2 rounded-full bg-[#93C5FD]"></div><span className="text-[#64748B]">Tổng cv</span><strong className="ml-auto">{stats.total}</strong></div>
-                <div className="flex items-center gap-2"><div className="size-2 rounded-full bg-[#22C55E]"></div><span className="text-[#64748B]">Đang làm</span><strong className="ml-auto">{stats.doing}</strong></div>
-                <div className="flex items-center gap-2"><div className="size-2 rounded-full bg-[#3B82F6]"></div><span className="text-[#64748B]">Chưa BĐ</span><strong className="ml-auto">{stats.waiting}</strong></div>
-                <div className="flex items-center gap-2"><div className="size-2 rounded-full bg-[#166534]"></div><span className="text-[#64748B]">Hoàn thành</span><strong className="ml-auto">{stats.done}</strong></div>
+              <div className="rounded-xl bg-[#F1EDFF] p-4">
+                <div className="flex items-center gap-2 text-[12px] text-[#475569]">
+                  <FolderOpen className="size-4 text-[#8B5CF6]" /> Hạng mục
+                </div>
+                <div className="mt-2 text-[28px] font-bold leading-none text-[#0F1B3D]">
+                  {stats.totalCategories}
+                </div>
               </div>
             </div>
 
             <div className="h-px bg-[#E6EBF3] my-4"></div>
-            <h4 className="font-semibold text-[13px] text-[#0F1B3D] mb-3">Theo giai đoạn</h4>
-            <div className="flex flex-col gap-3">
-              {items.map((root, i) => {
-                const c = COLORS[i % COLORS.length];
-                return (
-                  <div key={root.id}>
-                    <div className="flex justify-between text-[12px] mb-1.5">
-                      <span className="text-[#475569] truncate pr-2">{root.name}</span>
-                      <strong className="text-[#0F1B3D]">{root.progress || 0}%</strong>
-                    </div>
-                    <div className="h-1.5 bg-[#E6EBF3] rounded-full overflow-hidden">
-                      <div className={`h-full ${c.bg.replace('bg-', 'bg-').replace('10', '100')} bg-current ${c.text}`} style={{ width: `${root.progress || 0}%` }}></div>
-                    </div>
-                  </div>
-                )
-              })}
+            <div className="flex items-start gap-3">
+              <div className="size-9 shrink-0 rounded-lg bg-[#E8F7EE] text-[#16A34A] flex items-center justify-center">
+                <CalendarRange className="size-4" />
+              </div>
+              <div className="text-[12px]">
+                <div className="text-[#64748B]">Khung thời gian dự án</div>
+                <div className="mt-0.5 font-semibold text-[13px] text-[#0F1B3D]">
+                  {stats.start ? `${renderDate(stats.start)} → ${renderDate(stats.end)}` : "Chưa tính lịch"}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -702,19 +756,92 @@ const closeTaskForm = () => {
         )}
 
 {showTaskForm && (
-  <TaskForm
-    projectId={projectId}
-    workItem={selectedWorkItem}
-    task={editingTask}
-    onClose={closeTaskForm}
-    onSuccess={() => {
-      closeTaskForm();
-      fetchWBS();
-    }}
-  />
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs overflow-y-auto">
+    <TaskForm
+      projectId={projectId}
+      workItem={selectedWorkItem}
+      task={editingTask}
+      allTasks={flattenTasks(items)}
+      onClose={closeTaskForm}
+      onSuccess={() => {
+        if (selectedWorkItem?.id) {
+          setExpanded(prev => new Set([...prev, selectedWorkItem.id]));
+        }
+        closeTaskForm();
+        fetchWBS();
+      }}
+    />
+  </div>
 )}
 
       </div>
+
+      {/* T-43: Modal Đặt Mốc Bàn Giao */}
+      {milestoneModalConfig.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl border border-[#E6EBF3] animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-4 border-b border-[#EEF2F7]">
+              <div className="flex items-center gap-3">
+                <div className="size-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center">
+                  <Flag className="size-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-[#0F1B3D] text-[16px]">Đặt mốc bàn giao</h3>
+                  <p className="text-xs text-[#64748B]">
+                    Hạng mục: <span className="font-semibold text-[#0F1B3D]">{milestoneModalConfig.workItem?.name}</span>
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setMilestoneModalConfig(prev => ({ ...prev, isOpen: false, error: "" }))}
+                className="size-8 rounded-lg text-[#64748B] hover:bg-slate-100 flex items-center justify-center cursor-pointer"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            {milestoneModalConfig.error && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl">
+                {milestoneModalConfig.error}
+              </div>
+            )}
+
+            <form onSubmit={handleMilestoneSubmit} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#0F1B3D] mb-1.5">
+                  Ngày bàn giao bắt buộc <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={milestoneModalConfig.date}
+                  onChange={(e) => setMilestoneModalConfig(prev => ({ ...prev, date: e.target.value }))}
+                  className="w-full h-11 px-3.5 rounded-xl border border-[#E6EBF3] text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                  disabled={modalLoading}
+                  required
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#EEF2F7] mt-6">
+                <button
+                  type="button"
+                  onClick={() => setMilestoneModalConfig(prev => ({ ...prev, isOpen: false, error: "" }))}
+                  className="h-10 px-4 rounded-xl text-sm font-semibold text-[#64748B] hover:bg-slate-100 transition-colors"
+                  disabled={modalLoading}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={modalLoading}
+                  className="h-10 px-6 rounded-xl text-sm font-semibold bg-red-600 text-white hover:bg-red-700 shadow-sm transition-colors flex items-center gap-2"
+                >
+                  {modalLoading ? "Đang xử lý..." : "Lưu mốc"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal Thêm / Sửa Hạng mục & Công việc theo bố cục chuẩn T-05 / Design System */}
       {modalConfig.isOpen && (
@@ -758,10 +885,8 @@ const closeTaskForm = () => {
               <div className="flex p-1 bg-slate-100 rounded-xl mt-4">
                 <button
                   type="button"
-                  onClick={() => setModalConfig(prev => ({ ...prev, entryType: "task", error: "" }))}
-                  className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                    modalConfig.entryType === "task" ? "bg-white text-[#15803D] shadow-sm" : "text-[#64748B] hover:text-[#0F1B3D]"
-                  }`}
+                  onClick={switchToTaskForm}
+                  className="flex-1 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 text-[#64748B] hover:text-[#0F1B3D] hover:bg-white"
                 >
                   <FileText className="size-3.5" /> Công việc thi công
                 </button>

@@ -7,7 +7,7 @@ const pool = require("../../config/db");
 const { ROLES } = require("../../utils/constants");
 
 describe("Email Invitation End-to-End Flow (Integration)", () => {
-  let adminCookie;
+  let _adminCookie;
   let projectId;
   let pmUserId;
 
@@ -57,6 +57,7 @@ describe("Email Invitation End-to-End Flow (Integration)", () => {
     await pool.query(
       "TRUNCATE TABLE email_logs, project_members, invitations, projects, users RESTART IDENTITY CASCADE"
     );
+    await pool.end();
   });
 
   test("1. Mời email chưa có tài khoản: ghi nhận token_hash, email_logs và đăng ký thành công vào project", async () => {

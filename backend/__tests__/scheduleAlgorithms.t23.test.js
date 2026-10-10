@@ -1,70 +1,90 @@
-const { forwardPass } = require("../utils/scheduleAlgorithms");
+const { calculateSchedule } = require("../utils/scheduleAlgorithms");
+const fixture = require("./fixtures/k01-expected.json");
 
-describe("T-23: Network 1 - FS, SS, FF, SF and negative lag", () => {
-  test("should calculate the network correctly", () => {
-    const tasks = [
-      { id: "A", duration: 4 },
-      { id: "B", duration: 3 },
-      { id: "C", duration: 5 },
-      { id: "D", duration: 2 },
-      { id: "E", duration: 4 },
-      { id: "F", duration: 3 },
-      { id: "G", duration: 2 },
-    ];
+describe("T-23: Tiến độ được kiểm bằng bộ ca có đáp án tính tay", () => {
+  const t23Networks = fixture.networks.filter(n => n.kind === "t23");
 
-    const dependencies = [
-      { from: "A", to: "B", type: "FS", lag: 0 },
-      { from: "A", to: "C", type: "SS", lag: 1 },
-      { from: "B", to: "D", type: "FF", lag: 0 },
-      { from: "C", to: "D", type: "SF", lag: 6 },
-      { from: "D", to: "E", type: "FS", lag: 0 },
-      { from: "C", to: "F", type: "FS", lag: -1 },
-      { from: "E", to: "G", type: "FS", lag: 0 },
-      { from: "F", to: "G", type: "FS", lag: 0 },
-    ];
+  t23Networks.forEach(network => {
+    describe(`Mạng: ${network.name}`, () => {
+      let result;
+      beforeAll(() => {
+        result = calculateSchedule(
+          network.tasks,
+          network.dependencies,
+          network.topologicalOrder,
+          network.projectStart
+        );
+      });
 
-    const topologicalOrder = ["A", "B", "C", "D", "E", "F", "G"];
+      const testCases = network.expected.map(expectedTask => [
+        network.name,
+        expectedTask.id,
+        expectedTask.ES,
+        expectedTask.EF,
+        expectedTask.LS,
+        expectedTask.LF,
+        expectedTask.float,
+        expectedTask.critical
+      ]);
 
-    const results = forwardPass(tasks, dependencies, topologicalOrder, 0);
+      test.each(testCases)(
+        "T-23 [%s] việc %s: ES=%i EF=%i LS=%i LF=%i độ trễ=%i găng=%s",
+        (name, id, ES, EF, LS, LF, float, critical) => {
+          expect(result[id].ES).toBe(ES);
+          expect(result[id].EF).toBe(EF);
+          expect(result[id].LS).toBe(LS);
+          expect(result[id].LF).toBe(LF);
+          expect(result[id].float).toBe(float);
+          expect(result[id].critical).toBe(critical);
+        }
+      );
 
-    expect(results["A"]).toEqual({ ES: 0, EF: 4 });
-    expect(results["B"]).toEqual({ ES: 4, EF: 7 });
-    expect(results["C"]).toEqual({ ES: 1, EF: 6 });
-    expect(results["D"]).toEqual({ ES: 5, EF: 7 });
-    expect(results["E"]).toEqual({ ES: 7, EF: 11 });
-    expect(results["F"]).toEqual({ ES: 5, EF: 8 });
-    expect(results["G"]).toEqual({ ES: 11, EF: 13 });
+      it("đường găng khớp criticalPath trong fixture", () => {
+        const computedCriticalPath = network.topologicalOrder.filter(
+          id => result[id].critical
+        );
+        expect(computedCriticalPath).toEqual(network.criticalPath);
+      });
+    });
   });
-});
-describe("T-23: Network 2 - Parallel branches offset by 3 days", () => {
-  test("should calculate parallel branches and merge correctly", () => {
-    const tasks = [
-      { id: "A", duration: 2 },
-      { id: "B", duration: 6 },
-      { id: "C", duration: 2 },
-      { id: "D", duration: 4 },
-      { id: "E", duration: 2 },
-      { id: "F", duration: 1 },
-    ];
 
-    const dependencies = [
-      { from: "A", to: "B", type: "FS", lag: 0 },
-      { from: "A", to: "C", type: "FS", lag: 3 },
-      { from: "B", to: "D", type: "FS", lag: 0 },
-      { from: "C", to: "E", type: "FS", lag: 0 },
-      { from: "D", to: "F", type: "FS", lag: 0 },
-      { from: "E", to: "F", type: "FS", lag: 0 },
-    ];
+  describe("Các ca riêng", () => {
+    it("T-23 nhánh song song: độ trễ của nhánh ngắn (C và E) bằng 3 = 12 - 9 tính tay", () => {
+      const network = t23Networks.find(n => n.id === "T23-N2");
+      const result = calculateSchedule(
+        network.tasks,
+        network.dependencies,
+        network.topologicalOrder,
+        network.projectStart
+      );
+      expect(result.C.float).toBe(3);
+      expect(result.E.float).toBe(3);
+      expect(result.A.float).toBe(0);
+      expect(result.B.float).toBe(0);
+      expect(result.D.float).toBe(0);
+      expect(result.F.float).toBe(0);
+    });
 
-    const topologicalOrder = ["A", "B", "C", "D", "E", "F"];
-
-    const results = forwardPass(tasks, dependencies, topologicalOrder, 0);
-
-    expect(results["A"]).toEqual({ ES: 0, EF: 2 });
-    expect(results["B"]).toEqual({ ES: 2, EF: 8 });
-    expect(results["C"]).toEqual({ ES: 5, EF: 7 });
-    expect(results["D"]).toEqual({ ES: 8, EF: 12 });
-    expect(results["E"]).toEqual({ ES: 7, EF: 9 });
-    expect(results["F"]).toEqual({ ES: 12, EF: 13 });
+    it("T-23 đủ bốn loại quan hệ: việc F là việc duy nhất có độ trễ, bằng 3", () => {
+      const network = t23Networks.find(n => n.id === "T23-N1");
+      const result = calculateSchedule(
+        network.tasks,
+        network.dependencies,
+        network.topologicalOrder,
+        network.projectStart
+      );
+      expect(result.F.float).toBe(3);
+      expect(result.A.float).toBe(0);
+      expect(result.B.float).toBe(0);
+      expect(result.C.float).toBe(0);
+      expect(result.D.float).toBe(0);
+      expect(result.E.float).toBe(0);
+      expect(result.G.float).toBe(0);
+      
+      const types = new Set(network.dependencies.map(d => d.type));
+      expect(types).toEqual(new Set(["FS", "SS", "FF", "SF"]));
+      const hasNegativeLag = network.dependencies.some(d => d.lag < 0);
+      expect(hasNegativeLag).toBe(true);
+    });
   });
 });

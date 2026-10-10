@@ -29,6 +29,22 @@ const {
 const router = createProjectRouter();
 
 // ─── GET /:projectId — Lấy danh sách hạng mục theo parentId ─────────────────
+/**
+ * @swagger
+ * /api/categories/{projectId}:
+ *   get:
+ *     summary: API GET /:projectId
+ *     tags: [Category]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get(
   "/:projectId",
   requireAuth,
@@ -84,6 +100,22 @@ router.get(
 );
 
 // ─── GET /:projectId/tree/all — Toàn bộ hạng mục dạng phẳng ────────────────
+/**
+ * @swagger
+ * /api/categories/{projectId}/tree/all:
+ *   get:
+ *     summary: API GET /:projectId/tree/all
+ *     tags: [Category]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.get(
   "/:projectId/tree/all",
   requireAuth,
@@ -128,9 +160,17 @@ router.get(
             t.work_item_id,
             t.name,
             t.duration_days,
+            t.actual_start_date,
+            t.actual_end_date,
+            t.percent_complete,
             sr.early_start,
             sr.early_finish,
-            sr.is_critical
+            sr.is_critical,
+            COALESCE((
+              SELECT json_agg(json_build_object('id', d.predecessor_id, 'type', d.dependency_type))
+              FROM dependencies d
+              WHERE d.successor_id = t.id
+            ), '[]'::json) as predecessors
           FROM tasks t
           JOIN work_items wi ON wi.id = t.work_item_id
           LEFT JOIN schedule_results sr ON sr.task_id = t.id
@@ -148,25 +188,49 @@ router.get(
     }
 
     // Node công việc chỉ dùng hiển thị, id phân biệt rõ ràng không trùng work_item.id
-    const taskNodes = taskRows.map((t) => ({
-      id: `task-${t.id}`,
-      task_id: t.id,
-      name: t.name,
-      parent_id: t.work_item_id,
-      type: "task",
-      duration_days: t.duration_days,
-      start_date: t.early_start || null,
-      end_date: t.early_finish || null,
-      status: "Chưa bắt đầu",
-      progress: 0,
-      is_critical: t.is_critical || false,
-    }));
+    const taskNodes = taskRows.map((t) => {
+      const isDone = Boolean(t.actual_end_date || t.percent_complete === 100);
+      const isDoing = Boolean(t.actual_start_date || (t.percent_complete && t.percent_complete > 0));
+      return {
+        id: `task-${t.id}`,
+        task_id: t.id,
+        name: t.name,
+        parent_id: t.work_item_id,
+        type: "task",
+        duration_days: t.duration_days,
+        actual_start_date: t.actual_start_date || null,
+        actual_end_date: t.actual_end_date || null,
+        percent_complete: t.percent_complete ?? 0,
+        start_date: t.early_start || null,
+        end_date: t.early_finish || null,
+        status: isDone ? "Hoàn thành" : (isDoing ? "Đang thực hiện" : "Chưa bắt đầu"),
+        progress: t.percent_complete ?? 0,
+        is_critical: t.is_critical || false,
+        predecessors: t.predecessors || [],
+      };
+    });
 
     return res.json([...result.rows, ...taskNodes]);
   })
 );
 
 // ─── POST /:projectId — Thêm hạng mục ───────────────────────────────────────
+/**
+ * @swagger
+ * /api/categories/{projectId}:
+ *   post:
+ *     summary: API POST /:projectId
+ *     tags: [Category]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post(
   "/:projectId",
   requireAuth,
@@ -261,6 +325,27 @@ router.post(
 );
 
 // ─── PUT /:projectId/:id — Sửa hạng mục ─────────────────────────────────────
+/**
+ * @swagger
+ * /api/categories/{projectId}/{id}:
+ *   put:
+ *     summary: API PUT /:projectId/:id
+ *     tags: [Category]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.put(
   "/:projectId/:id",
   requireAuth,
@@ -356,6 +441,27 @@ router.put(
 );
 
 // ─── PATCH /:projectId/:id/move — Đổi hạng mục cha ───────────────────────────
+/**
+ * @swagger
+ * /api/categories/{projectId}/{id}/move:
+ *   patch:
+ *     summary: API PATCH /:projectId/:id/move
+ *     tags: [Category]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.patch(
   "/:projectId/:id/move",
   requireAuth,
@@ -498,6 +604,27 @@ router.patch(
 );
 
 // ─── DELETE /:projectId/:id — Xóa hạng mục ───────────────────────────────────
+/**
+ * @swagger
+ * /api/categories/{projectId}/{id}:
+ *   delete:
+ *     summary: API DELETE /:projectId/:id
+ *     tags: [Category]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.delete(
   "/:projectId/:id",
   requireAuth,
@@ -519,6 +646,59 @@ router.delete(
       });
     }
 
+    /*
+     * 1. Kiểm tra hạng mục có tồn tại trong project hay không.
+     */
+    const itemResult = await db.query(
+      `
+        SELECT id, name
+        FROM work_items
+        WHERE id = $1
+          AND project_id = $2
+      `,
+      [id, projectId]
+    );
+
+    if (itemResult.rows.length === 0) {
+      return res.status(404).json({
+        message: "Không tìm thấy hạng mục",
+      });
+    }
+
+    const itemName = itemResult.rows[0].name;
+
+    /*
+     * 2. Kiểm tra hạng mục con.
+     *
+     * Nếu parent đang có child thì không được xóa.
+     * Trả 409 ngay, không thực hiện DELETE.
+     */
+    const childResult = await db.query(
+      `
+        SELECT id
+        FROM work_items
+        WHERE parent_id = $1
+          AND project_id = $2
+        LIMIT 1
+      `,
+      [id, projectId]
+    );
+
+    if (childResult.rows.length > 0) {
+      return res.status(409).json({
+        message:
+          `Không thể xóa hạng mục "${itemName}" ` +
+          "vì đang chứa các hạng mục con.",
+      });
+    }
+
+    /*
+     * 3. Kiểm tra task trong subtree.
+     *
+     * Hiện tại không có child nên thực tế đây là task
+     * thuộc chính hạng mục này, nhưng vẫn dùng helper
+     * countTasksInSubtree để giữ nguyên logic hiện tại.
+     */
     const { countTasksInSubtree } = require("../queries/workItemTree");
 
     const taskCount = await countTasksInSubtree(
@@ -528,21 +708,6 @@ router.delete(
     );
 
     if (taskCount > 0) {
-      const item = await db.query(
-        `
-          SELECT name
-          FROM work_items
-          WHERE id = $1
-            AND project_id = $2
-        `,
-        [id, projectId]
-      );
-
-      const itemName =
-        item.rows[0]
-          ? item.rows[0].name
-          : "Hạng mục";
-
       return res.status(409).json({
         message:
           `Không thể xóa hạng mục "${itemName}" ` +
@@ -550,6 +715,9 @@ router.delete(
       });
     }
 
+    /*
+     * 4. Không có child và không có task -> thực hiện DELETE.
+     */
     try {
       const result = await db.query(
         `
@@ -574,21 +742,17 @@ router.delete(
         success: true,
       });
     } catch (err) {
+      /*
+       * Bảo vệ thêm trong trường hợp có race condition:
+       * child được tạo sau lúc kiểm tra ở bước 2 nhưng
+       * trước khi DELETE.
+       */
       if (err.code === "23503") {
-        const item = await db.query(
-          `
-            SELECT name
-            FROM work_items
-            WHERE id = $1
-          `,
-          [id]
-        );
-
-        const itemName =
-          item.rows[0]
-            ? item.rows[0].name
-            : "Hạng mục";
-
+        if (err.constraint === "diary_entries_project_id_work_item_id_fkey") {
+          return res.status(409).json({
+            message: "Hạng mục đã có nhật ký, không thể xóa",
+          });
+        }
         return res.status(409).json({
           message:
             `Không thể xóa hạng mục "${itemName}" ` +

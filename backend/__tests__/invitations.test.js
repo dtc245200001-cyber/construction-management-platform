@@ -1,8 +1,11 @@
-// PHẢI load .env.test TRƯỚC KHI require bất kỳ module nào
-// vì config/db.js đọc DATABASE_URL ngay khi được require()
 const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '../.env.test'), override: true });
-process.env.DATABASE_URL = 'postgres://postgres:postgres123@localhost:5433/construction_db_test';
+const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
+require('dotenv').config({ path: path.resolve(__dirname, '../.env.test'), override: !isCI });
+if (isCI) {
+  process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgres://postgres:postgres123@localhost:5433/construction_db_test';
+} else {
+  process.env.DATABASE_URL = process.env.LOCAL_DATABASE_URL || process.env.DATABASE_URL || 'postgres://postgres:postgres123@localhost:5432/construction_db_test';
+}
 
 const request = require('supertest');
 const app = require('../app');

@@ -96,9 +96,11 @@
     "jsdom": "^29.1.1",
     "nitro": "3.0.260603-beta",
     "prettier": "^3.7.3",
+    "puppeteer": "^25.12.0",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.56.1",
     "vite": "8.1.5",
+    "vite-plugin-pwa": "^2.0.0",
     "vitest": "^5.0.3"
   }
 }

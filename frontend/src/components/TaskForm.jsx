@@ -1,10 +1,20 @@
 import { useEffect, useState } from "react";
 import "./TaskForm.css";
+import api from "../lib/api";
+import DependencySection from "./DependencySection";
 
+const DURATION_ERROR = "Thời lượng phải là số nguyên lớn hơn 0.";
+
+// Thời lượng hợp lệ: số nguyên dương (> 0)
+const isValidDuration = (value) =>
+  String(value).trim() !== "" &&
+  Number.isInteger(Number(value)) &&
+  Number(value) > 0;
 function TaskForm({
   projectId,
   workItem = null,
   task = null,
+  allTasks = [], 
   onSuccess,
   onClose,
 }) {
@@ -24,8 +34,37 @@ function TaskForm({
     task?.duration_days ? String(task.duration_days) : "1"
   );
 
+  const [schedulingMode, setSchedulingMode] = useState(
+    task?.scheduling_mode || "auto"
+  );
+
+  const [manualStartDate, setManualStartDate] = useState(
+    task?.manual_start_date ? String(task.manual_start_date).substring(0, 10) : ""
+  );
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [deps, setDeps] = useState([]);
+  const [pendingDeps, setPendingDeps] = useState([]);
+
+  // Kiểm tra tức thì mỗi lần gõ, không đợi bấm Lưu
+  const durationInvalid = !isValidDuration(durationDays);
+
+  const loadDeps = async () => {
+    if (!task?.id) return;
+    try {
+      const res = await api.get(
+        `/projects/${projectId}/tasks/${task.id}/dependencies`
+      );
+      setDeps(res.data.dependencies);
+    } catch (err) {
+      console.error("Không tải được quan hệ:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (isEdit) loadDeps();
+  }, [isEdit, task?.id]);
 
   // Khi người dùng bấm dấu + ở hạng mục khác
   // thì cập nhật lại hạng mục cho form.
@@ -47,6 +86,9 @@ function TaskForm({
       setDurationDays(
         task.duration_days ? String(task.duration_days) : "1"
       );
+
+      setSchedulingMode(task.scheduling_mode || "auto");
+      setManualStartDate(task.manual_start_date ? String(task.manual_start_date).substring(0, 10) : "");
     }
   }, [task]);
 
@@ -69,66 +111,58 @@ function TaskForm({
       return;
     }
 
-    // Kiểm tra thời lượng
-    if (!Number.isInteger(duration) || duration <= 0) {
-      setError("Thời lượng phải là số nguyên lớn hơn 0.");
+    if (schedulingMode === 'manual' && !manualStartDate) {
+      setError("Vui lòng chọn ngày bắt đầu khi dùng chế độ thủ công.");
+      return;
+    }
+
+    // Kiểm tra thời lượng (lỗi đã hiển thị tức thì dưới ô nhập)
+    if (durationInvalid) {
       return;
     }
 
     setLoading(true);
 
     try {
-      const url = isEdit
-        ? `/api/projects/${projectId}/tasks/${task.id}`
-        : `/api/projects/${projectId}/tasks`;
+      const payload = {
+        ...(isEdit ? {} : { work_item_id: Number(workItemId) }),
+        name: name.trim(),
+        duration_days: duration,
+        scheduling_mode: schedulingMode,
+        ...(schedulingMode === 'manual' ? { manual_start_date: manualStartDate } : {}),
+      };
 
-      const response = await fetch(url, {
-        method: isEdit ? "PATCH" : "POST",
+      const response = isEdit
+        ? await api.put(`/projects/${projectId}/tasks/${task.id}`, payload)
+        : await api.post(`/projects/${projectId}/tasks`, payload);
 
-        headers: {
-          "Content-Type": "application/json",
-        },
-
-        credentials: "include",
-
-        body: JSON.stringify({
-          ...(isEdit
-            ? {}
-            : {
-                work_item_id: Number(workItemId),
-              }),
-
-          name: name.trim(),
-
-          duration_days: duration,
-        }),
-      });
-
-      let data = {};
-
-      try {
-        data = await response.json();
-      } catch {
-        data = {};
-      }
-
-      if (!response.ok) {
-        throw new Error(
-          data.message ||
-            data.error ||
-            "Không thể lưu công việc."
-        );
+      if (!isEdit && pendingDeps.length > 0) {
+        const newTaskId = response.data.task.id;
+        for (const dep of pendingDeps) {
+          try {
+            await api.post(`/projects/${projectId}/dependencies`, {
+              predecessor_id: dep.predecessor_id,
+              successor_id: newTaskId,
+              dependency_type: dep.dependency_type,
+              lead_lag_days: dep.lead_lag_days,
+            });
+          } catch (depErr) {
+            console.error("Failed to add dependency:", depErr);
+          }
+        }
       }
 
       // Thành công
       if (onSuccess) {
-        onSuccess(data);
+        onSuccess(response.data);
       }
     } catch (err) {
       console.error("Task form error:", err);
 
       setError(
-        err.message ||
+        err.response?.data?.message ||
+          err.response?.data?.error ||
+          err.message ||
           "Đã xảy ra lỗi khi lưu công việc."
       );
     } finally {
@@ -254,17 +288,59 @@ function TaskForm({
                 setDurationDays(e.target.value)
               }
               disabled={loading}
+              aria-invalid={durationInvalid}
+              aria-describedby="durationDaysHint"
+              style={durationInvalid ? { borderColor: "#dc2626" } : undefined}
             />
 
             <span>ngày</span>
 
           </div>
 
-          <small>
-            Nhập số ngày dự kiến hoàn thành công việc.
-          </small>
+          {durationInvalid ? (
+            <small id="durationDaysHint" role="alert" style={{ color: "#dc2626" }}>
+              {DURATION_ERROR}
+            </small>
+          ) : (
+            <small id="durationDaysHint">
+              Nhập số ngày dự kiến hoàn thành công việc.
+            </small>
+          )}
 
         </div>
+
+        {/* LÊN LỊCH */}
+        <div className="task-form-group">
+          <label>Chế độ xếp lịch</label>
+          <div style={{ display: 'flex', gap: '20px', marginBottom: '8px', flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', whiteSpace: 'nowrap' }}>
+              <input type="radio" name="schedulingMode" value="auto" checked={schedulingMode === 'auto'} onChange={(e) => setSchedulingMode(e.target.value)} disabled={loading} style={{ margin: 0 }} />
+              Tự động (CPM)
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', whiteSpace: 'nowrap' }}>
+              <input type="radio" name="schedulingMode" value="manual" checked={schedulingMode === 'manual'} onChange={(e) => setSchedulingMode(e.target.value)} disabled={loading} style={{ margin: 0 }} />
+              Thủ công (Cố định ngày)
+            </label>
+          </div>
+          {schedulingMode === 'manual' && (
+            <div style={{ marginTop: '12px' }}>
+              <label htmlFor="manualStartDate">Ngày bắt đầu <span>*</span></label>
+              <input type="date" id="manualStartDate" value={manualStartDate} onChange={(e) => setManualStartDate(e.target.value)} disabled={loading} style={{ width: '100%', height: '44px', padding: '0 14px', borderRadius: '12px', border: '1px solid #E6EBF3', fontSize: '14px' }} />
+              <small style={{ marginTop: '4px', display: 'block' }}>Công việc này sẽ bị khóa ngày bắt đầu bất chấp các quan hệ trước đó.</small>
+            </div>
+          )}
+        </div>
+
+        <DependencySection
+          projectId={projectId}
+          taskId={isEdit ? task.id : null}
+          tasks={allTasks}
+          dependencies={isEdit ? deps : pendingDeps}
+          onChanged={loadDeps}
+          isCreateMode={!isEdit}
+          onAddPendingDependency={(dep) => setPendingDeps(prev => [...prev, dep])}
+          onRemovePendingDependency={(id) => setPendingDeps(prev => prev.filter(d => d.id !== id))}
+        />
 
         {/* ERROR */}
         {error && (
@@ -290,7 +366,7 @@ function TaskForm({
           <button
             type="submit"
             className="task-btn-submit"
-            disabled={loading || (!isEdit && !workItemId)}
+            disabled={loading || durationInvalid || (!isEdit && !workItemId)}
           >
             {loading
               ? "Đang lưu..."

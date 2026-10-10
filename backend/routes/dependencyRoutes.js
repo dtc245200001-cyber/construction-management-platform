@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
@@ -13,6 +13,8 @@ const { detectCycle } = require("../algorithms/cpm");
 const {
   buildTempGraph,
   rotateCycleToStartWith,
+  cycleContainsEdge,
+  findCycleThroughEdge,
 } = require("../utils/buildTempGraph");
 
 const { parsePositiveInt } = require("../utils/validators");
@@ -26,6 +28,22 @@ const router = createProjectRouter();
 
 const VALID_TYPES = ["FS", "SS", "FF", "SF"];
 
+/**
+ * @swagger
+ * /api/projects/{projectId}/dependencies:
+ *   post:
+ *     summary: API POST /:projectId/dependencies
+ *     tags: [Dependency]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 router.post(
   "/:projectId/dependencies",
   requireAuth,
@@ -152,20 +170,20 @@ router.post(
       );
 
       // Tự trỏ -> bắt sớm và trả 422.
-      if (predecessorId === successorId) {
-        await client.query("ROLLBACK");
+        if (predecessorId === successorId) {
+          await client.query("ROLLBACK");
 
-        return res.status(422).json({
-          code: "DEPENDENCY_CYCLE",
-          message: "Không thể tự phụ thuộc vào chính mình",
-          cycleIds: [predecessorId, predecessorId],
-          cycleNames: [
-            itemNames.get(predecessorId),
-            itemNames.get(predecessorId),
-          ],
-          cyclePath: `${itemNames.get(predecessorId)} → ${itemNames.get(predecessorId)}`,
-        });
-      }
+          const taskName = itemNames.get(predecessorId);
+
+          return res.status(422).json({
+            code: "DEPENDENCY_CYCLE",
+            message:
+              `Không thể tạo quan hệ: ${taskName} không thể chờ chính nó.`,
+            cycleIds: [predecessorId, predecessorId],
+            cycleNames: [taskName, taskName],
+            cyclePath: `${taskName} → ${taskName}`,
+          });
+        }
 
       // Dựng graph với dependency mới để kiểm tra cycle.
       const graph = buildTempGraph(
@@ -180,31 +198,56 @@ router.post(
       );
 
       let cycleIds = detectCycle(graph);
+      let isRealCycle = false;
 
-      // detectCycle có thể trả một vòng bất kỳ.
-      // Xoay để bắt đầu từ successorId nếu có thể.
+      // Xử lý để phân biệt vòng cũ và vòng mới do chính quan hệ này gây ra
       if (cycleIds && cycleIds.length > 0) {
-        cycleIds = rotateCycleToStartWith(
-          cycleIds,
-          successorId
-        );
+        if (cycleContainsEdge(cycleIds, predecessorId, successorId)) {
+          // Vòng detectCycle tìm được chính là vòng chứa quan hệ mới
+          cycleIds = rotateCycleToStartWith(cycleIds, successorId);
+          isRealCycle = true;
+        } else {
+          // detectCycle tìm thấy một vòng cũ không liên quan, ta cần tự tìm xem có vòng qua cạnh mới không
+          const newCycle = findCycleThroughEdge(graph, predecessorId, successorId);
+          if (newCycle.length > 0) {
+            cycleIds = newCycle; // Không cần xoay vì findCycleThroughEdge đã trả ra mảng bắt đầu từ successorId
+            isRealCycle = true;
+          } else {
+            // Không có vòng nào đi qua quan hệ mới -> hợp lệ
+            isRealCycle = false;
+          }
+        }
+      }
+
+      if (isRealCycle) {
 
         const names = cycleIds.map(
           (id) =>
             itemNames.get(Number(id)) || `#${id}`
         );
 
-        // Đóng vòng.
+        // Đóng vòng để thể hiện đầy đủ chu trình.
         names.push(names[0]);
 
         const pathStr = names.join(" → ");
+
+        const waitPairs = [];
+
+        for (let i = 0; i < names.length - 1; i++) {
+          waitPairs.push(
+            `${names[i]} chờ ${names[i + 1]}`
+          );
+        }
+
+        const message =
+          `Không thể tạo quan hệ vì sẽ tạo vòng phụ thuộc: ` +
+          `${waitPairs.join(", ")}.`;
 
         await client.query("ROLLBACK");
 
         return res.status(422).json({
           code: "DEPENDENCY_CYCLE",
-          message:
-            `Không thể tạo quan hệ vì sẽ tạo vòng phụ thuộc: ${pathStr}`,
+          message,
           cycleIds,
           cycleNames: names,
           cyclePath: pathStr,
@@ -254,4 +297,118 @@ router.post(
   })
 );
 
+/**
+ * @swagger
+ * /api/projects/{projectId}/tasks/{taskId}/dependencies:
+ *   get:
+ *     summary: API GET /:projectId/tasks/:taskId/dependencies
+ *     tags: [Dependency]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
+router.get(
+  "/:projectId/tasks/:taskId/dependencies",
+  requireAuth,
+  checkProjectAccess,
+  asyncHandler(async (req, res) => {
+    const taskId = parsePositiveInt(req.params.taskId);
+    if (!taskId) return res.status(400).json({ message: "taskId không hợp lệ" });
+
+    const { rows } = await db.query(
+      `SELECT d.id, d.predecessor_id, d.successor_id,
+              d.dependency_type, d.lead_lag_days,
+              t.name AS predecessor_name
+         FROM dependencies d
+         JOIN tasks t ON t.id = d.predecessor_id
+        WHERE d.successor_id = $1
+        ORDER BY d.id`,
+      [taskId]
+    );
+    return res.json({ dependencies: rows });
+  })
+
+);
+/**
+ * @swagger
+ * /api/projects/{projectId}/tasks/{taskId}/dependencies:
+ *   get:
+ *     summary: API GET /:projectId/tasks/:taskId/dependencies
+ *     tags: [Dependency]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
+router.get(
+  "/:projectId/tasks/:taskId/dependencies",
+  requireAuth,
+  checkProjectAccess,
+  allow(Object.values(ROLES)),
+
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+    const taskId = parsePositiveInt(req.params.taskId);
+
+    if (!projectId || !taskId) {
+      return res.status(400).json({
+        message: "projectId hoặc taskId không hợp lệ",
+      });
+    }
+
+    // Công việc phải thuộc dự án này.
+    const taskCheck = await db.query(
+      `SELECT 1
+         FROM tasks t
+         JOIN work_items wi ON wi.id = t.work_item_id
+        WHERE t.id = $1
+          AND wi.project_id = $2`,
+      [taskId, projectId]
+    );
+
+    if (taskCheck.rows.length === 0) {
+      return res.status(404).json({
+        message: "Không tìm thấy công việc trong dự án này",
+      });
+    }
+
+    // Các quan hệ mà công việc này là "việc sau".
+    const { rows } = await db.query(
+      `SELECT d.id,
+              d.predecessor_id,
+              d.successor_id,
+              d.dependency_type,
+              d.lead_lag_days,
+              t.name AS predecessor_name
+         FROM dependencies d
+         JOIN tasks t ON t.id = d.predecessor_id
+        WHERE d.successor_id = $1
+        ORDER BY d.id`,
+      [taskId]
+    );
+
+    return res.json({ dependencies: rows });
+  })
+);
 module.exports = router;

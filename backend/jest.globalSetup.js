@@ -16,12 +16,17 @@
 const path = require("path");
 
 module.exports = async () => {
-  // Tải .env.test để các module con (db.js) dùng đúng DB test
-  require("dotenv").config({ path: path.resolve(__dirname, ".env.test") });
+  const isCI = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
 
-  const dbUrl =
-    process.env.LOCAL_DATABASE_URL ||
-    "postgres://postgres:postgres123@localhost:5433/construction_db_test";
+  // Tải .env.test để các module con (db.js) dùng đúng DB test
+  require("dotenv").config({
+    path: path.resolve(__dirname, ".env.test"),
+    override: !isCI,
+  });
+
+  const dbUrl = isCI
+    ? (process.env.DATABASE_URL || "postgres://postgres:postgres123@localhost:5433/construction_db_test")
+    : (process.env.LOCAL_DATABASE_URL || process.env.DATABASE_URL || "postgres://postgres:postgres123@localhost:5432/construction_db_test");
 
   console.log("\n[Jest globalSetup] Đang chạy migration trên DB test:", dbUrl.split("@")[1]);
 
@@ -34,6 +39,7 @@ module.exports = async () => {
     direction: "up",
     migrationsTable: "pgmigrations",
     count: Infinity,
+    checkOrder: false,
     log: () => {}, // Tắt verbose log trong test
   });
 

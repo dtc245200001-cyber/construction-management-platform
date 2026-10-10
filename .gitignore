@@ -26,3 +26,25 @@ fix_data_binding.js
 
 # Tai lieu ban giao noi bo
 BAN-GIAO*.md
+
+# Uploads
+backend/uploads/
+uploads/
+.postman/
+
+# Keys and credentials
+server_key.txt
+*.key
+*.pem
+
+# Local staging environment
+deploy/.env.staging
+
+# Local database backups
+deploy/backups/
+.env
+node_modules/
+
+# Local database backups
+*.dump
+*.sql

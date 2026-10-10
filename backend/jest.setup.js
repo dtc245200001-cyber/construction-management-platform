@@ -15,12 +15,23 @@
 
 const path = require("path");
 
-// Load .env.test — ghi đè bất kỳ biến nào đã tồn tại
+const isCI = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
+
+// Load .env.test — ghi đè bất kỳ biến nào đã tồn tại khi chạy local
 require("dotenv").config({
   path: path.resolve(__dirname, ".env.test"),
-  override: true,
+  override: !isCI,
 });
 
-// Đảm bảo db.js dùng DB local test (không phải Supabase)
-process.env.DATABASE_URL = process.env.LOCAL_DATABASE_URL || "postgres://postgres:postgres123@localhost:5433/construction_db_test";
+// Đảm bảo db.js dùng DB test đúng cổng (CI: 5433, Local: 5432)
+if (isCI) {
+  process.env.DATABASE_URL =
+    process.env.DATABASE_URL ||
+    "postgres://postgres:postgres123@localhost:5433/construction_db_test";
+} else {
+  process.env.DATABASE_URL =
+    process.env.LOCAL_DATABASE_URL ||
+    process.env.DATABASE_URL ||
+    "postgres://postgres:postgres123@localhost:5432/construction_db_test";
+}
 
