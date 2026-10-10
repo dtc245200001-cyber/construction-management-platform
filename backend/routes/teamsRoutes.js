@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
@@ -11,6 +11,8 @@ const {
 
 const { ROLES } = require("../utils/constants");
 const asyncHandler = require("../utils/asyncHandler");
+const { detectTeamOverload } = require("../algorithms/workloadAnalysis");
+const { logAudit } = require("../utils/auditLogger");
 
 const router = createProjectRouter();
 
@@ -75,7 +77,7 @@ function isValidDateOnly(value) {
   return (
     date.getUTCFullYear() === year &&
     date.getUTCMonth() ===
-      month - 1 &&
+    month - 1 &&
     date.getUTCDate() === day
   );
 }
@@ -221,7 +223,7 @@ router.post(
 
     const name =
       typeof req.body.name ===
-      "string"
+        "string"
         ? req.body.name.trim()
         : "";
 
@@ -510,124 +512,285 @@ router.post(
 );
 
 // ============================================================
-// ASSIGNMENT - S-25
+// ============================================================
+// ASSIGNMENT & WORKLOAD ANALYSIS - S-25 / T-57
 // ============================================================
 
+async function fetchTeamScheduleTasks(projectId, teamId, client = db) {
+  const result = await client.query(
+    `
+      SELECT
+        t.id,
+        t.name,
+        t.duration_days,
+        t.manual_start_date,
+        t.actual_start_date,
+        t.actual_end_date,
+        wi.name AS work_item_name,
+        sr.early_start,
+        sr.early_finish,
+        sr.is_critical
+
+      FROM tasks t
+
+      JOIN work_items wi
+        ON wi.id = t.work_item_id
+
+      JOIN task_assignments ta
+        ON ta.task_id = t.id
+
+      LEFT JOIN schedule_results sr
+        ON sr.task_id = t.id
+
+      WHERE ta.team_id = $1
+        AND wi.project_id = $2
+
+      ORDER BY t.id
+    `,
+    [teamId, projectId]
+  );
+
+  return result.rows;
+}
+
+// GET /api/projects/:projectId/teams/:teamId/workload
+// T-57: Xem trạng thái tải hiện tại của đội thi công và các khoảng bị chồng lịch
+router.get(
+  "/:projectId/teams/:teamId/workload",
+  requireAuth,
+  checkProjectAccess,
+  allRoles,
+  asyncHandler(async (req, res) => {
+    const projectId = positiveId(req.params.projectId);
+    const teamId = positiveId(req.params.teamId);
+
+    if (!projectId || !teamId) {
+      return res.status(400).json({
+        message: "projectId và teamId phải là số nguyên dương",
+      });
+    }
+
+    const teamCheck = await db.query(
+      "SELECT id, name FROM teams WHERE id = $1 AND project_id = $2",
+      [teamId, projectId]
+    );
+
+    if (teamCheck.rows.length === 0) {
+      return res.status(404).json({
+        message: "Không tìm thấy đội trong dự án",
+      });
+    }
+
+    const existingTasks = await fetchTeamScheduleTasks(projectId, teamId);
+    const overloadResult = detectTeamOverload(existingTasks, 3);
+
+    return res.json({
+      team_id: teamId,
+      team_name: teamCheck.rows[0].name,
+      workload: overloadResult,
+      tasks: existingTasks,
+    });
+  })
+);
+
+// POST /api/projects/:projectId/tasks/:taskId/check-assignment
+// T-57: Preview kiểm tra trùng lịch & quá tải trước khi phân công (Dry-run)
+router.post(
+  "/:projectId/tasks/:taskId/check-assignment",
+  requireAuth,
+  checkProjectAccess,
+  assignmentRoles,
+  asyncHandler(async (req, res) => {
+    const projectId = positiveId(req.params.projectId);
+    const taskId = positiveId(req.params.taskId);
+    const teamId = positiveId(req.body.team_id);
+
+    if (!projectId || !taskId || !teamId) {
+      return res.status(400).json({
+        message: "projectId, taskId và team_id phải là số nguyên dương",
+      });
+    }
+
+    const taskRes = await db.query(
+      `
+        SELECT
+          t.id,
+          t.name,
+          t.duration_days,
+          t.manual_start_date,
+          t.actual_start_date,
+          t.actual_end_date,
+          wi.name AS work_item_name,
+          sr.early_start,
+          sr.early_finish,
+          sr.is_critical,
+          ta.team_id AS current_team_id
+        FROM tasks t
+        JOIN work_items wi ON wi.id = t.work_item_id
+        LEFT JOIN schedule_results sr ON sr.task_id = t.id
+        LEFT JOIN task_assignments ta ON ta.task_id = t.id
+        WHERE t.id = $1 AND wi.project_id = $2
+      `,
+      [taskId, projectId]
+    );
+
+    if (taskRes.rows.length === 0) {
+      return res.status(404).json({
+        message: "Không tìm thấy task trong dự án",
+      });
+    }
+
+    const teamCheck = await db.query(
+      "SELECT id, name FROM teams WHERE id = $1 AND project_id = $2",
+      [teamId, projectId]
+    );
+
+    if (teamCheck.rows.length === 0) {
+      return res.status(404).json({
+        message: "Không tìm thấy đội trong dự án",
+      });
+    }
+
+    const taskRow = taskRes.rows[0];
+    const existingTasks = await fetchTeamScheduleTasks(projectId, teamId);
+    // Lọc bỏ task này nếu đã thuộc đội này, rồi thêm vào để mô phỏng
+    const simulatedTasks = existingTasks.filter((t) => Number(t.id) !== Number(taskId));
+    simulatedTasks.push(taskRow);
+
+    const overloadResult = detectTeamOverload(simulatedTasks, 3);
+
+    return res.json({
+      can_assign: true,
+      task_id: taskId,
+      team_id: teamId,
+      team_name: teamCheck.rows[0].name,
+      reassigned: Boolean(taskRow.current_team_id && Number(taskRow.current_team_id) !== Number(teamId)),
+      old_team_id: taskRow.current_team_id || null,
+      warning: overloadResult.is_overloaded ? overloadResult : null,
+    });
+  })
+);
+
 // POST /api/projects/:projectId/tasks/:taskId/assignment
+// T-57 / S-25: Gán việc cho đội, kiểm tra quá tải (>3 việc chồng lịch), vẫn ghi theo quy tắc đã chọn
 router.post(
   "/:projectId/tasks/:taskId/assignment",
   requireAuth,
   checkProjectAccess,
   assignmentRoles,
   asyncHandler(async (req, res) => {
-    const projectId =
-      positiveId(
-        req.params.projectId
-      );
+    const projectId = positiveId(req.params.projectId);
+    const taskId = positiveId(req.params.taskId);
+    const teamId = positiveId(req.body.team_id);
 
-    const taskId =
-      positiveId(
-        req.params.taskId
-      );
-
-    const teamId =
-      positiveId(
-        req.body.team_id
-      );
-
-    if (
-      !projectId ||
-      !taskId ||
-      !teamId
-    ) {
+    if (!projectId || !taskId || !teamId) {
       return res.status(400).json({
-        message:
-          "projectId, taskId và team_id phải là số nguyên dương",
+        message: "projectId, taskId và team_id phải là số nguyên dương",
       });
     }
 
-    const task =
-      await db.query(
-        `
-          SELECT t.id
+    const taskRes = await db.query(
+      `
+        SELECT
+          t.id,
+          t.name,
+          t.duration_days,
+          t.manual_start_date,
+          t.actual_start_date,
+          t.actual_end_date,
+          wi.name AS work_item_name,
+          sr.early_start,
+          sr.early_finish,
+          sr.is_critical,
+          ta.team_id AS current_team_id
+        FROM tasks t
+        JOIN work_items wi ON wi.id = t.work_item_id
+        LEFT JOIN schedule_results sr ON sr.task_id = t.id
+        LEFT JOIN task_assignments ta ON ta.task_id = t.id
+        WHERE t.id = $1 AND wi.project_id = $2
+      `,
+      [taskId, projectId]
+    );
 
-          FROM tasks t
-
-          JOIN work_items wi
-            ON wi.id =
-               t.work_item_id
-
-          WHERE t.id = $1
-            AND wi.project_id = $2
-        `,
-        [taskId, projectId]
-      );
-
-    if (
-      task.rows.length === 0
-    ) {
+    if (taskRes.rows.length === 0) {
       return res.status(404).json({
-        message:
-          "Không tìm thấy task trong dự án",
+        message: "Không tìm thấy task trong dự án",
       });
     }
 
-    const team =
-      await db.query(
-        `
-          SELECT id
-          FROM teams
-          WHERE id = $1
-            AND project_id = $2
-        `,
-        [teamId, projectId]
-      );
+    const teamCheck = await db.query(
+      "SELECT id, name FROM teams WHERE id = $1 AND project_id = $2",
+      [teamId, projectId]
+    );
 
-    if (
-      team.rows.length === 0
-    ) {
+    if (teamCheck.rows.length === 0) {
       return res.status(404).json({
-        message:
-          "Không tìm thấy đội trong dự án",
+        message: "Không tìm thấy đội trong dự án",
       });
     }
 
-    const result =
-      await db.query(
-        `
-          INSERT INTO task_assignments (
-            task_id,
-            team_id,
-            assigned_by
-          )
-          VALUES ($1, $2, $3)
+    const taskRow = taskRes.rows[0];
+    const oldTeamId = taskRow.current_team_id ? Number(taskRow.current_team_id) : null;
+    const isReassignment = Boolean(oldTeamId && oldTeamId !== Number(teamId));
 
-          ON CONFLICT (task_id)
+    // Kiểm tra quá tải khi gán việc này
+    const existingTasks = await fetchTeamScheduleTasks(projectId, teamId);
+    const simulatedTasks = existingTasks.filter((t) => Number(t.id) !== Number(taskId));
+    simulatedTasks.push(taskRow);
+    const overloadResult = detectTeamOverload(simulatedTasks, 3);
 
-          DO UPDATE SET
-            team_id =
-              EXCLUDED.team_id,
-            assigned_by =
-              EXCLUDED.assigned_by,
-            assigned_at =
-              CURRENT_TIMESTAMP
+    // Ghi nhận phân công vào CSDL (vẫn ghi theo quy tắc đã chọn kể cả khi có cảnh báo)
+    const result = await db.query(
+      `
+        INSERT INTO task_assignments (
+          task_id,
+          team_id,
+          assigned_by
+        )
+        VALUES ($1, $2, $3)
 
-          RETURNING
-            task_id,
-            team_id,
-            assigned_by,
-            assigned_at
-        `,
-        [
-          taskId,
-          teamId,
-          req.user.id,
-        ]
-      );
+        ON CONFLICT (task_id)
+
+        DO UPDATE SET
+          team_id = EXCLUDED.team_id,
+          assigned_by = EXCLUDED.assigned_by,
+          assigned_at = CURRENT_TIMESTAMP
+
+        RETURNING
+          task_id,
+          team_id,
+          assigned_by,
+          assigned_at
+      `,
+      [taskId, teamId, req.user.id]
+    );
+
+    // AC-4: Ghi lại lịch sử nếu đổi việc từ đội cũ sang đội mới
+    if (isReassignment) {
+      try {
+        await logAudit({
+          userId: req.user.id,
+          action: "REASSIGN_TASK",
+          entity: "task_assignments",
+          entityId: taskId,
+          details: {
+            taskId,
+            taskName: taskRow.name,
+            oldTeamId,
+            newTeamId: teamId,
+          },
+          ipAddress: req.ip || req.connection?.remoteAddress,
+        });
+      } catch (logErr) {
+        console.error("Lỗi ghi audit log phân công lại:", logErr);
+      }
+    }
 
     return res.json({
-      assignment:
-        result.rows[0],
+      assignment: result.rows[0],
+      reassigned: isReassignment,
+      old_team_id: oldTeamId,
+      warning: overloadResult.is_overloaded ? overloadResult : null,
     });
   })
 );
@@ -978,13 +1141,13 @@ router.get(
 
             over_planned:
               task.planned_quantity !==
-                null &&
+              null &&
               Number(
                 task.cumulative_reported
               ) >
-                Number(
-                  task.planned_quantity
-                ),
+              Number(
+                task.planned_quantity
+              ),
           })
         ),
     });
@@ -1054,7 +1217,13 @@ router.get(
 
             wi.id AS work_item_id,
             wi.name
-              AS work_item_name
+              AS work_item_name,
+
+            sr.early_start,
+            sr.early_finish,
+            sr.is_critical,
+            t.actual_start_date,
+            t.actual_end_date
 
           FROM task_assignments ta
 
@@ -1064,6 +1233,9 @@ router.get(
           JOIN work_items wi
             ON wi.id =
                t.work_item_id
+
+          LEFT JOIN schedule_results sr
+            ON sr.task_id = t.id
 
           WHERE ta.team_id = $1
             AND wi.project_id = $2
@@ -1366,13 +1538,13 @@ router.get(
 
             over_planned:
               task.planned_quantity !==
-                null &&
+              null &&
               Number(
                 task.cumulative_reported
               ) >
-                Number(
-                  task.planned_quantity
-                ),
+              Number(
+                task.planned_quantity
+              ),
           })
         ),
     });
@@ -1597,11 +1769,11 @@ router.post(
 
       const plannedQuantity =
         task.planned_quantity ===
-        null
+          null
           ? null
           : String(
-              task.planned_quantity
-            );
+            task.planned_quantity
+          );
 
       // Chỉ dùng Number để so sánh;
       // phép SUM vẫn do PostgreSQL
@@ -1611,9 +1783,9 @@ router.post(
         Number(
           cumulativeReported
         ) >
-          Number(
-            plannedQuantity
-          );
+        Number(
+          plannedQuantity
+        );
 
       await client.query(
         "COMMIT"

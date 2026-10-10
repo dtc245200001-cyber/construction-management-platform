@@ -20,7 +20,12 @@ import {
   Users,
   UserPlus,
   X,
+  AlertTriangle,
+  Calendar,
+  Clock,
+  AlertCircle,
 } from "lucide-react";
+import OverloadWarningDialog from "../components/OverloadWarningDialog";
 
 const roleLabels = {
   chu_dau_tu: "Chủ đầu tư",
@@ -202,6 +207,12 @@ export default function MembersPage({
     setAssigning,
   ] = useState(false);
 
+  // T-57: Workload & Overload Warning states
+  const [teamWorkload, setTeamWorkload] = useState(null);
+  const [taskOverloadWarning, setTaskOverloadWarning] = useState(null);
+  const [showOverloadDialog, setShowOverloadDialog] = useState(false);
+  const [checkingOverload, setCheckingOverload] = useState(false);
+
   // ==========================================================
   // ROLE PERMISSIONS
   // ==========================================================
@@ -356,6 +367,7 @@ export default function MembersPage({
     ) {
       setSelectedTeamMembers([]);
       setAssignedTasks([]);
+      setTeamWorkload(null);
       return;
     }
 
@@ -365,6 +377,7 @@ export default function MembersPage({
       const [
         membersRes,
         tasksRes,
+        workloadRes,
       ] = await Promise.all([
         api.get(
           `/projects/${currentProjectId}/teams/${teamId}/members`
@@ -373,6 +386,12 @@ export default function MembersPage({
         api.get(
           `/projects/${currentProjectId}/teams/${teamId}/tasks`
         ),
+
+        api
+          .get(
+            `/projects/${currentProjectId}/teams/${teamId}/workload`
+          )
+          .catch(() => ({ data: null })),
       ]);
 
       setSelectedTeamMembers(
@@ -381,6 +400,10 @@ export default function MembersPage({
 
       setAssignedTasks(
         tasksRes.data?.tasks || []
+      );
+
+      setTeamWorkload(
+        workloadRes?.data?.workload || null
       );
     } catch (err) {
       setTeamNotice({
@@ -415,9 +438,64 @@ export default function MembersPage({
     setMemberToAdd("");
     setSelectedTaskId("");
     setPlannedQuantity("");
+    setTaskOverloadWarning(null);
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTeamId]);
+
+  // T-57: Tự động kiểm tra quá tải khi chọn công việc cho đội đang quản lý (Dry-run preview)
+  useEffect(() => {
+    if (
+      !currentProjectId ||
+      !selectedTeamId ||
+      !selectedTaskId
+    ) {
+      setTaskOverloadWarning(null);
+      return;
+    }
+
+    let isMounted = true;
+    setCheckingOverload(true);
+
+    api
+      .post(
+        `/projects/${currentProjectId}/tasks/${selectedTaskId}/check-assignment`,
+        {
+          team_id: Number(
+            selectedTeamId
+          ),
+        }
+      )
+      .then((res) => {
+        if (!isMounted) return;
+        if (
+          res.data?.warning?.is_overloaded
+        ) {
+          setTaskOverloadWarning(
+            res.data.warning
+          );
+        } else {
+          setTaskOverloadWarning(null);
+        }
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setTaskOverloadWarning(null);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setCheckingOverload(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    currentProjectId,
+    selectedTeamId,
+    selectedTaskId,
+  ]);
 
   // ==========================================================
   // MEMBERS
@@ -686,9 +764,12 @@ export default function MembersPage({
   // ==========================================================
 
   const handleAssignTask = async (
-    e
+    e,
+    forceProceed = false
   ) => {
-    e.preventDefault();
+    if (e && typeof e.preventDefault === "function") {
+      e.preventDefault();
+    }
 
     if (!selectedTeamId) {
       setTeamNotice({
@@ -747,6 +828,12 @@ export default function MembersPage({
       return;
     }
 
+    // T-57 / S-25: Nếu việc thứ 4 gây chồng lịch và người dùng chưa xác nhận, mở modal cảnh báo
+    if (!forceProceed && taskOverloadWarning?.is_overloaded) {
+      setShowOverloadDialog(true);
+      return;
+    }
+
     try {
       setAssigning(true);
       setTeamNotice(null);
@@ -761,7 +848,7 @@ export default function MembersPage({
       );
 
       // 2. Giao công việc cho đội.
-      await api.post(
+      const assignRes = await api.post(
         `/projects/${currentProjectId}/tasks/${selectedTaskId}/assignment`,
         {
           team_id: Number(
@@ -770,14 +857,24 @@ export default function MembersPage({
         }
       );
 
-      setTeamNotice({
-        type: "success",
-        message:
-          "Đã đặt khối lượng kế hoạch và giao công việc cho đội.",
-      });
+      setShowOverloadDialog(false);
+
+      if (assignRes.data?.warning?.is_overloaded) {
+        setTeamNotice({
+          type: "warning",
+          message: `Đã giao việc thành công! ⚠️ ${assignRes.data.warning.message}`,
+        });
+      } else {
+        setTeamNotice({
+          type: "success",
+          message:
+            "Đã đặt khối lượng kế hoạch và giao công việc cho đội.",
+        });
+      }
 
       setSelectedTaskId("");
       setPlannedQuantity("");
+      setTaskOverloadWarning(null);
 
       await fetchSelectedTeam(
         selectedTeamId
@@ -838,7 +935,7 @@ export default function MembersPage({
       return members.filter(
         (member) =>
           member.role ===
-            "doi_truong" &&
+          "doi_truong" &&
           !memberIds.has(
             Number(member.id)
           )
@@ -873,7 +970,7 @@ export default function MembersPage({
   ) =>
     Number(
       member.failed_login_attempts ||
-        0
+      0
     ) > 0;
 
   // ==========================================================
@@ -942,14 +1039,17 @@ export default function MembersPage({
 
           {teamNotice && (
             <div
-              className={`mx-5 mt-5 rounded-xl border p-3 text-sm font-medium ${
-                teamNotice.type ===
-                "success"
+              className={`mx-5 mt-5 rounded-xl border p-3.5 text-sm font-medium flex items-start gap-2.5 ${teamNotice.type === "success"
                   ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                  : "border-red-200 bg-red-50 text-red-700"
-              }`}
+                  : teamNotice.type === "warning"
+                    ? "border-amber-300 bg-amber-50 text-amber-900"
+                    : "border-red-200 bg-red-50 text-red-700"
+                }`}
             >
-              {teamNotice.message}
+              {teamNotice.type === "warning" && (
+                <AlertTriangle className="size-4 shrink-0 mt-0.5 text-amber-600" />
+              )}
+              <div className="flex-1">{teamNotice.message}</div>
             </div>
           )}
 
@@ -1045,6 +1145,40 @@ export default function MembersPage({
                     <RefreshCw className="size-4" />
                   </button>
                 </div>
+
+                {/* T-57: Trạng thái tải của đội đang chọn */}
+                {selectedTeamId && teamWorkload && (
+                  <div className="mt-2.5">
+                    {teamWorkload.is_overloaded ? (
+                      <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 shadow-sm flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className="size-4 text-amber-600 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-bold text-amber-950">
+                              ⚠️ Đội có lịch trình bị quá tải ({teamWorkload.overloaded_intervals?.length || 1} khoảng)
+                            </p>
+                            <p className="mt-0.5 text-amber-800">
+                              Cao nhất {teamWorkload.max_concurrent} công việc chồng lịch đồng thời (vượt ngưỡng 3 việc).
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setShowOverloadDialog(true)}
+                          className="shrink-0 rounded-lg bg-amber-200/80 hover:bg-amber-300/80 px-2.5 py-1 text-xs font-semibold text-amber-950 transition-colors"
+                        >
+                          Chi tiết
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5 text-xs text-emerald-800 flex items-center gap-1.5">
+                        <CheckCircle2 className="size-3.5 text-emerald-600" />
+                        <span>Tải bình thường (tối đa {teamWorkload.max_concurrent}/3 việc đồng thời)</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {selectedTeamId && (
@@ -1108,15 +1242,15 @@ export default function MembersPage({
 
                   {teamLeaderCandidates.length ===
                     0 && (
-                    <p className="mt-2 text-xs text-site-baseline">
-                      Không còn tài
-                      khoản Đội trưởng
-                      phù hợp. Nếu chưa
-                      có, hãy mời thành
-                      viên với vai trò
-                      Đội trưởng trước.
-                    </p>
-                  )}
+                      <p className="mt-2 text-xs text-site-baseline">
+                        Không còn tài
+                        khoản Đội trưởng
+                        phù hợp. Nếu chưa
+                        có, hãy mời thành
+                        viên với vai trò
+                        Đội trưởng trước.
+                      </p>
+                    )}
 
                   <div className="mt-4">
                     <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-site-baseline">
@@ -1249,12 +1383,12 @@ export default function MembersPage({
                           if (current) {
                             setPlannedQuantity(
                               current.planned_quantity ??
-                                ""
+                              ""
                             );
 
                             setQuantityUnit(
                               current.quantity_unit ||
-                                "m3"
+                              "m3"
                             );
                           } else {
                             setPlannedQuantity(
@@ -1315,12 +1449,65 @@ export default function MembersPage({
                             "Chưa xác định"}
                           {selectedTask.start_date
                             ? ` • Bắt đầu: ${new Date(
-                                selectedTask.start_date
-                              ).toLocaleDateString(
-                                "vi-VN"
-                              )}`
+                              selectedTask.start_date
+                            ).toLocaleDateString(
+                              "vi-VN"
+                            )}`
                             : ""}
                         </p>
+                      )}
+
+                      {checkingOverload && (
+                        <p className="mt-1 text-xs text-blue-600 flex items-center gap-1.5">
+                          <RefreshCw className="size-3 animate-spin" />
+                          Đang kiểm tra trùng lịch trình...
+                        </p>
+                      )}
+
+                      {taskOverloadWarning?.is_overloaded && (
+                        <div className="mt-2.5 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 shadow-sm animate-in fade-in">
+                          <div className="flex items-start gap-2.5">
+                            <AlertTriangle className="size-4 shrink-0 text-amber-600 mt-0.5" />
+                            <div className="flex-1">
+                              <p className="font-bold text-amber-950">
+                                ⚠️ Cảnh báo: Việc này sẽ làm đội bị quá tải lịch trình
+                              </p>
+                              {taskOverloadWarning.overloaded_intervals?.length > 0 && (
+                                <div className="mt-1 space-y-0.5">
+                                  <p className="text-amber-900">
+                                    <strong>Khoảng thời gian bị chồng:</strong> Từ{" "}
+                                    <span className="font-semibold underline">
+                                      {new Date(
+                                        taskOverloadWarning.overloaded_intervals[0].start_date
+                                      ).toLocaleDateString("vi-VN")}
+                                    </span>{" "}
+                                    đến{" "}
+                                    <span className="font-semibold underline">
+                                      {new Date(
+                                        taskOverloadWarning.overloaded_intervals[0].end_date
+                                      ).toLocaleDateString("vi-VN")}
+                                    </span>{" "}
+                                    ({taskOverloadWarning.overloaded_intervals[0].duration_days} ngày)
+                                  </p>
+                                  <p className="text-amber-800">
+                                    Có{" "}
+                                    <strong>
+                                      {taskOverloadWarning.overloaded_intervals[0].concurrent_count} công việc
+                                    </strong>{" "}
+                                    cùng diễn ra đồng thời (vượt ngưỡng 3 việc quy định).
+                                  </p>
+                                </div>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setShowOverloadDialog(true)}
+                                className="mt-2 inline-flex items-center gap-1 font-semibold text-amber-800 underline hover:text-amber-950"
+                              >
+                                Xem chi tiết danh sách việc bị chồng
+                              </button>
+                            </div>
+                          </div>
+                        </div>
                       )}
                     </div>
 
@@ -1407,7 +1594,7 @@ export default function MembersPage({
                     </p>
 
                     {assignedTasks.length ===
-                    0 ? (
+                      0 ? (
                       <p className="text-sm text-site-baseline">
                         Chưa có công việc
                         nào.
@@ -1424,17 +1611,33 @@ export default function MembersPage({
                             >
                               <div className="flex items-start justify-between gap-3">
                                 <div>
-                                  <p className="text-sm font-semibold text-site-dark">
-                                    {
-                                      task.name
-                                    }
-                                  </p>
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-sm font-semibold text-site-dark">
+                                      {task.name}
+                                    </p>
+                                    {task.is_critical && (
+                                      <span className="rounded bg-red-50 border border-red-200 px-1.5 py-0.5 text-[10px] font-bold text-red-600">
+                                        GĂNG
+                                      </span>
+                                    )}
+                                  </div>
 
-                                  <p className="mt-0.5 text-xs text-site-baseline">
-                                    {
-                                      task.work_item_name
-                                    }
-                                  </p>
+                                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-site-baseline">
+                                    <span>{task.work_item_name}</span>
+                                    {(task.early_start || task.actual_start_date) && (
+                                      <span className="font-medium text-site-dark">
+                                        • Lịch:{" "}
+                                        {new Date(
+                                          task.early_start || task.actual_start_date
+                                        ).toLocaleDateString("vi-VN")}
+                                        {(task.early_finish || task.actual_end_date)
+                                          ? ` - ${new Date(
+                                            task.early_finish || task.actual_end_date
+                                          ).toLocaleDateString("vi-VN")}`
+                                          : ""}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
 
                                 <span className="shrink-0 rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
@@ -1534,18 +1737,17 @@ export default function MembersPage({
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             <div
-                              className={`flex size-9 shrink-0 items-center justify-center rounded-full font-bold ${
-                                locked
+                              className={`flex size-9 shrink-0 items-center justify-center rounded-full font-bold ${locked
                                   ? "bg-site-critical/10 text-site-critical"
                                   : "bg-site-primary/10 text-site-primary"
-                              }`}
+                                }`}
                             >
                               {locked ? (
                                 <Lock className="size-4" />
                               ) : (
                                 String(
                                   member.name ||
-                                    "?"
+                                  "?"
                                 )
                                   .substring(
                                     0,
@@ -1607,8 +1809,8 @@ export default function MembersPage({
                               )}
                             </div>
                           ) : hasFailedAttempts(
-                              member
-                            ) ? (
+                            member
+                          ) ? (
                             <div className="flex flex-wrap items-center justify-end gap-2">
                               <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">
                                 Sai{" "}
@@ -1716,7 +1918,7 @@ export default function MembersPage({
                 {filteredMembers.length ===
                   0 &&
                   invitations.length ===
-                    0 && (
+                  0 && (
                     <tr>
                       <td
                         colSpan="3"
@@ -1862,6 +2064,23 @@ export default function MembersPage({
           </form>
         </div>
       )}
+
+      {/* T-57: Hộp thoại cảnh báo quá tải đội thi công */}
+      <OverloadWarningDialog
+        isOpen={showOverloadDialog}
+        onClose={() => setShowOverloadDialog(false)}
+        onConfirm={() => handleAssignTask(null, true)}
+        warning={taskOverloadWarning || teamWorkload}
+        teamName={
+          teams.find((t) => String(t.id) === String(selectedTeamId))?.name ||
+          "Đội thi công"
+        }
+        taskName={
+          tasks.find((t) => String(t.task_id) === String(selectedTaskId))?.name ||
+          "Công việc"
+        }
+        isSubmitting={assigning}
+      />
     </div>
   );
 }
