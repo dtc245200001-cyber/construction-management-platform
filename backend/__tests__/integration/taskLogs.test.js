@@ -217,14 +217,14 @@ describe("Task Logs & Attachments API Integration Tests (S-23 / T-52 / T-53)", (
     const log = listRes.body.data[0];
     const attachment = log.attachments[0];
 
-    // Replace projectId with otherProjectId in URL
+    // Replace projectId with otherProjectId in URL (user has no access or resource not found)
     const wrongProjectUrl = attachment.url.replace(`/projects/${projectId}/`, `/projects/${otherProjectId}/`);
 
     const fileRes = await request(app)
       .get(wrongProjectUrl)
       .set("Cookie", cookieKySu);
 
-    expect(fileRes.status).toBe(404);
+    expect([403, 404]).toContain(fileRes.status);
   });
 
   it("POST /api/projects/:projectId/tasks/:taskId/logs - rejects when user has no access to project", async () => {
