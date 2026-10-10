@@ -194,10 +194,21 @@ router.post(
       const attachments = [];
       if (req.files && req.files.length > 0) {
         for (const file of req.files) {
+          let fileBuffer = null;
+          try {
+            if (file.path && fs.existsSync(file.path)) {
+              fileBuffer = fs.readFileSync(file.path);
+            } else if (file.buffer) {
+              fileBuffer = file.buffer;
+            }
+          } catch (readErr) {
+            console.warn("Không thể đọc buffer từ file:", readErr.message);
+          }
+
           const attachInsert = await client.query(
-            `INSERT INTO task_attachments (task_log_id, file_path, file_name, file_size, mime_type) 
-             VALUES ($1, $2, $3, $4, $5) RETURNING id, file_name, file_size, mime_type, created_at`,
-            [logId, file.filename, file.originalname, file.size, file.mimetype]
+            `INSERT INTO task_attachments (task_log_id, file_path, file_name, file_size, mime_type, file_data) 
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, file_name, file_size, mime_type, created_at`,
+            [logId, file.filename, file.originalname, file.size, file.mimetype, fileBuffer]
           );
           attachments.push(attachInsert.rows[0]);
         }
@@ -253,7 +264,7 @@ router.get(
     try {
       // Verify all relations
       const result = await db.query(
-        `SELECT ta.file_path, ta.mime_type
+        `SELECT ta.file_path, ta.mime_type, ta.file_name, ta.file_data
          FROM task_attachments ta
          JOIN task_logs tl ON tl.id = ta.task_log_id
          JOIN tasks t ON t.id = tl.task_id
@@ -263,19 +274,34 @@ router.get(
       );
 
       if (result.rows.length === 0) {
-        return res.status(404).json({ message: "Không tìm thấy file" });
+        return res.status(404).json({ message: "Không tìm thấy file hoặc bạn không có quyền truy cập" });
       }
 
       const fileInfo = result.rows[0];
-      const absolutePath = path.join(uploadDir, fileInfo.file_path);
 
-      if (!fs.existsSync(absolutePath)) {
-        return res.status(404).json({ message: "File không tồn tại trên hệ thống" });
+      // 1. Phục vụ trực tiếp từ PostgreSQL BYTEA nếu có (bền vững tuyệt đối trên Render / container)
+      if (fileInfo.file_data) {
+        res.setHeader("Content-Type", fileInfo.mime_type || "application/octet-stream");
+        res.setHeader("Cache-Control", "public, max-age=86400, immutable");
+        return res.send(fileInfo.file_data);
       }
 
-      res.setHeader("Content-Type", fileInfo.mime_type);
-      const fileStream = fs.createReadStream(absolutePath);
-      fileStream.pipe(res);
+      // 2. Dự phòng: Đọc từ ổ đĩa (cho file cũ hoặc khi gắn Persistent Disk)
+      if (fileInfo.file_path) {
+        const absolutePath = path.isAbsolute(fileInfo.file_path)
+          ? fileInfo.file_path
+          : path.join(uploadDir, fileInfo.file_path);
+
+        if (fs.existsSync(absolutePath)) {
+          res.setHeader("Content-Type", fileInfo.mime_type || "application/octet-stream");
+          res.setHeader("Cache-Control", "public, max-age=86400, immutable");
+          const fileStream = fs.createReadStream(absolutePath);
+          return fileStream.pipe(res);
+        }
+      }
+
+      // 3. Không tìm thấy cả trong DB lẫn trên đĩa
+      return res.status(404).json({ message: "File không tồn tại trên hệ thống lưu trữ" });
     } catch (error) {
       next(error);
     }

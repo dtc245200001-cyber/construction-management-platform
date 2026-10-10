@@ -168,6 +168,66 @@ describe("Task Logs & Attachments API Integration Tests (S-23 / T-52 / T-53)", (
     expect(fileRes.body).toBeDefined();
   });
 
+  it("GET attachment persists and serves from database even if physical file on disk is deleted (Render container restart simulation)", async () => {
+    const listRes = await request(app)
+      .get(`/api/projects/${projectId}/tasks/${taskId}/logs`)
+      .set("Cookie", cookieKySu);
+
+    const log = listRes.body.data[0];
+    const attachment = log.attachments[0];
+
+    // Find file on disk and delete it to simulate container restart
+    const attachDb = await pool.query("SELECT file_path FROM task_attachments WHERE id = $1", [attachment.id]);
+    const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, "..", "..", "uploads");
+    const physicalPath = path.join(uploadDir, attachDb.rows[0].file_path);
+    if (fs.existsSync(physicalPath)) {
+      fs.unlinkSync(physicalPath);
+    }
+
+    // Now request attachment again - it should STILL succeed because of BYTEA in database
+    const fileRes = await request(app)
+      .get(attachment.url)
+      .set("Cookie", cookieKySu);
+
+    expect(fileRes.status).toBe(200);
+    expect(fileRes.headers["content-type"]).toBe("image/png");
+    expect(fileRes.body).toBeDefined();
+    expect(fileRes.body.length).toBeGreaterThan(0);
+  });
+
+  it("GET attachment rejects when user has no access to project", async () => {
+    const listRes = await request(app)
+      .get(`/api/projects/${projectId}/tasks/${taskId}/logs`)
+      .set("Cookie", cookieKySu);
+
+    const log = listRes.body.data[0];
+    const attachment = log.attachments[0];
+
+    const fileRes = await request(app)
+      .get(attachment.url)
+      .set("Cookie", cookieNoProject);
+
+    expect(fileRes.status).toBe(403);
+  });
+
+  it("GET attachment rejects when requesting via wrong project ID", async () => {
+    const listRes = await request(app)
+      .get(`/api/projects/${projectId}/tasks/${taskId}/logs`)
+      .set("Cookie", cookieKySu);
+
+    const log = listRes.body.data[0];
+    const attachment = log.attachments[0];
+
+    // Replace projectId with otherProjectId in URL
+    const wrongProjectUrl = attachment.url.replace(`/projects/${projectId}/`, `/projects/${otherProjectId}/`);
+
+    const fileRes = await request(app)
+      .get(wrongProjectUrl)
+      .set("Cookie", cookieKySu);
+
+    expect(fileRes.status).toBe(404);
+  });
+
   it("POST /api/projects/:projectId/tasks/:taskId/logs - rejects when user has no access to project", async () => {
     const res = await request(app)
       .post(`/api/projects/${projectId}/tasks/${taskId}/logs`)

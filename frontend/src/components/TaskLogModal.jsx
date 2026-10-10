@@ -756,6 +756,7 @@ export function AttachmentThumbnail({
         </div>
       ) : (
         <img
+          crossOrigin="use-credentials"
           src={imageUrl}
           alt={attachment.file_name}
           loading={isPriority ? "eager" : "lazy"}
@@ -927,6 +928,7 @@ export function ImageViewerModal({
             </div>
           ) : (
             <img
+              crossOrigin="use-credentials"
               src={fullImageUrl}
               alt={currentImage.file_name}
               data-testid="full-size-image"
