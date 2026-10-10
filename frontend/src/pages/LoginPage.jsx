@@ -53,7 +53,15 @@ const LoginPage = ({ setUser }) => {
     try {
       const response = await api.post('/auth/login', { email, password });
       setUser(response.data.user);
-      navigate('/projects');
+
+const redirect = new URLSearchParams(location.search).get('redirect');
+
+navigate(
+  redirect?.startsWith('/') && !redirect.startsWith('//')
+    ? redirect
+    : '/projects',
+  { replace: true }
+);
     } catch (error) {
       console.error("LOGIN ERROR:", error);
       if (error.response?.status === 429) {

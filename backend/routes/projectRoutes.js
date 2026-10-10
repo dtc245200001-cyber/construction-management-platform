@@ -400,6 +400,104 @@ router.post(
     }
   }
 );
+// DELETE /api/projects/:projectId/members/:userId
+// Xóa thành viên khỏi dự án, giữ nguyên tài khoản và lịch sử
+router.delete(
+  "/:projectId/members/:userId",
+  requireAuth,
+  checkProjectAccess,
+  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU]),
+  async (req, res, next) => {
+    try {
+      const { projectId, userId } = req.params;
+
+      if (
+        !/^[1-9]\d*$/.test(projectId) ||
+        !/^[1-9]\d*$/.test(userId)
+      ) {
+        return res.status(400).json({
+          message: "ID dự án hoặc thành viên không hợp lệ"
+        });
+      }
+
+      const member = await db.query(
+        `SELECT pm.user_id, pm.role, u.email
+         FROM project_members pm
+         JOIN users u ON u.id = pm.user_id
+         WHERE pm.project_id = $1 AND pm.user_id = $2`,
+        [projectId, userId]
+      );
+
+      if (member.rows.length === 0) {
+        return res.status(404).json({
+          message: "Không tìm thấy thành viên trong dự án"
+        });
+      }
+
+      // Không cho phép tự xóa khỏi dự án
+      if (String(req.user.id) === String(userId)) {
+        return res.status(403).json({
+          message: "Bạn không thể tự xóa mình khỏi dự án"
+        });
+      }
+
+      // Kiểm tra quyền của người bị xóa
+      if (
+        member.rows[0].role === ROLES.CHU_DAU_TU &&
+        !req.user.is_system_admin
+      ) {
+        return res.status(403).json({
+          message: "Chỉ System Admin được xóa Chủ đầu tư"
+        });
+      }
+
+      const client = await db.connect();
+
+      try {
+        await client.query("BEGIN");
+
+        await client.query(
+          `DELETE FROM project_members
+           WHERE project_id = $1 AND user_id = $2`,
+          [projectId, userId]
+        );
+
+        // Ghi lịch sử thao tác trong cùng transaction
+        await client.query(
+          `INSERT INTO audit_logs
+           (user_id, action, entity, entity_id, details, ip_address)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            req.user.id,
+            "REMOVE_PROJECT_MEMBER",
+            "project_members",
+            Number(userId),
+            JSON.stringify({
+              projectId: Number(projectId),
+              removedUserId: Number(userId),
+              removedEmail: member.rows[0].email,
+              previousRole: member.rows[0].role
+            }),
+            req.ip
+          ]
+        );
+
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+
+      return res.json({
+        message: "Đã xóa thành viên khỏi dự án"
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 // POST /api/projects/:projectId/members/:userId/unlock - Mở khóa tài khoản thành viên
 router.post(

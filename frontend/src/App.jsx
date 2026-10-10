@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import api from './lib/api';
 import './App.css';
@@ -55,7 +55,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route element={<AuthLayout />}>
-          <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage setUser={setUser} />} />
+          <Route path="/login" element={<LoginPage setUser={setUser} />} />
         </Route>
         
         <Route path="/invitations/:token/accept" element={<InvitationAcceptPage />} />
