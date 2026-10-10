@@ -41,7 +41,11 @@ function App() {
         const response = await api.get('/auth/me');
         setUser(response.data.user);
       } catch (error) {
-        console.error('Không thể kiểm tra session', error);
+        const status = error?.response?.status;
+
+        if (status !== 401 && status !== 403) {
+          console.error('Không thể kiểm tra session', error);
+        }
       } finally {
         setCheckingSession(false);
       }
