@@ -16,11 +16,6 @@ const checkProjectAccess = asyncHandler(async (req, res, next) => {
   if (!parsedProjectId) {
     return res.status(400).json({ error: "Thiếu projectId hoặc projectId không hợp lệ" });
   }
-  // System Admin có toàn quyền truy cập mọi dự án
-if (req.user.is_system_admin === true) {
-  req.projectRole = "system_admin";
-  return next();
-}
 
   const result = await pool.query(
     `SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2`,
@@ -71,11 +66,6 @@ const allow = (roles = []) => {
     }
 
     const currentRole = req.projectRole;
-    // System Admin được phép thực hiện mọi thao tác đã qua xác thực
-if (req.user?.is_system_admin === true) {
-  res.locals.roleChecked = true;
-  return next();
-}
     const normalizedAllowedRoles = roles.map((r) => String(r));
 
     if (!currentRole || !normalizedAllowedRoles.includes(currentRole)) {
