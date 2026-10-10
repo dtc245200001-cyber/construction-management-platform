@@ -1,4 +1,4 @@
-const { renderProjectInvite } = require('../lib/emailTemplates');
+﻿const { renderProjectInvite } = require('../lib/emailTemplates');
 
 describe('Email Templates (E2)', () => {
   const mockBaseUrl = 'https://example.com';
@@ -46,12 +46,12 @@ describe('Email Templates (E2)', () => {
     });
 
     // New user -> link tới trang đăng ký/đặt mật khẩu
-    expect(resultNew.html).toContain(`${mockBaseUrl}/register?token=${token}`);
-    expect(resultNew.text).toContain(`${mockBaseUrl}/register?token=${token}`);
+    expect(resultNew.html).toContain(`${mockBaseUrl}/invitations/${token}/accept`);
+    expect(resultNew.text).toContain(`${mockBaseUrl}/invitations/${token}/accept`);
 
     // Existing user -> link tới đăng nhập
-    expect(resultExisting.html).toContain(`${mockBaseUrl}/login`);
-    expect(resultExisting.text).toContain(`${mockBaseUrl}/login`);
+    expect(resultExisting.html).toContain(`${mockBaseUrl}/invitations/${token}/accept`);
+    expect(resultExisting.text).toContain(`${mockBaseUrl}/invitations/${token}/accept`);
   });
 
   it('Không chứa dữ liệu thừa ngoài danh sách cho phép', () => {
@@ -73,3 +73,5 @@ describe('Email Templates (E2)', () => {
     expect(result.text).not.toContain('500');
   });
 });
+
+

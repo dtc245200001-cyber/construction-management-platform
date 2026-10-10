@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Search,
   Shield,
+  Trash2,
   Users,
   UserPlus,
   X,
@@ -183,9 +184,16 @@ export default function MembersPage({
   // ROLE PERMISSIONS
   // ==========================================================
 
+  const currentMember = members.find(
+    (member) => Number(member.id) === Number(user?.id)
+  );
+
+  const currentProjectRole = currentMember?.role;
+
   const canInvite =
-    user?.role === "ban_quan_ly" ||
-    user?.role === "chu_dau_tu";
+    user?.is_system_admin === true ||
+    currentProjectRole === "ban_quan_ly" ||
+    currentProjectRole === "chu_dau_tu";
 
   const canManageTeams =
     user?.role === "chu_dau_tu" ||
@@ -201,6 +209,45 @@ export default function MembersPage({
   // LOAD DATA
   // ==========================================================
 
+  const [removingId, setRemovingId] = useState(null);
+
+  const handleRemoveMember = async (member) => {
+    if (Number(member.id) === Number(user?.id)) {
+      alert("Bạn không thể tự xóa mình khỏi dự án.");
+      return;
+    }
+
+    if (member.role === "chu_dau_tu") {
+      alert("Không thể xóa Chủ đầu tư khỏi dự án.");
+      return;
+    }
+
+    if (!window.confirm(
+      `Bạn có chắc muốn xóa ${member.name || member.email} khỏi dự án?
+Tài khoản và lịch sử thao tác vẫn được giữ lại.`
+    )) {
+      return;
+    }
+
+    setRemovingId(member.id);
+
+    try {
+      await api.delete(
+        `/projects/${currentProjectId}/members/${member.id}`
+      );
+
+      await fetchMembers();
+      alert("Đã xóa thành viên khỏi dự án thành công!");
+    } catch (err) {
+      alert(
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        "Không thể xóa thành viên"
+      );
+    } finally {
+      setRemovingId(null);
+    }
+  };
   const fetchMembers = async () => {
     try {
       setLoading(true);
@@ -1751,6 +1798,21 @@ export default function MembersPage({
                               Đã tham gia
                             </span>
                           )}
+
+                          {canInvite &&
+                            Number(member.id) !== Number(user?.id) &&
+                            member.role !== "chu_dau_tu" && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveMember(member)}
+                                disabled={removingId === member.id}
+                                title="Xóa thành viên khỏi dự án"
+                                className="ml-2 inline-flex items-center gap-1.5 rounded-full bg-site-critical/10 px-2.5 py-1 text-xs font-medium text-site-critical hover:bg-site-critical hover:text-white disabled:opacity-50"
+                              >
+                                <Trash2 className="size-3" />
+                                {removingId === member.id ? "Đang xóa..." : "Xóa"}
+                              </button>
+                            )}
                         </td>
                       </tr>
                     );

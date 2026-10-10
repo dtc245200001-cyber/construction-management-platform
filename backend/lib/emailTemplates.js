@@ -30,9 +30,7 @@ function renderProjectInvite({ inviterName, projectName, role, token, isNewUser,
   const subject = `Lời mời tham gia dự án: ${safeProject}`;
 
   // Liên kết (Link)
-  const actionLink = isNewUser 
-    ? `${baseUrl}/register?token=${token}`
-    : `${baseUrl}/login`;
+  const actionLink = `${baseUrl}/invitations/${encodeURIComponent(token)}/accept`;
 
   const htmlInviter = escapeHtml(inviterName);
   const htmlProject = escapeHtml(projectName);
