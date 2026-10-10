@@ -14,6 +14,19 @@ const { ROLES } = require("../utils/constants");
 
 const router = express.Router({ mergeParams: true });
 
+const { isCloudinaryConfigured, uploadToCloudinary } = require("../lib/cloudinary");
+
+// Helper to resolve attachment URL
+function formatAttachmentUrl(projectId, taskId, logId, attachment) {
+  if (
+    attachment.file_path &&
+    (attachment.file_path.startsWith("http://") || attachment.file_path.startsWith("https://"))
+  ) {
+    return attachment.file_path;
+  }
+  return `/api/projects/${projectId}/tasks/${taskId}/logs/${logId}/attachments/${attachment.id}`;
+}
+
 // Ensure uploads directory exists
 const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, "..", "uploads");
 try {
@@ -95,7 +108,7 @@ router.get(
 
       if (logIds.length > 0) {
         const attachResult = await db.query(
-          `SELECT id, task_log_id, file_name, file_size, mime_type, created_at
+          `SELECT id, task_log_id, file_path, file_name, file_size, mime_type, created_at
            FROM task_attachments
            WHERE task_log_id = ANY($1::int[])
            ORDER BY id ASC`,
@@ -113,7 +126,7 @@ router.get(
             file_size: a.file_size,
             mime_type: a.mime_type,
             created_at: a.created_at,
-            url: `/api/projects/${projectId}/tasks/${taskId}/logs/${a.task_log_id}/attachments/${a.id}`
+            url: formatAttachmentUrl(projectId, taskId, a.task_log_id, a)
           });
         }
       }
@@ -205,10 +218,28 @@ router.post(
             console.warn("Không thể đọc buffer từ file:", readErr.message);
           }
 
+          let storedFilePath = file.filename;
+          let storedFileData = fileBuffer;
+
+          // Nếu Cloudinary được cấu hình, upload lên Cloudinary
+          if (isCloudinaryConfigured() && fileBuffer) {
+            try {
+              const cloudResult = await uploadToCloudinary(fileBuffer, {
+                folder: `construction_management/projects/${projectId}/tasks/${taskId}`,
+                public_id: `log_${logId}_${Date.now()}_${Math.round(Math.random() * 1e9)}`,
+              });
+              storedFilePath = cloudResult.url;
+              // Không lưu dữ liệu BYTEA nếu đã upload thành công lên Cloudinary
+              storedFileData = null;
+            } catch (cloudErr) {
+              console.error("Lỗi khi upload lên Cloudinary, chuyển sang lưu trữ fallback:", cloudErr.message);
+            }
+          }
+
           const attachInsert = await client.query(
             `INSERT INTO task_attachments (task_log_id, file_path, file_name, file_size, mime_type, file_data) 
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, file_name, file_size, mime_type, created_at`,
-            [logId, file.filename, file.originalname, file.size, file.mimetype, fileBuffer]
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, file_path, file_name, file_size, mime_type, created_at`,
+            [logId, storedFilePath, file.originalname, file.size, file.mimetype, storedFileData]
           );
           attachments.push(attachInsert.rows[0]);
         }
@@ -232,7 +263,7 @@ router.post(
             file_size: a.file_size,
             mime_type: a.mime_type,
             created_at: a.created_at,
-            url: `/api/projects/${projectId}/tasks/${taskId}/logs/${logId}/attachments/${a.id}`
+            url: formatAttachmentUrl(projectId, taskId, logId, a)
           }))
         }
       });
@@ -279,14 +310,22 @@ router.get(
 
       const fileInfo = result.rows[0];
 
-      // 1. Phục vụ trực tiếp từ PostgreSQL BYTEA nếu có (bền vững tuyệt đối trên Render / container)
+      // 1. Nếu lưu trên Cloudinary (URL HTTP/HTTPS) -> Chuyển hướng đến Cloudinary CDN an toàn
+      if (
+        fileInfo.file_path &&
+        (fileInfo.file_path.startsWith("http://") || fileInfo.file_path.startsWith("https://"))
+      ) {
+        return res.redirect(fileInfo.file_path);
+      }
+
+      // 2. Phục vụ trực tiếp từ PostgreSQL BYTEA nếu có (bền vững tuyệt đối trên Render / container)
       if (fileInfo.file_data) {
         res.setHeader("Content-Type", fileInfo.mime_type || "application/octet-stream");
         res.setHeader("Cache-Control", "public, max-age=86400, immutable");
         return res.send(fileInfo.file_data);
       }
 
-      // 2. Dự phòng: Đọc từ ổ đĩa (cho file cũ hoặc khi gắn Persistent Disk)
+      // 3. Dự phòng: Đọc từ ổ đĩa (cho file cũ hoặc khi gắn Persistent Disk)
       if (fileInfo.file_path) {
         const absolutePath = path.isAbsolute(fileInfo.file_path)
           ? fileInfo.file_path
@@ -300,8 +339,8 @@ router.get(
         }
       }
 
-      // 3. Không tìm thấy cả trong DB lẫn trên đĩa
-      return res.status(404).json({ message: "File không tồn tại trên hệ thống lưu trữ" });
+      // 4. Không tìm thấy cả trong Cloudinary, DB lẫn trên đĩa
+      return res.status(404).json({ message: "File không tồn tại trên hệ thống lưu trữ hoặc đã bị xoá" });
     } catch (error) {
       next(error);
     }
