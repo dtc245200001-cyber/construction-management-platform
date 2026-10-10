@@ -21,6 +21,8 @@ services:
       - key: CORS_ORIGINS
         # Update this URL once Render provides the frontend domain
         value: https://construction-ui.onrender.com
+      - key: UPLOAD_DIR
+        value: ./uploads
 
   # ─── FRONTEND REACT ─────────────────────────────────────────────────────────
   - type: web
