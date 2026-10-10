@@ -11,7 +11,10 @@ const {
 
 const { ROLES } = require("../utils/constants");
 const asyncHandler = require("../utils/asyncHandler");
-const { detectTeamOverload } = require("../algorithms/workloadAnalysis");
+const {
+  detectTeamOverload,
+  normalizeTaskSchedule,
+} = require("../algorithms/workloadAnalysis");
 const { logAudit } = require("../utils/auditLogger");
 
 const router = createProjectRouter();
@@ -527,8 +530,10 @@ async function fetchTeamScheduleTasks(projectId, teamId, client = db) {
         t.actual_start_date,
         t.actual_end_date,
         wi.name AS work_item_name,
-        sr.early_start,
-        sr.early_finish,
+        -- schedule_results lưu timestamp: ép về date để pg trả chuỗi
+        -- YYYY-MM-DD, tránh lệch ngày theo múi giờ máy chủ.
+        sr.early_start::date AS early_start,
+        sr.early_finish::date AS early_finish,
         sr.is_critical
 
       FROM tasks t
@@ -551,6 +556,35 @@ async function fetchTeamScheduleTasks(projectId, teamId, client = db) {
   );
 
   return result.rows;
+}
+
+// Lấy task (kèm lịch và đội hiện tại) để mô phỏng phân công. null nếu
+// task không thuộc dự án.
+async function fetchTaskForAssignment(projectId, taskId, client = db) {
+  const result = await client.query(
+    `
+      SELECT
+        t.id,
+        t.name,
+        t.duration_days,
+        t.manual_start_date,
+        t.actual_start_date,
+        t.actual_end_date,
+        wi.name AS work_item_name,
+        sr.early_start::date AS early_start,
+        sr.early_finish::date AS early_finish,
+        sr.is_critical,
+        ta.team_id AS current_team_id
+      FROM tasks t
+      JOIN work_items wi ON wi.id = t.work_item_id
+      LEFT JOIN schedule_results sr ON sr.task_id = t.id
+      LEFT JOIN task_assignments ta ON ta.task_id = t.id
+      WHERE t.id = $1 AND wi.project_id = $2
+    `,
+    [taskId, projectId]
+  );
+
+  return result.rows[0] || null;
 }
 
 // GET /api/projects/:projectId/teams/:teamId/workload
@@ -611,30 +645,9 @@ router.post(
       });
     }
 
-    const taskRes = await db.query(
-      `
-        SELECT
-          t.id,
-          t.name,
-          t.duration_days,
-          t.manual_start_date,
-          t.actual_start_date,
-          t.actual_end_date,
-          wi.name AS work_item_name,
-          sr.early_start,
-          sr.early_finish,
-          sr.is_critical,
-          ta.team_id AS current_team_id
-        FROM tasks t
-        JOIN work_items wi ON wi.id = t.work_item_id
-        LEFT JOIN schedule_results sr ON sr.task_id = t.id
-        LEFT JOIN task_assignments ta ON ta.task_id = t.id
-        WHERE t.id = $1 AND wi.project_id = $2
-      `,
-      [taskId, projectId]
-    );
+    const taskRow = await fetchTaskForAssignment(projectId, taskId);
 
-    if (taskRes.rows.length === 0) {
+    if (!taskRow) {
       return res.status(404).json({
         message: "Không tìm thấy task trong dự án",
       });
@@ -651,7 +664,6 @@ router.post(
       });
     }
 
-    const taskRow = taskRes.rows[0];
     const existingTasks = await fetchTeamScheduleTasks(projectId, teamId);
     // Lọc bỏ task này nếu đã thuộc đội này, rồi thêm vào để mô phỏng
     const simulatedTasks = existingTasks.filter((t) => Number(t.id) !== Number(taskId));
@@ -667,6 +679,7 @@ router.post(
       reassigned: Boolean(taskRow.current_team_id && Number(taskRow.current_team_id) !== Number(teamId)),
       old_team_id: taskRow.current_team_id || null,
       warning: overloadResult.is_overloaded ? overloadResult : null,
+      task_unscheduled: normalizeTaskSchedule(taskRow) === null,
     });
   })
 );
@@ -689,30 +702,9 @@ router.post(
       });
     }
 
-    const taskRes = await db.query(
-      `
-        SELECT
-          t.id,
-          t.name,
-          t.duration_days,
-          t.manual_start_date,
-          t.actual_start_date,
-          t.actual_end_date,
-          wi.name AS work_item_name,
-          sr.early_start,
-          sr.early_finish,
-          sr.is_critical,
-          ta.team_id AS current_team_id
-        FROM tasks t
-        JOIN work_items wi ON wi.id = t.work_item_id
-        LEFT JOIN schedule_results sr ON sr.task_id = t.id
-        LEFT JOIN task_assignments ta ON ta.task_id = t.id
-        WHERE t.id = $1 AND wi.project_id = $2
-      `,
-      [taskId, projectId]
-    );
+    const taskRow = await fetchTaskForAssignment(projectId, taskId);
 
-    if (taskRes.rows.length === 0) {
+    if (!taskRow) {
       return res.status(404).json({
         message: "Không tìm thấy task trong dự án",
       });
@@ -729,7 +721,6 @@ router.post(
       });
     }
 
-    const taskRow = taskRes.rows[0];
     const oldTeamId = taskRow.current_team_id ? Number(taskRow.current_team_id) : null;
     const isReassignment = Boolean(oldTeamId && oldTeamId !== Number(teamId));
 
@@ -791,6 +782,7 @@ router.post(
       reassigned: isReassignment,
       old_team_id: oldTeamId,
       warning: overloadResult.is_overloaded ? overloadResult : null,
+      task_unscheduled: normalizeTaskSchedule(taskRow) === null,
     });
   })
 );

@@ -197,7 +197,9 @@ describe("Team Overload & Assignment Integration Tests (T-57 / S-25)", () => {
 
     expect(previewRes.status).toBe(200);
     expect(previewRes.body.can_assign).toBe(true);
+    expect(previewRes.body.task_unscheduled).toBe(false);
     expect(previewRes.body.warning).not.toBeNull();
+    expect(previewRes.body.warning.message).toContain("từ ngày 15/10/2026 đến ngày 18/10/2026");
     expect(previewRes.body.warning.is_overloaded).toBe(true);
     expect(previewRes.body.warning.max_concurrent).toBe(4);
 
@@ -286,5 +288,33 @@ describe("Team Overload & Assignment Integration Tests (T-57 / S-25)", () => {
       .send({ team_id: team2Id });
 
     expect(resForbidden.status).toBe(403);
+  });
+
+  test("6. Việc chưa có lịch (chưa tính tiến độ): báo task_unscheduled thay vì im lặng bỏ qua", async () => {
+    // Việc mới trong cùng hạng mục, không có schedule_results / ngày thực tế / ngày thủ công
+    const tk5 = await pool.query(
+      `INSERT INTO tasks (work_item_id, name, duration_days)
+       SELECT work_item_id, 'Lấp đất hố móng', 3 FROM tasks WHERE id = $1
+       RETURNING id`,
+      [task1Id]
+    );
+    const task5Id = tk5.rows[0].id;
+
+    const previewRes = await request(app)
+      .post(`/api/projects/${projectId}/tasks/${task5Id}/check-assignment`)
+      .set("Cookie", cookieCHT)
+      .send({ team_id: team1Id });
+
+    expect(previewRes.status).toBe(200);
+    expect(previewRes.body.task_unscheduled).toBe(true);
+    expect(previewRes.body.warning).toBeNull();
+
+    // Việc có lịch CPM thì không bị gắn cờ
+    const scheduledRes = await request(app)
+      .post(`/api/projects/${projectId}/tasks/${task1Id}/check-assignment`)
+      .set("Cookie", cookieCHT)
+      .send({ team_id: team1Id });
+
+    expect(scheduledRes.body.task_unscheduled).toBe(false);
   });
 });

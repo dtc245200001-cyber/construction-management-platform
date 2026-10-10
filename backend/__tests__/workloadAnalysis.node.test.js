@@ -71,8 +71,8 @@ test("detectTeamOverload - 4th task triggers overload with exact interval", () =
 
   const ids = interval.tasks.map((t) => t.id).sort((a, b) => a - b);
   assert.deepEqual(ids, [1, 2, 3, 4]);
-  assert.ok(result.message.includes("2026-10-15"));
-  assert.ok(result.message.includes("2026-10-18"));
+  assert.ok(result.message.includes("15/10/2026"));
+  assert.ok(result.message.includes("18/10/2026"));
 });
 
 test("detectTeamOverload - sequential tasks without exceeding threshold", () => {
