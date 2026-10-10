@@ -34,6 +34,67 @@ describe("Workload Analysis Algorithm (T-57 / S-25)", () => {
     });
   });
 
+  // S-25: nguồn ngày phải lấy theo cặp, ưu tiên thực tế > CPM > thủ công.
+  // Đáp án tính tay theo lịch dương (ngày kết thúc tính bao gồm).
+  describe("normalizeTaskSchedule — nguồn ngày (S-25)", () => {
+    test("ưu tiên ngày thực tế đã hoàn thành hơn kết quả CPM", () => {
+      const norm = normalizeTaskSchedule({
+        id: 1,
+        early_start: "2026-10-01",
+        early_finish: "2026-10-05",
+        actual_start_date: "2026-10-03",
+        actual_end_date: "2026-10-20",
+      });
+
+      // Thực tế 03/10 → 20/10 = 18 ngày
+      expect(norm.start_date).toBe("2026-10-03");
+      expect(norm.end_date).toBe("2026-10-20");
+      expect(norm.duration_days).toBe(18);
+    });
+
+    test("đang thi công: hết hạn = muộn nhất của early_finish và actual_start + duration - 1", () => {
+      // actual_start 05/10, 4 ngày → 08/10; early_finish 06/10 → lấy 08/10
+      const byDuration = normalizeTaskSchedule({
+        id: 1,
+        actual_start_date: "2026-10-05",
+        duration_days: 4,
+        early_start: "2026-10-03",
+        early_finish: "2026-10-06",
+      });
+      expect(byDuration.start_date).toBe("2026-10-05");
+      expect(byDuration.end_date).toBe("2026-10-08");
+
+      // actual_start 05/10, 4 ngày → 08/10; early_finish 12/10 → lấy 12/10
+      const byCpm = normalizeTaskSchedule({
+        id: 2,
+        actual_start_date: "2026-10-05",
+        duration_days: 4,
+        early_start: "2026-10-03",
+        early_finish: "2026-10-12",
+      });
+      expect(byCpm.start_date).toBe("2026-10-05");
+      expect(byCpm.end_date).toBe("2026-10-12");
+    });
+
+    test("không ghép ngày bắt đầu thủ công với ngày kết thúc CPM", () => {
+      // Thủ công 10/10, 5 ngày → 10/10..14/10 (bỏ early_finish 30/10 vì thiếu early_start)
+      const norm = normalizeTaskSchedule({
+        id: 1,
+        manual_start_date: "2026-10-10",
+        duration_days: 5,
+        early_finish: "2026-10-30",
+      });
+      expect(norm.start_date).toBe("2026-10-10");
+      expect(norm.end_date).toBe("2026-10-14");
+    });
+
+    test("ngày kết thúc trước ngày bắt đầu → không đánh giá (null), không tự đảo", () => {
+      expect(
+        normalizeTaskSchedule({ id: 1, early_start: "2026-10-10", early_finish: "2026-10-05" })
+      ).toBeNull();
+    });
+  });
+
   describe("detectTeamOverload", () => {
     test("returns not overloaded when tasks array is empty", () => {
       const result = detectTeamOverload([]);
@@ -78,8 +139,8 @@ describe("Workload Analysis Algorithm (T-57 / S-25)", () => {
 
       const taskIds = interval.tasks.map((t) => t.id);
       expect(taskIds).toEqual(expect.arrayContaining([1, 2, 3, 4]));
-      expect(result.message).toContain("2026-10-15");
-      expect(result.message).toContain("2026-10-18");
+      expect(result.message).toContain("15/10/2026");
+      expect(result.message).toContain("18/10/2026");
     });
 
     test("does NOT trigger overload when tasks run sequentially without exceeding threshold", () => {

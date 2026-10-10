@@ -26,6 +26,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import OverloadWarningDialog from "../components/OverloadWarningDialog";
+import { formatDateVN } from "../utils/dateVN";
 
 const roleLabels = {
   chu_dau_tu: "Chủ đầu tư",
@@ -178,6 +179,10 @@ export default function MembersPage({
   const [taskOverloadWarning, setTaskOverloadWarning] = useState(null);
   const [showOverloadDialog, setShowOverloadDialog] = useState(false);
   const [checkingOverload, setCheckingOverload] = useState(false);
+  // S-25: việc đang chọn chưa có lịch → không kiểm được chồng lịch
+  const [taskUnscheduled, setTaskUnscheduled] = useState(false);
+  // S-25: cảnh báo trả về SAU khi đã lưu phân công ({ warning, taskName })
+  const [assignedOverload, setAssignedOverload] = useState(null);
 
   // ==========================================================
   // ROLE PERMISSIONS
@@ -417,11 +422,13 @@ export default function MembersPage({
       !selectedTaskId
     ) {
       setTaskOverloadWarning(null);
+      setTaskUnscheduled(false);
       return;
     }
 
     let isMounted = true;
     setCheckingOverload(true);
+    setTaskUnscheduled(false);
 
     api
       .post(
@@ -443,10 +450,20 @@ export default function MembersPage({
         } else {
           setTaskOverloadWarning(null);
         }
+        setTaskUnscheduled(
+          Boolean(res.data?.task_unscheduled)
+        );
       })
-      .catch(() => {
+      .catch((err) => {
         if (!isMounted) return;
         setTaskOverloadWarning(null);
+        setTeamNotice({
+          type: "error",
+          message: getErrorMessage(
+            err,
+            "Không kiểm tra được trùng lịch của đội. Hệ thống vẫn kiểm tra lại khi lưu."
+          ),
+        });
       })
       .finally(() => {
         if (isMounted) {
@@ -774,6 +791,15 @@ export default function MembersPage({
           type: "warning",
           message: `Đã giao việc thành công! ⚠️ ${assignRes.data.warning.message}`,
         });
+
+        // S-25: người dùng chưa xác nhận qua dialog (vd lưu trước khi
+        // kiểm tra trước xong) → vẫn bật pop-up nêu rõ khoảng bị chồng.
+        if (!forceProceed) {
+          setAssignedOverload({
+            warning: assignRes.data.warning,
+            taskName: selectedTask?.name || "Công việc",
+          });
+        }
       } else {
         setTeamNotice({
           type: "success",
@@ -1374,6 +1400,13 @@ export default function MembersPage({
                         </p>
                       )}
 
+                      {!checkingOverload && taskUnscheduled && (
+                        <p className="mt-1 text-xs text-site-baseline flex items-center gap-1.5">
+                          <AlertTriangle className="size-3 shrink-0 text-amber-600" />
+                          Công việc chưa có lịch — hãy tính tiến độ trước để kiểm tra chồng lịch của đội.
+                        </p>
+                      )}
+
                       {taskOverloadWarning?.is_overloaded && (
                         <div className="mt-2.5 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 shadow-sm animate-in fade-in">
                           <div className="flex items-start gap-2.5">
@@ -1387,15 +1420,15 @@ export default function MembersPage({
                                   <p className="text-amber-900">
                                     <strong>Khoảng thời gian bị chồng:</strong> Từ{" "}
                                     <span className="font-semibold underline">
-                                      {new Date(
+                                      {formatDateVN(
                                         taskOverloadWarning.overloaded_intervals[0].start_date
-                                      ).toLocaleDateString("vi-VN")}
+                                      )}
                                     </span>{" "}
                                     đến{" "}
                                     <span className="font-semibold underline">
-                                      {new Date(
+                                      {formatDateVN(
                                         taskOverloadWarning.overloaded_intervals[0].end_date
-                                      ).toLocaleDateString("vi-VN")}
+                                      )}
                                     </span>{" "}
                                     ({taskOverloadWarning.overloaded_intervals[0].duration_days} ngày)
                                   </p>
@@ -1485,7 +1518,8 @@ export default function MembersPage({
                     <button
                       type="submit"
                       disabled={
-                        assigning
+                        assigning ||
+                        checkingOverload
                       }
                       className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-site-primary px-4 font-semibold text-white disabled:opacity-50"
                     >
@@ -1956,16 +1990,25 @@ export default function MembersPage({
 
       {/* T-57: Hộp thoại cảnh báo quá tải đội thi công */}
       <OverloadWarningDialog
-        isOpen={showOverloadDialog}
-        onClose={() => setShowOverloadDialog(false)}
+        isOpen={showOverloadDialog || Boolean(assignedOverload)}
+        onClose={() => {
+          setShowOverloadDialog(false);
+          setAssignedOverload(null);
+        }}
         onConfirm={() => handleAssignTask(null, true)}
-        warning={taskOverloadWarning || teamWorkload}
+        warning={
+          assignedOverload?.warning ||
+          taskOverloadWarning ||
+          teamWorkload
+        }
+        alreadyAssigned={Boolean(assignedOverload)}
         teamName={
           teams.find((t) => String(t.id) === String(selectedTeamId))?.name ||
           "Đội thi công"
         }
         taskName={
-          tasks.find((t) => String(t.task_id) === String(selectedTaskId))?.name ||
+          assignedOverload?.taskName ||
+          selectedTask?.name ||
           "Công việc"
         }
         isSubmitting={assigning}

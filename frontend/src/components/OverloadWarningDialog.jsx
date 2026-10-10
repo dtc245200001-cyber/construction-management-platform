@@ -8,26 +8,19 @@ import {
   CheckCircle2,
   AlertCircle,
 } from "lucide-react";
+import { formatDateVN } from "../utils/dateVN";
 
 function formatDisplayDate(dateStr) {
-  if (!dateStr) return "Chưa xác định";
-  try {
-    const d = new Date(dateStr);
-    if (Number.isNaN(d.getTime())) return dateStr;
-    return d.toLocaleDateString("vi-VN", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-  } catch {
-    return dateStr;
-  }
+  return formatDateVN(dateStr) || "Chưa xác định";
 }
+
 
 /**
  * OverloadWarningDialog (T-57 / S-25)
  * Hộp thoại cảnh báo quá tải đội thi công khi có hơn 3 công việc chồng nhau.
  * Nêu rõ khoảng thời gian bị chồng, danh sách công việc và cho phép xác nhận vẫn giao việc.
+ * alreadyAssigned = true: việc ĐÃ được lưu (cảnh báo đến từ phản hồi giao việc),
+ * dialog chỉ để thông báo — một nút "Đã hiểu" gọi onClose.
  */
 export default function OverloadWarningDialog({
   isOpen = false,
@@ -37,6 +30,7 @@ export default function OverloadWarningDialog({
   teamName = "Đội thi công",
   taskName = "Công việc",
   isSubmitting = false,
+  alreadyAssigned = false,
 }) {
   if (!isOpen || !warning) return null;
 
@@ -77,8 +71,9 @@ export default function OverloadWarningDialog({
         <div className="max-h-[75vh] space-y-4 overflow-y-auto p-5 text-sm text-site-dark">
           <div>
             <p className="text-site-dark">
-              Giao công việc <strong className="text-site-primary">"{taskName}"</strong> cho đội{" "}
-              <strong className="text-amber-900">"{teamName}"</strong> sẽ làm phát sinh tình trạng quá tải lịch trình (hơn 3 việc cùng diễn ra đồng thời).
+              {alreadyAssigned ? "Đã giao" : "Giao"} công việc <strong className="text-site-primary">"{taskName}"</strong> cho đội{" "}
+              <strong className="text-amber-900">"{teamName}"</strong>{" "}
+              {alreadyAssigned ? "và đội đang bị" : "sẽ làm phát sinh tình trạng"} quá tải lịch trình (hơn 3 việc cùng diễn ra đồng thời).
             </p>
           </div>
 
@@ -170,30 +165,43 @@ export default function OverloadWarningDialog({
 
         {/* FOOTER ACTIONS */}
         <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2.5 border-t border-site-border bg-site-bg/30 px-5 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-site-border bg-white px-4 text-sm font-semibold text-site-dark hover:bg-site-surface transition-colors disabled:opacity-50"
-          >
-            Hủy / Chọn đội khác
-          </button>
+          {alreadyAssigned ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-amber-600 hover:bg-amber-700 px-5 text-sm font-semibold text-white shadow-sm transition-colors"
+            >
+              <CheckCircle2 className="size-4" />
+              Đã hiểu
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isSubmitting}
+                className="inline-flex min-h-10 items-center justify-center rounded-xl border border-site-border bg-white px-4 text-sm font-semibold text-site-dark hover:bg-site-surface transition-colors disabled:opacity-50"
+              >
+                Hủy / Chọn đội khác
+              </button>
 
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={isSubmitting}
-            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-amber-600 hover:bg-amber-700 px-5 text-sm font-semibold text-white shadow-sm transition-colors disabled:opacity-50"
-          >
-            {isSubmitting ? (
-              "Đang lưu phân công..."
-            ) : (
-              <>
-                <CheckCircle2 className="size-4" />
-                Tôi đã hiểu, vẫn giao việc
-              </>
-            )}
-          </button>
+              <button
+                type="button"
+                onClick={onConfirm}
+                disabled={isSubmitting}
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-amber-600 hover:bg-amber-700 px-5 text-sm font-semibold text-white shadow-sm transition-colors disabled:opacity-50"
+              >
+                {isSubmitting ? (
+                  "Đang lưu phân công..."
+                ) : (
+                  <>
+                    <CheckCircle2 className="size-4" />
+                    Tôi đã hiểu, vẫn giao việc
+                  </>
+                )}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -102,4 +102,43 @@ describe('OverloadWarningDialog (T-57 / S-25)', () => {
     fireEvent.click(screen.getByText('Hủy / Chọn đội khác'));
     expect(handleClose).toHaveBeenCalledTimes(1);
   });
+
+  // S-25 NFR: khoảng bị chồng hiển thị rõ dạng DD/MM/YYYY
+  it('shows the overlapping interval as DD/MM/YYYY', () => {
+    render(
+      <OverloadWarningDialog
+        isOpen={true}
+        warning={sampleWarning}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(/Từ 15\/10\/2026 đến 18\/10\/2026/)).toBeInTheDocument();
+  });
+
+  // S-25 AC: việc đã được lưu → pop-up chỉ thông báo, không hỏi giao lại
+  it('alreadyAssigned mode shows only "Đã hiểu" which calls onClose', () => {
+    const handleClose = vi.fn();
+    const handleConfirm = vi.fn();
+    render(
+      <OverloadWarningDialog
+        isOpen={true}
+        alreadyAssigned={true}
+        warning={sampleWarning}
+        teamName="Đội Xây dựng 1"
+        taskName="Đổ bê tông lót"
+        onClose={handleClose}
+        onConfirm={handleConfirm}
+      />
+    );
+
+    expect(screen.getByText(/và đội đang bị/)).toBeInTheDocument();
+    expect(screen.queryByText('Tôi đã hiểu, vẫn giao việc')).toBeNull();
+    expect(screen.queryByText('Hủy / Chọn đội khác')).toBeNull();
+
+    fireEvent.click(screen.getByText('Đã hiểu'));
+    expect(handleClose).toHaveBeenCalledTimes(1);
+    expect(handleConfirm).not.toHaveBeenCalled();
+  });
 });

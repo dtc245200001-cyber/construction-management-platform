@@ -39,41 +39,84 @@ function formatDateUTC(date) {
 }
 
 /**
+ * Định dạng Date (UTC) thành chuỗi DD/MM/YYYY để hiển thị cho người dùng.
+ * @param {Date} date
+ * @returns {string}
+ */
+function formatDateVN(date) {
+  const [y, m, d] = formatDateUTC(date).split("-");
+  return `${d}/${m}/${y}`;
+}
+
+/**
+ * Ngày kết thúc (tính bao gồm) khi biết ngày bắt đầu và số ngày thực hiện.
+ * @returns {Date|null}
+ */
+function endFromDuration(start, durationDays) {
+  const n = Number(durationDays);
+  if (!start || !Number.isInteger(n) || n <= 0) return null;
+  return new Date(start.getTime() + (n - 1) * ONE_DAY_MS);
+}
+
+/**
+ * Xác định khoảng [start, end] (tính cả hai đầu) của một việc.
+ * Hai đầu luôn lấy từ CÙNG một nguồn để không ghép lẫn dữ liệu, theo thứ tự:
+ * 1. Thực tế: actual_start_date -> actual_end_date. Nếu đang thi công (chưa có
+ *    actual_end_date) thì lấy ngày muộn nhất của early_finish và
+ *    actual_start_date + duration_days - 1.
+ * 2. Kế hoạch (CPM hoặc truyền trực tiếp): start_date/early_start ->
+ *    end_date/early_finish; thiếu ngày kết thúc thì suy từ duration_days.
+ * 3. Lịch thủ công: manual_start_date -> manual_start_date + duration_days - 1.
+ *
+ * @returns {{start: Date, end: Date}|null}
+ */
+function resolveTaskInterval(task) {
+  const actualStart = parseDateUTC(task.actual_start_date);
+  if (actualStart) {
+    const actualEnd = parseDateUTC(task.actual_end_date);
+    if (actualEnd) return { start: actualStart, end: actualEnd };
+
+    const candidates = [
+      actualStart,
+      parseDateUTC(task.end_date || task.early_finish),
+      endFromDuration(actualStart, task.duration_days),
+    ].filter(Boolean);
+
+    return {
+      start: actualStart,
+      end: new Date(Math.max(...candidates.map((d) => d.getTime()))),
+    };
+  }
+
+  const planStart = parseDateUTC(task.start_date || task.early_start);
+  if (planStart) {
+    const planEnd =
+      parseDateUTC(task.end_date || task.early_finish) ||
+      endFromDuration(planStart, task.duration_days);
+    if (planEnd) return { start: planStart, end: planEnd };
+  }
+
+  const manualStart = parseDateUTC(task.manual_start_date);
+  const manualEnd = endFromDuration(manualStart, task.duration_days);
+  if (manualStart && manualEnd) return { start: manualStart, end: manualEnd };
+
+  return null;
+}
+
+/**
  * Chuẩn hóa một task để lấy khoảng thời gian [start_date, end_date].
- * Thứ tự ưu tiên:
- * 1. actual_start_date -> actual_end_date (nếu hoàn thành/đang chạy)
- * 2. start_date / early_start -> end_date / early_finish (kết quả CPM)
- * 3. manual_start_date -> manual_start_date + duration_days
+ * Nguồn ngày xem resolveTaskInterval. Trả null nếu không xác định được
+ * khoảng hợp lệ (thiếu ngày hoặc ngày kết thúc trước ngày bắt đầu).
  */
 function normalizeTaskSchedule(task) {
   if (!task) return null;
 
-  let start = null;
-  let end = null;
-
-  // 1. Kiểm tra ngày CPM hoặc ngày đã truyền
-  const rawStart = task.start_date || task.early_start || task.manual_start_date || task.actual_start_date;
-  const rawEnd = task.end_date || task.early_finish || task.actual_end_date;
-
-  start = parseDateUTC(rawStart);
-
-  if (rawEnd) {
-    end = parseDateUTC(rawEnd);
-  } else if (start && task.duration_days && Number(task.duration_days) > 0) {
-    const duration = Number(task.duration_days);
-    end = new Date(start.getTime() + (duration - 1) * ONE_DAY_MS);
-  }
-
-  if (!start || !end) {
+  const interval = resolveTaskInterval(task);
+  if (!interval || interval.end.getTime() < interval.start.getTime()) {
     return null;
   }
 
-  // Đảm bảo start <= end
-  if (end.getTime() < start.getTime()) {
-    const temp = start;
-    start = end;
-    end = temp;
-  }
+  const { start, end } = interval;
 
   return {
     id: task.id || task.task_id,
@@ -260,7 +303,7 @@ function detectTeamOverload(tasks, threshold = 3) {
   const primaryInterval = formattedIntervals[0];
   const warningMessage =
     formattedIntervals.length === 1
-      ? `Cảnh báo quá tải: Đội có ${primaryInterval.concurrent_count} công việc chồng lịch từ ngày ${primaryInterval.start_date} đến ngày ${primaryInterval.end_date} (${primaryInterval.duration_days} ngày, vượt ngưỡng ${threshold} việc).`
+      ? `Cảnh báo quá tải: Đội có ${primaryInterval.concurrent_count} công việc chồng lịch từ ngày ${formatDateVN(parseDateUTC(primaryInterval.start_date))} đến ngày ${formatDateVN(parseDateUTC(primaryInterval.end_date))} (${primaryInterval.duration_days} ngày, vượt ngưỡng ${threshold} việc).`
       : `Cảnh báo quá tải: Đội có ${formattedIntervals.length} khoảng thời gian bị chồng lịch quá ${threshold} việc (cao nhất ${globalMaxConcurrent} việc đồng thời).`;
 
   return {
@@ -276,6 +319,7 @@ function detectTeamOverload(tasks, threshold = 3) {
 module.exports = {
   parseDateUTC,
   formatDateUTC,
+  formatDateVN,
   normalizeTaskSchedule,
   detectTeamOverload,
 };
