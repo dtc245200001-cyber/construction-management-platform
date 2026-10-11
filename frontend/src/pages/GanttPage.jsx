@@ -367,7 +367,7 @@ export default function GanttPage() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setViewMode("day")}
-                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${viewMode === "day"
+                className={`px-3 min-h-11 rounded text-sm font-medium transition-colors ${viewMode === "day"
                   ? "bg-blue-600 text-white"
                   : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
                   }`}
@@ -377,7 +377,7 @@ export default function GanttPage() {
 
               <button
                 onClick={() => setViewMode("week")}
-                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${viewMode === "week"
+                className={`px-3 min-h-11 rounded text-sm font-medium transition-colors ${viewMode === "week"
                   ? "bg-blue-600 text-white"
                   : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
                   }`}
@@ -398,7 +398,7 @@ export default function GanttPage() {
                 type="button"
                 onClick={handleCreateBaseline}
                 disabled={baselineBusy}
-                className={`px-3 py-1 rounded-lg text-white text-xs font-semibold disabled:opacity-60 ${
+                className={`px-3 min-h-11 rounded-lg text-white text-xs font-semibold disabled:opacity-60 ${
                   summary.hasBaseline ? "bg-slate-600 hover:bg-slate-700" : "bg-amber-600 hover:bg-amber-700"
                 }`}
               >
@@ -473,7 +473,7 @@ export default function GanttPage() {
                           setSelectedTaskForProgress(bar);
                           setActiveBar(null);
                         }}
-                        className="opacity-70 hover:opacity-100 hover:text-blue-600 p-0.5 text-slate-400 cursor-pointer shrink-0"
+                        className="flex min-h-11 min-w-11 items-center justify-center opacity-70 hover:opacity-100 hover:text-blue-600 text-slate-400 cursor-pointer shrink-0"
                       >
                         <Edit3 className="size-3.5" />
                       </button>
@@ -828,7 +828,7 @@ export default function GanttPage() {
                           setSelectedTaskForProgress(activeBar);
                           setActiveBar(null);
                         }}
-                        className="mt-1.5 w-full py-1.5 text-[11px] font-semibold rounded bg-slate-100 text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5 border border-blue-100"
+                        className="mt-1.5 w-full min-h-11 py-2.5 text-xs font-semibold rounded bg-slate-100 text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5 border border-blue-100"
                       >
                         <Edit3 className="size-3" />
                         Cập nhật tiến độ

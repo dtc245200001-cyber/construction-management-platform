@@ -144,11 +144,11 @@ export default function ProjectsPage({ user, setUser }) {
         </div>
 
         <div className="flex items-center gap-4">
-          <button className="flex items-center gap-2 text-white/70 hover:text-white transition-colors text-sm font-medium">
+          <button className="flex min-h-11 items-center gap-2 text-white/70 hover:text-white transition-colors text-sm font-medium px-2">
             <MessageSquare className="size-5" />
             <span className="hidden sm:inline">Chat</span>
           </button>
-          <button className="relative text-white/70 hover:text-white transition-colors">
+          <button aria-label="Thông báo" className="relative flex min-h-11 min-w-11 items-center justify-center text-white/70 hover:text-white transition-colors">
             <Bell className="size-5" />
             <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-site-critical text-[10px] font-bold text-white">
               2
@@ -242,8 +242,8 @@ export default function ProjectsPage({ user, setUser }) {
                   onKeyDown={(e) => e.key === 'Enter' && handleOpenProject(proj.id)}
                   className={`bg-site-surface rounded-2xl border ${idx === 0 ? 'border-site-primary' : 'border-site-border'} p-5 shadow-sm hover:shadow-md transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-site-primary`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-site-primary/10 text-site-primary">
                         <Building2 className="size-5" />
                       </div>
@@ -252,17 +252,18 @@ export default function ProjectsPage({ user, setUser }) {
                         <p className="text-xs text-site-baseline truncate">{proj.code || 'No code'}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0 min-w-0">
                       <span className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${statusColors[proj.status] || statusColors["Chuẩn bị"]}`}>
                         <span className="size-1.5 rounded-full bg-current"></span>
                         {proj.status || 'Chuẩn bị'}
                       </span>
                       {isSystemAdmin && (
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 shrink-0">
                           <button
                             onClick={(e) => { e.stopPropagation(); setEditProjectData(proj); }}
-                            className="p-1.5 text-site-baseline hover:text-site-primary hover:bg-site-primary/10 rounded-lg transition-colors"
+                            className="flex min-h-11 min-w-11 items-center justify-center p-2.5 text-site-baseline hover:text-site-primary hover:bg-site-primary/10 rounded-lg transition-colors"
                             title="Sửa dự án"
+                            aria-label="Sửa dự án"
                           >
                             <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -270,8 +271,9 @@ export default function ProjectsPage({ user, setUser }) {
                           </button>
                           <button
                             onClick={(e) => handleDeleteProject(e, proj.id, proj.name)}
-                            className="p-1.5 text-site-baseline hover:text-site-critical hover:bg-site-critical/10 rounded-lg transition-colors"
+                            className="flex min-h-11 min-w-11 items-center justify-center p-2.5 text-site-baseline hover:text-site-critical hover:bg-site-critical/10 rounded-lg transition-colors"
                             title="Xoá dự án"
+                            aria-label="Xoá dự án"
                           >
                             <Trash2 className="size-4" />
                           </button>

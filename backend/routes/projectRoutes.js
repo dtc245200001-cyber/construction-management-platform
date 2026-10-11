@@ -731,7 +731,7 @@ router.delete(
   "/:projectId/members/:userId",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU]),
+  requirePermission("member.manage"),
   async (req, res, next) => {
     try {
       const { projectId, userId } = req.params;

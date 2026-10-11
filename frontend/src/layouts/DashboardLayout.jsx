@@ -263,37 +263,38 @@ export default function DashboardLayout({ user, setUser }) {
       {/* Main Container */}
       <div className="flex min-w-0 flex-1 flex-col h-screen overflow-hidden">
         {/* Topbar */}
-        <header className="sticky top-0 z-50 flex flex-wrap items-center gap-4 border-b border-border bg-card px-6 py-4">
-          <button 
+        <header className="sticky top-0 z-50 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
+          <button
             onClick={() => {
               if (window.innerWidth < 1024) {
                 setIsMobileMenuOpen(!isMobileMenuOpen);
               } else {
                 setIsSidebarCollapsed(!isSidebarCollapsed);
               }
-            }} 
-            className="p-2 -ml-2 text-muted-foreground hover:bg-accent/50 rounded-xl transition-colors outline-none cursor-pointer"
+            }}
+            aria-label="Mở menu"
+            className="flex min-h-11 min-w-11 items-center justify-center -ml-2 text-muted-foreground hover:bg-accent/50 rounded-xl transition-colors outline-none cursor-pointer"
           >
             <Menu className="size-5 shrink-0" />
           </button>
-          <p className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            {currentProject ? `Dự án ${currentProject.name}` : 'Đang tải...'} <ChevronRight className="size-4 shrink-0" />
-            <span className="font-semibold text-foreground">{currentNav.label}</span>
+          <p className="flex min-w-0 flex-1 items-center gap-2 text-sm font-medium text-muted-foreground sm:flex-none">
+            <span className="truncate">{currentProject ? `Dự án ${currentProject.name}` : 'Đang tải...'}</span> <ChevronRight className="size-4 shrink-0" />
+            <span className="shrink-0 font-semibold text-foreground">{currentNav.label}</span>
           </p>
 
-          <p className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
+          <p className="ml-auto hidden items-center gap-2 text-sm text-muted-foreground md:flex">
             <CalendarDays className="size-4" />
             Thứ Sáu, 25/09/2026 · Tuần 14
           </p>
 
-          <button 
+          <button
             onClick={() => navigate('/diary', { state: { openForm: true } })}
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 outline-none">
-            <Plus className="size-4" /> Ghi nhật ký nhanh
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 outline-none">
+            <Plus className="size-4" /> <span className="hidden min-[420px]:inline">Ghi nhật ký nhanh</span><span className="min-[420px]:hidden">Ghi nhật ký</span>
           </button>
 
           <button 
-            className="relative text-muted-foreground outline-none cursor-pointer hover:bg-accent/50 p-2 rounded-xl transition-colors"
+            className="relative flex min-h-11 min-w-11 items-center justify-center text-muted-foreground outline-none cursor-pointer hover:bg-accent/50 p-2 rounded-xl transition-colors"
             onClick={() => navigate('/warnings')}
           >
             <Bell className="size-5" />

@@ -86,7 +86,7 @@ export default function MilestoneWarningsPage() {
         <div className="flex items-center gap-4 border-b border-[#E6EBF3] shrink-0">
           <button
             onClick={() => setActiveTab("open")}
-            className={`pb-3 text-sm font-semibold border-b-2 transition-colors ${
+            className={`min-h-11 px-1 text-sm font-semibold border-b-2 transition-colors ${
               activeTab === "open" 
                 ? "border-[#1F63E0] text-[#1F63E0]" 
                 : "border-transparent text-[#64748B] hover:text-[#0F1B3D]"
@@ -96,7 +96,7 @@ export default function MilestoneWarningsPage() {
           </button>
           <button
             onClick={() => setActiveTab("closed")}
-            className={`pb-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
+            className={`min-h-11 px-1 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
               activeTab === "closed" 
                 ? "border-[#1F63E0] text-[#1F63E0]" 
                 : "border-transparent text-[#64748B] hover:text-[#0F1B3D]"
@@ -160,7 +160,7 @@ export default function MilestoneWarningsPage() {
                                   Đã đóng: {renderDate(w.closed_at)}
                                 </span>
                               )}
-                              <button className="text-[#64748B] hover:text-[#0F1B3D] ml-4">
+                              <button aria-label="Xem chi tiết" className="flex min-h-11 min-w-11 items-center justify-center text-[#64748B] hover:text-[#0F1B3D] ml-2 shrink-0">
                                 {isExpanded ? <ChevronUp className="size-5" /> : <ChevronDown className="size-5" />}
                               </button>
                             </div>

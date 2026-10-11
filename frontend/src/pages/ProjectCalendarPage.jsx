@@ -304,7 +304,7 @@ export default function ProjectCalendarPage() {
                             }))
                           }
                           disabled={calendarLoading || savingCalendar}
-                          className="size-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          className="size-6 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                         />
                         <span className="text-sm font-semibold">{label}</span>
                       </div>

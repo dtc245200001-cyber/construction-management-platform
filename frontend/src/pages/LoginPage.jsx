@@ -937,18 +937,33 @@ navigate(
         }
 
         @media (max-width: 639px) {
-          .nl-tagline, .nl-features {
+          /* Mobile: ẩn hero marketing để form lên ngay đầu fold,
+             không còn bug "login bị đẩy xuống" */
+          .nl-hero {
             display: none;
+          }
+          .nl-left-column {
+            height: auto;
+            padding: 0;
           }
           .nl-title {
             font-size: 32px;
           }
           .nl-main {
-            padding: 20px;
+            padding: 12px 16px 24px 16px;
+            gap: 0;
+            align-items: start;
           }
           .nl-header {
-            padding-left: 20px;
-            padding-right: 20px;
+            padding-left: 4px;
+            padding-right: 4px;
+          }
+          /* Touch target tối thiểu 44px */
+          .nl-tabs button {
+            min-height: 44px;
+          }
+          .nl-card-right {
+            padding: calc(var(--u) * 24) calc(var(--u) * 20);
           }
         }
       `}</style>

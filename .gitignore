@@ -41,6 +41,14 @@ backend/uploads/
 uploads/
 .postman/
 
+# Mobile screenshot tooling (chua credential test + anh nang, khong commit)
+frontend/mobile-shots/.creds.json
+frontend/mobile-shots/before/
+frontend/mobile-shots/after*/
+frontend/mobile-shots/*.bak
+frontend/mobile-shots/verify-mobile.cjs
+frontend/mobile-shots/touch-audit.cjs
+
 # Keys and credentials
 server_key.txt
 *.key

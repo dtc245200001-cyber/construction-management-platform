@@ -548,7 +548,7 @@ export default function FieldPage() {
                   );
                   setNotice(null);
                 }}
-                className={`min-h-10 rounded-lg px-3 font-semibold transition-colors ${
+                className={`min-h-11 rounded-lg px-3 font-semibold transition-colors ${
                   !viewAllTeams
                     ? "bg-blue-600 text-white"
                     : "text-slate-600"
@@ -565,7 +565,7 @@ export default function FieldPage() {
                   );
                   setNotice(null);
                 }}
-                className={`min-h-10 rounded-lg px-3 font-semibold transition-colors ${
+                className={`min-h-11 rounded-lg px-3 font-semibold transition-colors ${
                   viewAllTeams
                     ? "bg-blue-600 text-white"
                     : "text-slate-600"

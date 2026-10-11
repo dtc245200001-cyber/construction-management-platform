@@ -359,8 +359,8 @@ export default function SchedulePage() {
         </div>
 
         {/* Toolbar */}
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="relative w-[320px]">
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <div className="relative w-full sm:w-[320px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-[#64748B]" />
 
             <input
@@ -375,7 +375,7 @@ export default function SchedulePage() {
           <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-[#E6EBF3]">
             <button
               onClick={() => setCriticalOnly(false)}
-              className={`h-9 px-4 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+              className={`min-h-11 px-4 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
                 !criticalOnly
                   ? "bg-[#1F63E0] text-white"
                   : "text-[#64748B] hover:bg-slate-100"
@@ -386,7 +386,7 @@ export default function SchedulePage() {
 
             <button
               onClick={() => setCriticalOnly(true)}
-              className={`h-9 px-4 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+              className={`min-h-11 px-4 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
                 criticalOnly
                   ? "bg-red-600 text-white"
                   : "text-red-600 hover:bg-red-50"

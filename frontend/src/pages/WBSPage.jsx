@@ -581,7 +581,7 @@ const closeTaskForm = () => {
           <tr className={`h-[52px] ${color.bg} rounded-xl border-b border-white group`}>
             <td className="px-4 font-bold text-[#0F1B3D]" style={{ paddingLeft: `${indent + 16}px` }}>
               <div className="flex items-center gap-2">
-                <button onClick={() => toggleExpand(node.id)} className="p-1 hover:bg-black/5 rounded">
+                <button onClick={() => toggleExpand(node.id)} aria-label={isExpanded ? "Thu gọn" : "Mở rộng"} className="flex min-h-11 min-w-11 items-center justify-center hover:bg-black/5 rounded">
                   {isExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
                 </button>
                 <div className={`flex size-6 items-center justify-center rounded-md font-semibold text-xs bg-white/50 ${color.text}`}>
@@ -610,7 +610,7 @@ const closeTaskForm = () => {
     type="button"
     onClick={() => openMilestoneModal(node)}
     title="Đặt mốc bàn giao"
-    className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors cursor-pointer"
+    className="flex min-h-11 min-w-11 items-center justify-center text-red-600 hover:bg-red-100 rounded-lg transition-colors cursor-pointer"
   >
     <Flag className="size-4" />
   </button>
@@ -621,7 +621,7 @@ const closeTaskForm = () => {
     type="button"
     onClick={() => openCreateTaskForm(node)}
     title="Thêm công việc"
-    className="p-1.5 text-[#1F63E0] hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
+    className="flex min-h-11 min-w-11 items-center justify-center text-[#1F63E0] hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
   >
     <Plus className="size-4" />
   </button>
@@ -632,7 +632,7 @@ const closeTaskForm = () => {
     type="button"
     onClick={() => openAddChildModal(node)}
     title="Thêm mục con"
-    className="p-1.5 text-[#1F63E0] hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
+    className="flex min-h-11 min-w-11 items-center justify-center text-[#1F63E0] hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
   >
     <PlusCircle className="size-4" />
   </button>
@@ -642,7 +642,7 @@ const closeTaskForm = () => {
     type="button"
     onClick={() => openEditCategoryModal(node)}
     title="Sửa tên hạng mục"
-    className="p-1.5 text-[#475569] hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
+    className="flex min-h-11 min-w-11 items-center justify-center text-[#475569] hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
   >
     <Pencil className="size-4" />
   </button>
@@ -652,7 +652,7 @@ const closeTaskForm = () => {
     type="button"
     onClick={() => handleDeleteCategory(node)}
     title="Xóa hạng mục"
-    className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+    className="flex min-h-11 min-w-11 items-center justify-center text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
   >
     <Trash2 className="size-4" />
   </button>
@@ -704,14 +704,14 @@ const closeTaskForm = () => {
               <button
                 onClick={() => openEditTaskForm (node)}
                 title="Sửa công việc"
-                className="p-1.5 text-[#475569] hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
+                className="flex min-h-11 min-w-11 items-center justify-center text-[#475569] hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
               >
                 <Pencil className="size-4" />
               </button>
               <button
                 onClick={() => handleDeleteTask(node)}
                 title="Xóa công việc"
-                className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                className="flex min-h-11 min-w-11 items-center justify-center text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
               >
                 <Trash2 className="size-4" />
               </button>
@@ -814,8 +814,8 @@ const visibleItems = useMemo(() => {
               <option>Tất cả thời gian</option>
             </select>
             <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-[#E6EBF3]">
-              <button className="size-9 flex items-center justify-center rounded-lg bg-[#1F63E0] text-white"><List className="size-4" /></button>
-              <button className="size-9 flex items-center justify-center rounded-lg text-[#64748B] hover:bg-black/5"><LayoutGrid className="size-4" /></button>
+              <button aria-label="Xem dạng danh sách" className="size-11 flex items-center justify-center rounded-lg bg-[#1F63E0] text-white"><List className="size-4" /></button>
+              <button aria-label="Xem dạng lưới" className="size-11 flex items-center justify-center rounded-lg text-[#64748B] hover:bg-black/5"><LayoutGrid className="size-4" /></button>
             </div>
             <div className="flex-1"></div>
             <button 
@@ -951,7 +951,7 @@ const visibleItems = useMemo(() => {
 
           {/* Mẹo nhỏ */}
           <div className="bg-[#F0F6FF] rounded-xl border border-[#D6E6FF] p-4 relative">
-            <button className="absolute top-3 right-3 text-[#1F63E0]/50 hover:text-[#1F63E0]"><X className="size-4" /></button>
+            <button aria-label="Ẩn mẹo" className="absolute top-1 right-1 flex min-h-11 min-w-11 items-center justify-center text-[#1F63E0]/50 hover:text-[#1F63E0]"><X className="size-4" /></button>
             <div className="flex gap-3">
               <div className="mt-0.5 text-[#1F63E0]"><Lightbulb className="size-4 fill-current" /></div>
               <div>
