@@ -7,6 +7,10 @@
     "doc": "docs"
   },
   "scripts": {
+    "dev": "node start-dev.js",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "migrate:up": "npm --prefix backend run migrate:up",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
