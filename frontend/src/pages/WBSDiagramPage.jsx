@@ -11,7 +11,7 @@ import {
   useNodesState,
   useEdgesState,
 } from "reactflow";
-import { ArrowLeft, ChevronRight, ChevronDown, FolderOpen, FileText } from "lucide-react";
+import { ArrowLeft, ChevronRight, ChevronDown, FolderOpen, FileText, Maximize2 } from "lucide-react";
 import "reactflow/dist/style.css";
 
 import api from "../lib/api";
@@ -26,41 +26,84 @@ function WbsNode({ data, selected }) {
 
   return (
     <div
-      className={`min-w-[220px] max-w-[260px] rounded-xl border-2 bg-white px-3 py-2 shadow-sm ${
-        selected ? "border-[#1F63E0]" : "border-[#E6EBF3]"
+      title={node.name}
+      className={`w-[240px] min-h-[82px] rounded-xl border-2 px-3 py-2.5 transition-all duration-150 select-none ${
+        isCategory
+          ? `bg-[#EFF6FF] border-[#60A5FA] shadow-xs hover:shadow-md ${
+              selected ? "ring-2 ring-[#2563EB] border-[#2563EB]" : ""
+            }`
+          : `bg-white border-[#CBD5E1] shadow-xs hover:shadow-md hover:border-[#10B981] ${
+              selected ? "ring-2 ring-[#16A34A] border-[#16A34A]" : ""
+            }`
       }`}
     >
-      <Handle type="target" position={Position.Top} className="!bg-[#1F63E0]" />
-      <div className="flex items-center gap-2">
-        {isCategory ? (
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-[#EAF2FF] text-[#1F63E0]">
-            <FolderOpen className="size-4" />
-          </span>
-        ) : (
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-[#E8F7EE] text-[#15803D]">
-            <FileText className="size-4" />
-          </span>
-        )}
-        <div className="min-w-0 flex-1">
-          <div className={`truncate text-[13px] ${isCategory ? "font-bold text-[#0F1B3D]" : "font-medium text-[#334155]"}`}>
-            {node.name}
-          </div>
-          <div className="text-[11px] text-[#64748B]">
-            {isCategory ? "Hạng mục" : `Công việc · ${node.duration_days ?? "?"} ngày`}
-          </div>
+      <Handle
+        type="target"
+        position={Position.Top}
+        className={`!w-2.5 !h-2.5 !border-2 !border-white ${
+          isCategory ? "!bg-[#2563EB]" : "!bg-[#10B981]"
+        }`}
+      />
+
+      {/* Dòng 1: Icon phân loại + Badge loại node + Nút thu gọn hoặc Badge số ngày */}
+      <div className="flex items-center justify-between gap-1.5 mb-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
+          {isCategory ? (
+            <>
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[#2563EB] text-white shadow-xs">
+                <FolderOpen className="size-3.5" />
+              </span>
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#DBEAFE] text-[#1E40AF] tracking-wide uppercase">
+                Hạng mục
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[#DCFCE7] text-[#15803D]">
+                <FileText className="size-3.5" />
+              </span>
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#F0FDF4] text-[#15803D] border border-[#BBF7D0]">
+                Công việc
+              </span>
+            </>
+          )}
         </div>
-        {isCategory && hasChildren && (
-          <button
-            type="button"
-            data-node-toggle="1"
-            title={collapsed ? "Mở rộng nhánh" : "Thu gọn nhánh"}
-            className="nodrag flex size-6 shrink-0 items-center justify-center rounded-md text-[#1F63E0] hover:bg-[#EAF2FF]"
-          >
-            {collapsed ? <ChevronRight className="size-4" /> : <ChevronDown className="size-4" />}
-          </button>
+
+        {/* Góc phải: Nút thu gọn nhánh (Hạng mục) hoặc Badge số ngày (Công việc) */}
+        {isCategory ? (
+          hasChildren && (
+            <button
+              type="button"
+              data-node-toggle="1"
+              title={collapsed ? "Mở rộng nhánh" : "Thu gọn nhánh"}
+              className="nodrag flex size-6 shrink-0 items-center justify-center rounded-md text-[#2563EB] hover:bg-[#DBEAFE] transition-colors cursor-pointer"
+            >
+              {collapsed ? <ChevronRight className="size-4" /> : <ChevronDown className="size-4" />}
+            </button>
+          )
+        ) : (
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#ECFDF5] text-[#047857] border border-[#A7F3D0] shadow-2xs">
+            {node.duration_days ?? 1} ngày
+          </span>
         )}
       </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-[#1F63E0]" />
+
+      {/* Dòng 2: Tên node hiển thị tối đa 2 dòng rõ ràng (-webkit-line-clamp: 2), kèm native tooltip title */}
+      <div
+        className={`line-clamp-2 text-[13px] leading-snug break-words ${
+          isCategory ? "font-bold text-[#0F1B3D]" : "font-medium text-[#1E293B]"
+        }`}
+      >
+        {node.name}
+      </div>
+
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className={`!w-2.5 !h-2.5 !border-2 !border-white ${
+          isCategory ? "!bg-[#2563EB]" : "!bg-[#10B981]"
+        }`}
+      />
     </div>
   );
 }
@@ -78,6 +121,8 @@ function WBSDiagramInner() {
   const [collapsed, setCollapsed] = useState(new Set());
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+  const [rfInstance, setRfInstance] = useState(null);
 
   const [modalConfig, setModalConfig] = useState({
     isOpen: false,
@@ -128,6 +173,30 @@ function WBSDiagramInner() {
       return next;
     });
   }, []);
+
+  const expandAll = useCallback(() => {
+    setCollapsed(new Set());
+    setTimeout(() => {
+      rfInstance?.fitView?.({ padding: 0.15, duration: 300 });
+    }, 50);
+  }, [rfInstance]);
+
+  const collapseAll = useCallback(() => {
+    const parentIds = new Set();
+    const collect = (list) => {
+      for (const item of list || []) {
+        if (item.children && item.children.length > 0) {
+          parentIds.add(item.id);
+          collect(item.children);
+        }
+      }
+    };
+    collect(rolledItems);
+    setCollapsed(parentIds);
+    setTimeout(() => {
+      rfInstance?.fitView?.({ padding: 0.15, duration: 300 });
+    }, 50);
+  }, [rolledItems, rfInstance]);
 
   const onNodeClick = useCallback((event, node) => {
     // Bấm nút mũi tên trên node: chỉ thu gọn/mở rộng, không mở modal
@@ -187,21 +256,54 @@ function WBSDiagramInner() {
 
   return (
     <div className="flex h-[calc(100vh-120px)] min-h-[500px] flex-col p-4">
-      <div className="mb-3 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => navigate("/wbs")}
-          className="flex items-center gap-1 text-[13px] font-medium text-[#1F63E0] hover:underline"
-        >
-          <ArrowLeft className="size-4" /> Quay lại bảng WBS
-        </button>
-        <h1 className="text-[18px] font-bold text-[#0F1B3D]">Sơ đồ WBS</h1>
-        <span className="text-[12px] text-[#64748B]">
-          Bấm nút mũi tên để thu gọn/mở rộng nhánh · Bấm vào node để sửa
-        </span>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate("/wbs")}
+            className="flex items-center gap-1 text-[13px] font-medium text-[#1F63E0] hover:underline cursor-pointer"
+          >
+            <ArrowLeft className="size-4" /> Quay lại bảng WBS
+          </button>
+          <h1 className="text-[18px] font-bold text-[#0F1B3D]">Sơ đồ WBS</h1>
+          <span className="text-[12px] text-[#64748B] hidden sm:inline">
+            Bấm mũi tên để thu gọn/mở rộng nhánh · Bấm vào node để sửa
+          </span>
+        </div>
+
+        {/* Cụm công cụ điều khiển sơ đồ trực quan */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => rfInstance?.fitView?.({ padding: 0.15, duration: 300 })}
+            title="Thu phóng vừa màn hình (Fit View)"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-[12px] font-semibold text-[#1E293B] hover:bg-slate-50 hover:border-[#94A3B8] shadow-2xs transition-colors cursor-pointer"
+          >
+            <Maximize2 className="size-3.5 text-[#2563EB]" />
+            Vừa màn hình
+          </button>
+          <button
+            type="button"
+            onClick={expandAll}
+            title="Mở rộng tất cả các nhánh"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-[12px] font-medium text-[#1E293B] hover:bg-slate-50 hover:border-[#94A3B8] shadow-2xs transition-colors cursor-pointer"
+          >
+            <FolderOpen className="size-3.5 text-[#2563EB]" />
+            Mở rộng tất cả
+          </button>
+          <button
+            type="button"
+            onClick={collapseAll}
+            title="Thu gọn tất cả về hạng mục gốc"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-[12px] font-medium text-[#1E293B] hover:bg-slate-50 hover:border-[#94A3B8] shadow-2xs transition-colors cursor-pointer"
+          >
+            <ChevronRight className="size-3.5 text-[#64748B]" />
+            Thu gọn tất cả
+          </button>
+        </div>
       </div>
 
-      <div className="min-h-0 flex-1 rounded-xl border border-[#E6EBF3] bg-[#F8FAFC]">
+      <div className="min-h-0 flex-1 rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] shadow-2xs">
         {loading ? (
           <div className="flex h-full items-center justify-center text-[13px] text-[#64748B]">
             Đang tải sơ đồ...
@@ -221,15 +323,23 @@ function WBSDiagramInner() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onNodeClick={onNodeClick}
+            onInit={setRfInstance}
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable={true}
+            panOnDrag={true}
+            zoomOnScroll={true}
+            zoomOnPinch={true}
+            panOnScroll={false}
+            minZoom={0.25}
+            maxZoom={1.75}
             fitView
-            fitViewOptions={{ padding: 0.2 }}
-            minZoom={0.1}
-            maxZoom={2}
+            fitViewOptions={{ padding: 0.15, minZoom: 0.45, maxZoom: 1.0, duration: 300 }}
             attributionPosition="bottom-right"
           >
-            <Background />
-            <Controls />
-            <MiniMap pannable zoomable />
+            <Background color="#CBD5E1" gap={16} size={1} />
+            <Controls showFitView={true} showInteractive={false} position="bottom-left" />
+            <MiniMap pannable zoomable nodeStrokeWidth={2} />
           </ReactFlow>
         )}
       </div>

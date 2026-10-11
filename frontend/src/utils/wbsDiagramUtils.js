@@ -1,8 +1,8 @@
 import dagre from "@dagrejs/dagre";
 
-// Kích thước node dùng cho dagre tính layout (khớp min-width render trong WBSDiagramPage)
-const NODE_W = 220;
-const NODE_H = 64;
+// Kích thước node chuẩn dùng cho dagre tính layout (khớp kích thước render trong WBSDiagramPage)
+export const NODE_W = 240;
+export const NODE_H = 84;
 
 // Chuyển cây (đã rollup) thành danh sách phẳng kèm depth.
 // Node bị thu gọn VẪN hiện (để bấm mở lại), nhưng toàn bộ con của nó bị
@@ -41,6 +41,7 @@ export function treeToFlowElements(roots, collapsed) {
           source: String(node.id),
           target: String(child.id),
           type: "smoothstep",
+          style: { stroke: "#94A3B8", strokeWidth: 2 },
         });
       }
     }
@@ -51,7 +52,9 @@ export function treeToFlowElements(roots, collapsed) {
 export function layoutWithDagre(nodes, edges) {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: "TB", nodesep: 30, ranksep: 70 });
+  // nodesep >= 75px (khoảng cách giữa các node cùng cấp)
+  // ranksep >= 95px (khoảng cách giữa các tầng cha - con)
+  g.setGraph({ rankdir: "TB", nodesep: 75, ranksep: 95 });
 
   for (const n of nodes) {
     g.setNode(n.id, { width: NODE_W, height: NODE_H });
