@@ -98,6 +98,21 @@ describe("Diary API Integration Tests", () => {
     it("thiếu work_item_id thì 400", async () => {
       const res = await request(app).post(`/api/projects/${projectAId}/diary-entries`).set("Cookie", cookieKySu).send({ content: "Test" });
       expect(res.status).toBe(400);
+      expect(res.body.errors).toContain("work_item_id must be a positive integer");
+    });
+
+    it("work_item_id là null, 0 hoặc chuỗi sai định dạng thì 400", async () => {
+      const resNull = await request(app).post(`/api/projects/${projectAId}/diary-entries`).set("Cookie", cookieKySu).send({ work_item_id: null, content: "Test" });
+      expect(resNull.status).toBe(400);
+      expect(resNull.body.errors).toContain("work_item_id must be a positive integer");
+
+      const resZero = await request(app).post(`/api/projects/${projectAId}/diary-entries`).set("Cookie", cookieKySu).send({ work_item_id: 0, content: "Test" });
+      expect(resZero.status).toBe(400);
+      expect(resZero.body.errors).toContain("work_item_id must be a positive integer");
+
+      const resTask = await request(app).post(`/api/projects/${projectAId}/diary-entries`).set("Cookie", cookieKySu).send({ work_item_id: "task-1", content: "Test" });
+      expect(resTask.status).toBe(400);
+      expect(resTask.body.errors).toContain("work_item_id must be a positive integer");
     });
 
     it("thiếu content hoặc rỗng thì 400", async () => {
