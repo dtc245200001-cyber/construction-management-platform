@@ -94,7 +94,7 @@ describe("ĐỢT 5: Kiểm thử Frontend hiển thị tổng hợp đồng (F1 
 
     await waitFor(() => {
       // Project total trong footer
-      const footerRow = screen.getByText("Tổng giá trị hợp đồng dự án:").closest("tr");
+      const footerRow = screen.getByText("Tổng giá trị hợp đồng:").closest("tr");
       expect(within(footerRow).getByText("109.878.083,99 ₫")).toBeInTheDocument();
 
       // Dòng Nhánh A: 1.003,69 ₫
@@ -138,11 +138,11 @@ describe("ĐỢT 5: Kiểm thử Frontend hiển thị tổng hợp đồng (F1 
       );
 
       await waitFor(() => {
-        expect(screen.getByText("Tổng giá trị hợp đồng dự án:")).toBeInTheDocument();
+        expect(screen.getByText("Tổng giá trị hợp đồng:")).toBeInTheDocument();
       });
 
       // Kiểm tra dòng tổng dự án trong footer
-      const footerRow = screen.getByText("Tổng giá trị hợp đồng dự án:").closest("tr");
+      const footerRow = screen.getByText("Tổng giá trị hợp đồng:").closest("tr");
       const expectedProjectDisplay = formatCurrencyVNDisplay(apiResp.project_total);
       expect(within(footerRow).getByText(expectedProjectDisplay)).toBeInTheDocument();
 
@@ -207,7 +207,7 @@ describe("ĐỢT 5: Kiểm thử Frontend hiển thị tổng hợp đồng (F1 
 
     // Lần 1: R = 109.878.083,99 ₫
     await waitFor(() => {
-      const footerRow = screen.getByText("Tổng giá trị hợp đồng dự án:").closest("tr");
+      const footerRow = screen.getByText("Tổng giá trị hợp đồng:").closest("tr");
       expect(within(footerRow).getByText("109.878.083,99 ₫")).toBeInTheDocument();
     });
 
@@ -225,7 +225,7 @@ describe("ĐỢT 5: Kiểm thử Frontend hiển thị tổng hợp đồng (F1 
 
     // Lần 2: S1 tổng mới = 109.878.084,99 ₫
     await waitFor(() => {
-      const footerRow = screen.getByText("Tổng giá trị hợp đồng dự án:").closest("tr");
+      const footerRow = screen.getByText("Tổng giá trị hợp đồng:").closest("tr");
       expect(within(footerRow).getByText("109.878.084,99 ₫")).toBeInTheDocument();
       const rowA = screen.getByText("Nhánh A").closest("tr");
       expect(within(rowA).getByText("1.004,69 ₫")).toBeInTheDocument();
