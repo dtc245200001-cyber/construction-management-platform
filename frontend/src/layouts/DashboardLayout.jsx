@@ -218,20 +218,21 @@ export default function DashboardLayout({ user, setUser }) {
                   title={item.label}
                   onClick={() => {
                     if (
-  item.path === '/dashboard' ||
-  item.path === '/wbs' ||
-  item.path === '/members' ||
-  item.path === '/schedule' ||
-  item.path === '/gantt' ||
-  item.path === '/warnings' ||
-  item.path === '/calendar' ||
-  item.path === '/field' ||
-  item.path === '/diary'
-) {
-  navigate(item.path);
-} else {
-  alert("Tính năng này sẽ được phát triển trong các Sprint tiếp theo.");
-}
+                      item.path === '/dashboard' ||
+                      item.path === '/wbs' ||
+                      item.path === '/contract-quantities' ||
+                      item.path === '/members' ||
+                      item.path === '/schedule' ||
+                      item.path === '/gantt' ||
+                      item.path === '/warnings' ||
+                      item.path === '/calendar' ||
+                      item.path === '/field' ||
+                      item.path === '/diary'
+                    ) {
+                      navigate(item.path);
+                    } else {
+                      alert("Tính năng này sẽ được phát triển trong các Sprint tiếp theo.");
+                    }
                   }}
                   className={[
                     "flex items-center gap-3 rounded-xl py-3 text-left text-sm font-medium transition-colors cursor-pointer outline-none",
