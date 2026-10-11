@@ -163,7 +163,7 @@ describe("ContractQuantityPage (T-87)", () => {
       expect(within(emptyTreeRow).getAllByText("—").length).toBeGreaterThanOrEqual(4);
 
       // Dòng tổng dự án cuối bảng
-      const footerRow = screen.getByText("Tổng giá trị hợp đồng dự án:").closest("tr");
+      const footerRow = screen.getByText("Tổng giá trị hợp đồng:").closest("tr");
       expect(within(footerRow).getByText("1.003,69 ₫")).toBeInTheDocument();
     });
 
@@ -222,10 +222,10 @@ describe("ContractQuantityPage (T-87)", () => {
 
       expect(await screen.findByText("Hạng mục Lá 1")).toBeInTheDocument();
 
-      // Kiểm tra tiêu đề các cột: Không có "Đơn giá" và "Giá trị (₫)"
+      // Kiểm tra tiêu đề các cột: Không có "Đơn giá" và "Thành tiền (₫)"
       expect(screen.queryByText("Đơn giá")).not.toBeInTheDocument();
-      expect(screen.queryByText("Giá trị (₫)")).not.toBeInTheDocument();
-      expect(screen.queryByText("Tổng giá trị hợp đồng dự án:")).not.toBeInTheDocument();
+      expect(screen.queryByText("Thành tiền (₫)")).not.toBeInTheDocument();
+      expect(screen.queryByText("Tổng giá trị hợp đồng:")).not.toBeInTheDocument();
 
       // Kiểm tra DOM không chứa undefined hay NaN
       expect(container.innerHTML).not.toContain("undefined");
@@ -375,7 +375,7 @@ describe("ContractQuantityPage (T-87)", () => {
       expect(api.put).not.toHaveBeenCalled();
     });
 
-    test("Ô 'Giá trị dự kiến' tự động cập nhật khi gõ '333,333' và '3' thành '1.000,00 ₫'", async () => {
+    test("Ô 'Thành tiền dự kiến' tự động cập nhật khi gõ '333,333' và '3' thành '1.000,00 ₫'", async () => {
       const user = userEvent.setup();
       api.get.mockImplementation((url) => {
         if (url === "/projects/1") return Promise.resolve({ data: { membership: "ban_quan_ly" } });
@@ -398,8 +398,9 @@ describe("ContractQuantityPage (T-87)", () => {
       await user.clear(pInput);
       await user.type(pInput, "3");
 
-      // 333.333 * 3 = 999.999 làm tròn thành 1.000,00 ₫ trong ô Giá trị dự kiến của dialog
+      // 333.333 * 3 = 999.999 làm tròn thành 1.000,00 ₫ trong ô Thành tiền dự kiến của dialog
       const dialog = screen.getByRole("dialog");
+      expect(within(dialog).getByText("Thành tiền dự kiến:")).toBeInTheDocument();
       expect(within(dialog).getByText("1.000,00 ₫")).toBeInTheDocument();
     });
   });
@@ -670,7 +671,8 @@ describe("ContractQuantityPage (T-87)", () => {
       await user.click(within(unassignedRow).getByText("Khai/Sửa"));
 
       const dialog = screen.getByRole("dialog");
-      // Dòng chú thích công thức
+      // Dòng chú thích công thức và nhãn Thành tiền dự kiến (B6)
+      expect(within(dialog).getByText("Thành tiền dự kiến:")).toBeInTheDocument();
       expect(within(dialog).getByText("= Khối lượng × Đơn giá")).toBeInTheDocument();
 
       // Ban đầu chưa nhập đủ: hiện "—"
@@ -728,6 +730,37 @@ describe("ContractQuantityPage (T-87)", () => {
       expect(headerBox.textContent).toBe("Hạng mục Không Có Mã");
       expect(headerBox.textContent).not.toContain("–");
       expect(headerBox.textContent).not.toContain("—");
+    });
+  });
+
+  describe("10. Chuẩn hoá nhãn tiếng Việt theo Phần B (T-87)", () => {
+    test("B1-B5: Tiêu đề trang, tiêu đề cột Mã hạng mục & Thành tiền (₫), dòng tổng và mô tả không còn '(Story S-35)'", async () => {
+      api.get.mockImplementation((url) => {
+        if (url === "/projects/1") return Promise.resolve({ data: { membership: "ban_quan_ly" } });
+        if (url === "/projects/1/contract-quantities") return Promise.resolve({ data: mockContractData });
+        return Promise.reject(new Error("Not found"));
+      });
+
+      renderPage();
+      expect(await screen.findByText("Khối lượng và đơn giá hợp đồng")).toBeInTheDocument();
+
+      // B1: Tiêu đề chỉ viết hoa chữ đầu câu
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Khối lượng và đơn giá hợp đồng");
+
+      // B2: Cột "Thành tiền (₫)"
+      expect(screen.getByRole("columnheader", { name: "Thành tiền (₫)" })).toBeInTheDocument();
+
+      // B3: Dòng tổng "Tổng giá trị hợp đồng:"
+      expect(screen.getByText("Tổng giá trị hợp đồng:")).toBeInTheDocument();
+
+      // B4: Cột "Mã hạng mục"
+      expect(screen.getByRole("columnheader", { name: "Mã hạng mục" })).toBeInTheDocument();
+
+      // B5: Mô tả không còn cụm "(Story S-35)"
+      expect(
+        screen.getByText("Quản lý khối lượng, đơn giá hợp đồng cho các hạng mục lá. Hạng mục cha tự động cộng dồn.")
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/Story S-35/)).not.toBeInTheDocument();
     });
   });
 });
