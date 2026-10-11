@@ -173,19 +173,20 @@ export default function ContractQuantityPage({ user: _user }) {
   const handleOpenEdit = (item) => {
     setEditingItem(item);
     setFormQuantity(formatInputDisplayVN(item.quantity));
-    setFormUnit(item.unit || (data?.units && data.units[0]) || "");
+    // A1: Khai mới (chưa có giá trị): ô đơn vị trống "". Sửa hạng mục đã có giá trị: điền sẵn đơn vị hiện tại.
+    setFormUnit(item.unit || "");
     setFormUnitPrice(formatInputDisplayVN(item.unit_price));
     setFormErrors({});
     setServerWarning("");
     setDialogOpen(true);
   };
 
-  // Giá trị dự kiến tính bằng số học chính xác
+  // A3: Giá trị dự kiến chỉ tính khi cả khối lượng và đơn giá đều hợp lệ; còn lại trả về null (hiển thị "—")
   const estimatedContractValue = useMemo(() => {
-    if (!formQuantity || !formUnitPrice) return "0.00";
+    if (!formQuantity || !formUnitPrice) return null;
     const normQ = normalizeDecimalInput(formQuantity, { maxIntDigits: 11, maxScale: 3 });
     const normP = normalizeDecimalInput(formUnitPrice, { maxIntDigits: 14, maxScale: 2 });
-    if (!normQ.ok || !normP.ok) return "0.00";
+    if (!normQ.ok || !normP.ok) return null;
     return multiplyAndRoundVND(normQ.value, normP.value);
   }, [formQuantity, formUnitPrice]);
 
@@ -207,9 +208,9 @@ export default function ContractQuantityPage({ user: _user }) {
       errors.quantity = normQ.error;
     }
 
-    // Validate Đơn vị
+    // A1: Validate Đơn vị: để trống thì báo lỗi "Vui lòng chọn đơn vị"
     if (!formUnit || !formUnit.trim()) {
-      errors.unit = "Đơn vị tính là bắt buộc";
+      errors.unit = "Vui lòng chọn đơn vị";
     }
 
     // Validate Đơn giá
@@ -492,10 +493,10 @@ export default function ContractQuantityPage({ user: _user }) {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
             <Coins className="w-6 h-6 text-primary" />
-            Khối lượng và Đơn giá Hợp đồng
+            Khối lượng và đơn giá hợp đồng
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Quản lý khối lượng, đơn giá hợp đồng cho các hạng mục lá (Story S-35). Hạng mục cha tự động cộng dồn.
+            Quản lý khối lượng, đơn giá hợp đồng cho các hạng mục lá. Hạng mục cha tự động cộng dồn.
           </p>
         </div>
 
@@ -533,12 +534,12 @@ export default function ContractQuantityPage({ user: _user }) {
             <table className="w-full border-collapse text-left">
               <thead>
                 <tr className="border-b bg-muted/60 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  <th className="p-3 w-28">Mã</th>
+                  <th className="p-3 w-28">Mã hạng mục</th>
                   <th className="p-3 min-w-[280px]">Hạng mục</th>
                   <th className="p-3 text-right w-36">Khối lượng</th>
                   <th className="p-3 text-center w-28">Đơn vị</th>
                   {canViewPrices && <th className="p-3 text-right w-44">Đơn giá</th>}
-                  {canViewPrices && <th className="p-3 text-right w-48">Giá trị (₫)</th>}
+                  {canViewPrices && <th className="p-3 text-right w-48">Thành tiền (₫)</th>}
                   {canEdit && <th className="p-3 text-right w-32">Thao tác</th>}
                 </tr>
               </thead>
@@ -549,7 +550,7 @@ export default function ContractQuantityPage({ user: _user }) {
                 <tfoot>
                   <tr className="border-t-2 bg-muted/40 font-bold">
                     <td colSpan={5} className="p-4 text-sm text-right text-foreground uppercase tracking-wider">
-                      Tổng giá trị hợp đồng dự án:
+                      Tổng giá trị hợp đồng:
                     </td>
                     <td className="p-4 text-base text-right font-mono tabular-nums text-primary">
                       {formatMoneyVND(data?.project_total)}
@@ -576,8 +577,11 @@ export default function ContractQuantityPage({ user: _user }) {
             <form onSubmit={handleSubmitForm} className="space-y-4 py-2">
               <div className="p-3 rounded-md bg-muted/50 border text-sm space-y-1">
                 <div className="font-semibold text-foreground flex items-center gap-2">
-                  <span className="font-mono text-xs text-muted-foreground">{editingItem.code || "—"}</span>
-                  {editingItem.name}
+                  {/* A2: ẩn dấu '–' khi hạng mục không có mã; chỉ hiện mã khi có */}
+                  {editingItem.code ? (
+                    <span className="font-mono text-xs text-muted-foreground">{editingItem.code}</span>
+                  ) : null}
+                  <span>{editingItem.name}</span>
                 </div>
               </div>
 
@@ -591,9 +595,17 @@ export default function ContractQuantityPage({ user: _user }) {
 
               {/* Input Khối lượng */}
               <div className="space-y-1.5">
-                <Label htmlFor="field-quantity" className="text-sm font-medium">
-                  Khối lượng <span className="text-destructive">*</span>
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="field-quantity" className="text-sm font-medium">
+                    Khối lượng <span className="text-destructive">*</span>
+                  </Label>
+                  {/* A4: Khi đã chọn đơn vị, hiện tên đơn vị cạnh ô khối lượng */}
+                  {formUnit && (
+                    <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">
+                      Đơn vị: {formUnit}
+                    </span>
+                  )}
+                </div>
                 <Input
                   id="field-quantity"
                   inputMode="decimal"
@@ -614,7 +626,8 @@ export default function ContractQuantityPage({ user: _user }) {
                     {formErrors.quantity}
                   </p>
                 )}
-                <p className="text-[11px] text-muted-foreground">
+                {/* A5: Tăng cỡ chữ các dòng gợi ý lên 13-14px (text-sm hoặc text-[13px]) */}
+                <p className="text-[13px] text-muted-foreground">
                   Tối đa 11 chữ số nguyên và 3 chữ số thập phân. Dùng dấu phẩy hoặc dấu chấm.
                 </p>
               </div>
@@ -624,9 +637,15 @@ export default function ContractQuantityPage({ user: _user }) {
                 <Label htmlFor="field-unit" className="text-sm font-medium">
                   Đơn vị tính <span className="text-destructive">*</span>
                 </Label>
-                <Select value={formUnit} onValueChange={setFormUnit}>
+                <Select value={formUnit} onValueChange={(val) => {
+                  setFormUnit(val);
+                  if (formErrors.unit) {
+                    setFormErrors((prev) => ({ ...prev, unit: null }));
+                  }
+                }}>
                   <SelectTrigger id="field-unit" className="h-10 cursor-pointer">
-                    <SelectValue placeholder="Chọn đơn vị tính" />
+                    {/* A1: Ô đơn vị trống, hiện chữ gợi ý 'Chọn đơn vị' */}
+                    <SelectValue placeholder="Chọn đơn vị" />
                   </SelectTrigger>
                   <SelectContent>
                     {(data?.units || []).map((u) => (
@@ -665,17 +684,23 @@ export default function ContractQuantityPage({ user: _user }) {
                     {formErrors.unit_price}
                   </p>
                 )}
-                <p className="text-[11px] text-muted-foreground">
+                {/* A5: Tăng cỡ chữ các dòng gợi ý lên 13-14px */}
+                <p className="text-[13px] text-muted-foreground">
                   Tối đa 14 chữ số nguyên và 2 chữ số thập phân.
                 </p>
               </div>
 
-              {/* Giá trị dự kiến */}
-              <div className="p-3 bg-muted/30 border rounded-md flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Giá trị dự kiến:</span>
-                <span className="font-mono font-bold text-base text-primary tabular-nums">
-                  {formatMoneyVND(estimatedContractValue)}
-                </span>
+              {/* A3 & B6: Thành tiền dự kiến: hiện "—" cho đến khi khối lượng và đơn giá đều hợp lệ */}
+              <div className="p-3 bg-muted/30 border rounded-md space-y-1">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Thành tiền dự kiến:</span>
+                  <span className="font-mono font-bold text-base text-primary tabular-nums">
+                    {estimatedContractValue !== null ? formatMoneyVND(estimatedContractValue) : "—"}
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground text-right italic">
+                  = Khối lượng × Đơn giá
+                </p>
               </div>
 
               <DialogFooter className="pt-2">

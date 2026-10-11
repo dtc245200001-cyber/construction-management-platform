@@ -163,7 +163,7 @@ describe("ContractQuantityPage (T-87)", () => {
       expect(within(emptyTreeRow).getAllByText("—").length).toBeGreaterThanOrEqual(4);
 
       // Dòng tổng dự án cuối bảng
-      const footerRow = screen.getByText("Tổng giá trị hợp đồng dự án:").closest("tr");
+      const footerRow = screen.getByText("Tổng giá trị hợp đồng:").closest("tr");
       expect(within(footerRow).getByText("1.003,69 ₫")).toBeInTheDocument();
     });
 
@@ -222,10 +222,10 @@ describe("ContractQuantityPage (T-87)", () => {
 
       expect(await screen.findByText("Hạng mục Lá 1")).toBeInTheDocument();
 
-      // Kiểm tra tiêu đề các cột: Không có "Đơn giá" và "Giá trị (₫)"
+      // Kiểm tra tiêu đề các cột: Không có "Đơn giá" và "Thành tiền (₫)"
       expect(screen.queryByText("Đơn giá")).not.toBeInTheDocument();
-      expect(screen.queryByText("Giá trị (₫)")).not.toBeInTheDocument();
-      expect(screen.queryByText("Tổng giá trị hợp đồng dự án:")).not.toBeInTheDocument();
+      expect(screen.queryByText("Thành tiền (₫)")).not.toBeInTheDocument();
+      expect(screen.queryByText("Tổng giá trị hợp đồng:")).not.toBeInTheDocument();
 
       // Kiểm tra DOM không chứa undefined hay NaN
       expect(container.innerHTML).not.toContain("undefined");
@@ -375,7 +375,7 @@ describe("ContractQuantityPage (T-87)", () => {
       expect(api.put).not.toHaveBeenCalled();
     });
 
-    test("Ô 'Giá trị dự kiến' tự động cập nhật khi gõ '333,333' và '3' thành '1.000,00 ₫'", async () => {
+    test("Ô 'Thành tiền dự kiến' tự động cập nhật khi gõ '333,333' và '3' thành '1.000,00 ₫'", async () => {
       const user = userEvent.setup();
       api.get.mockImplementation((url) => {
         if (url === "/projects/1") return Promise.resolve({ data: { membership: "ban_quan_ly" } });
@@ -398,8 +398,9 @@ describe("ContractQuantityPage (T-87)", () => {
       await user.clear(pInput);
       await user.type(pInput, "3");
 
-      // 333.333 * 3 = 999.999 làm tròn thành 1.000,00 ₫ trong ô Giá trị dự kiến của dialog
+      // 333.333 * 3 = 999.999 làm tròn thành 1.000,00 ₫ trong ô Thành tiền dự kiến của dialog
       const dialog = screen.getByRole("dialog");
+      expect(within(dialog).getByText("Thành tiền dự kiến:")).toBeInTheDocument();
       expect(within(dialog).getByText("1.000,00 ₫")).toBeInTheDocument();
     });
   });
@@ -594,6 +595,172 @@ describe("ContractQuantityPage (T-87)", () => {
           ).toBeNull();
         }
       }
+    });
+  });
+
+  describe("9. Các cải tiến Form theo Phần A (T-87)", () => {
+    test("(a) Khai mới: ô đơn vị trống, placeholder 'Chọn đơn vị', Lưu bị chặn kèm lỗi 'Vui lòng chọn đơn vị', không gọi API", async () => {
+      const user = userEvent.setup();
+      api.get.mockImplementation((url) => {
+        if (url === "/projects/1") return Promise.resolve({ data: { membership: "ban_quan_ly" } });
+        if (url === "/projects/1/contract-quantities") return Promise.resolve({ data: mockContractData });
+        return Promise.reject(new Error("Not found"));
+      });
+
+      renderPage();
+      expect(await screen.findByText("Hạng mục Chưa Khai")).toBeInTheDocument();
+
+      // Mở modal khai mới cho HM-L4 (chưa khai, unit null)
+      const unassignedRow = screen.getByText("Hạng mục Chưa Khai").closest("tr");
+      await user.click(within(unassignedRow).getByText("Khai/Sửa"));
+
+      // Ô đơn vị hiển thị placeholder "Chọn đơn vị"
+      const unitTrigger = document.getElementById("field-unit");
+      expect(within(unitTrigger).getByText("Chọn đơn vị")).toBeInTheDocument();
+
+      // Nhập khối lượng và đơn giá hợp lệ nhưng KHÔNG chọn đơn vị
+      const qInput = document.getElementById("field-quantity");
+      const pInput = document.getElementById("field-unit-price");
+      await user.type(qInput, "10");
+      await user.type(pInput, "50000");
+
+      // Bấm Lưu
+      const saveBtn = screen.getByText("Lưu khối lượng");
+      await user.click(saveBtn);
+
+      // Phải báo lỗi "Vui lòng chọn đơn vị" và KHÔNG gọi API
+      expect(await screen.findByText("Vui lòng chọn đơn vị")).toBeInTheDocument();
+      expect(api.put).not.toHaveBeenCalled();
+    });
+
+    test("(b) Sửa hạng mục đã có giá trị: đơn vị được điền sẵn; hiện đơn vị cạnh ô khối lượng", async () => {
+      const user = userEvent.setup();
+      api.get.mockImplementation((url) => {
+        if (url === "/projects/1") return Promise.resolve({ data: { membership: "ban_quan_ly" } });
+        if (url === "/projects/1/contract-quantities") return Promise.resolve({ data: mockContractData });
+        return Promise.reject(new Error("Not found"));
+      });
+
+      renderPage();
+      expect(await screen.findByText("Hạng mục Lá 1")).toBeInTheDocument();
+
+      // Mở modal sửa HM-L1 (đã có unit "bộ")
+      const leaf1Row = screen.getByText("Hạng mục Lá 1").closest("tr");
+      await user.click(within(leaf1Row).getByText("Khai/Sửa"));
+
+      // Ô đơn vị điền sẵn "bộ"
+      const unitTrigger = document.getElementById("field-unit");
+      expect(within(unitTrigger).getByText("bộ")).toBeInTheDocument();
+
+      // A4: Tên đơn vị hiện cạnh ô khối lượng
+      expect(screen.getByText("Đơn vị: bộ")).toBeInTheDocument();
+    });
+
+    test("(c) Ô thành tiền dự kiến hiện '—' khi chưa nhập đủ và hiện đúng khi nhập đủ ('333,333' và '3' ra '1.000,00 ₫'); có dòng chú thích '= Khối lượng × Đơn giá'", async () => {
+      const user = userEvent.setup();
+      api.get.mockImplementation((url) => {
+        if (url === "/projects/1") return Promise.resolve({ data: { membership: "ban_quan_ly" } });
+        if (url === "/projects/1/contract-quantities") return Promise.resolve({ data: mockContractData });
+        return Promise.reject(new Error("Not found"));
+      });
+
+      renderPage();
+      expect(await screen.findByText("Hạng mục Chưa Khai")).toBeInTheDocument();
+
+      const unassignedRow = screen.getByText("Hạng mục Chưa Khai").closest("tr");
+      await user.click(within(unassignedRow).getByText("Khai/Sửa"));
+
+      const dialog = screen.getByRole("dialog");
+      // Dòng chú thích công thức và nhãn Thành tiền dự kiến (B6)
+      expect(within(dialog).getByText("Thành tiền dự kiến:")).toBeInTheDocument();
+      expect(within(dialog).getByText("= Khối lượng × Đơn giá")).toBeInTheDocument();
+
+      // Ban đầu chưa nhập đủ: hiện "—"
+      expect(within(dialog).getByText("—")).toBeInTheDocument();
+
+      const qInput = document.getElementById("field-quantity");
+      const pInput = document.getElementById("field-unit-price");
+
+      // Nhập khối lượng nhưng chưa nhập đơn giá: vẫn là "—"
+      await user.type(qInput, "333,333");
+      expect(within(dialog).getByText("—")).toBeInTheDocument();
+
+      // Nhập tiếp đơn giá 3: ô thành tiền dự kiến hiện 1.000,00 ₫
+      await user.type(pInput, "3");
+      expect(within(dialog).getByText("1.000,00 ₫")).toBeInTheDocument();
+    });
+
+    test("(d) Dòng hạng mục trong form không có dấu '–' khi hạng mục không có mã; chỉ hiện tên", async () => {
+      const user = userEvent.setup();
+      const noCodeData = {
+        ...mockContractData,
+        items: [
+          ...mockContractData.items,
+          {
+            id: 99,
+            parent_id: null,
+            code: null,
+            name: "Hạng mục Không Có Mã",
+            is_leaf: true,
+            quantity: null,
+            unit: null,
+            unit_price: null,
+            contract_value: null,
+            contract_total: "0.00",
+          },
+        ],
+      };
+
+      api.get.mockImplementation((url) => {
+        if (url === "/projects/1") return Promise.resolve({ data: { membership: "ban_quan_ly" } });
+        if (url === "/projects/1/contract-quantities") return Promise.resolve({ data: noCodeData });
+        return Promise.reject(new Error("Not found"));
+      });
+
+      renderPage();
+      expect(await screen.findByText("Hạng mục Không Có Mã")).toBeInTheDocument();
+
+      const row = screen.getByText("Hạng mục Không Có Mã").closest("tr");
+      await user.click(within(row).getByText("Khai/Sửa"));
+
+      const dialog = screen.getByRole("dialog");
+      expect(within(dialog).getByText("Hạng mục Không Có Mã")).toBeInTheDocument();
+      // Khẳng định không có dấu gạch '–' hoặc '—' trong tiêu đề hạng mục
+      const headerBox = within(dialog).getByText("Hạng mục Không Có Mã").parentElement;
+      expect(headerBox.textContent).toBe("Hạng mục Không Có Mã");
+      expect(headerBox.textContent).not.toContain("–");
+      expect(headerBox.textContent).not.toContain("—");
+    });
+  });
+
+  describe("10. Chuẩn hoá nhãn tiếng Việt theo Phần B (T-87)", () => {
+    test("B1-B5: Tiêu đề trang, tiêu đề cột Mã hạng mục & Thành tiền (₫), dòng tổng và mô tả không còn '(Story S-35)'", async () => {
+      api.get.mockImplementation((url) => {
+        if (url === "/projects/1") return Promise.resolve({ data: { membership: "ban_quan_ly" } });
+        if (url === "/projects/1/contract-quantities") return Promise.resolve({ data: mockContractData });
+        return Promise.reject(new Error("Not found"));
+      });
+
+      renderPage();
+      expect(await screen.findByText("Khối lượng và đơn giá hợp đồng")).toBeInTheDocument();
+
+      // B1: Tiêu đề chỉ viết hoa chữ đầu câu
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Khối lượng và đơn giá hợp đồng");
+
+      // B2: Cột "Thành tiền (₫)"
+      expect(screen.getByRole("columnheader", { name: "Thành tiền (₫)" })).toBeInTheDocument();
+
+      // B3: Dòng tổng "Tổng giá trị hợp đồng:"
+      expect(screen.getByText("Tổng giá trị hợp đồng:")).toBeInTheDocument();
+
+      // B4: Cột "Mã hạng mục"
+      expect(screen.getByRole("columnheader", { name: "Mã hạng mục" })).toBeInTheDocument();
+
+      // B5: Mô tả không còn cụm "(Story S-35)"
+      expect(
+        screen.getByText("Quản lý khối lượng, đơn giá hợp đồng cho các hạng mục lá. Hạng mục cha tự động cộng dồn.")
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/Story S-35/)).not.toBeInTheDocument();
     });
   });
 });
