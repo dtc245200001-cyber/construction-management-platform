@@ -8,12 +8,11 @@ const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
 const {
   checkProjectAccess,
-  allow,
+  requirePermission,
   createProjectRouter,
 } = require("../middleware/projectAccess");
 const asyncHandler = require("../utils/asyncHandler");
 const { parsePositiveInt } = require("../utils/validators");
-const { ROLES } = require("../utils/constants");
 const { logAudit } = require("../utils/auditLogger");
 const {
   validateDiaryDayBody,
@@ -24,8 +23,9 @@ const { assertDayEditable } = require("../utils/diaryDayGuard");
 
 const router = createProjectRouter();
 
-// Các role được phép ghi mục đầu ngày
-const WRITE_ROLES = [ROLES.KY_SU_GIAM_SAT, ROLES.CHI_HUY_TRUONG, ROLES.BAN_QUAN_LY];
+// Các role được phép ghi mục đầu ngày (giữ đồng bộ với site_log.create_daily
+// trong permissions.js — dùng cho can_edit hiển thị, không phải middleware).
+const WRITE_ROLES = ["ky_su_giam_sat", "chi_huy_truong", "ban_quan_ly"];
 
 /**
  * Tính "hôm nay" theo múi giờ Asia/Ho_Chi_Minh, trả về chuỗi YYYY-MM-DD.
@@ -67,7 +67,7 @@ router.get(
   "/:projectId/diary-catalogs",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("site_log.view"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });
@@ -124,7 +124,7 @@ router.get(
   "/:projectId/diary-days/:date",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("site_log.view"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });
@@ -243,7 +243,7 @@ router.get(
   "/:projectId/diary-days",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("site_log.view"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });
@@ -357,7 +357,7 @@ router.put(
   "/:projectId/diary-days/:date",
   requireAuth,
   checkProjectAccess,
-  allow(WRITE_ROLES),
+  requirePermission("site_log.create_daily"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });

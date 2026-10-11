@@ -2,7 +2,7 @@
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
 const logger = require('../utils/logger');
-const { checkProjectAccess, allow, createProjectRouter } = require('../middleware/projectAccess');
+const { checkProjectAccess, requirePermission, createProjectRouter } = require('../middleware/projectAccess');
 const { ROLES } = require('../utils/constants');
 const { createEmailLog, processEmailLogs } = require('../lib/emailSender');
 const emailTemplates = require('../lib/emailTemplates');
@@ -284,7 +284,7 @@ router.get(
   "/:projectId/schedule-results",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   async (req, res, next) => {
     try {
       const projectId = Number(req.params.projectId);
@@ -360,7 +360,7 @@ router.get(
   "/:projectId/schedule-summary",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   async (req, res, next) => {
     try {
       const projectId = Number(req.params.projectId);
@@ -418,7 +418,7 @@ router.post(
   "/:projectId/baselines/freeze",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY]),
+  requirePermission("baseline.manage"),
   async (req, res, next) => {
     const projectId = req.params.projectId;
     const client = await db.connect();
@@ -486,7 +486,7 @@ router.get(
   "/:projectId",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   async (req, res, next) => {
     try {
       const result = await db.query(
@@ -533,7 +533,7 @@ router.post(
   "/:projectId/open",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   async (req, res, next) => {
     try {
       await db.query(
@@ -574,7 +574,7 @@ router.get(
   "/:projectId/members",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   async (req, res, next) => {
     try {
       const result = await db.query(
@@ -632,7 +632,8 @@ router.post(
   "/:projectId/members",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU]),
+  // Giữ cả BQL + CĐT như hành vi cũ (ghi chú lệch đặc tả trong permissions.js).
+  requirePermission("member.manage"),
   createAuditMiddleware('ADD_PROJECT_MEMBER', 'project_members'),
   async (req, res, next) => {
     const { email, role } = req.body;
@@ -657,22 +658,24 @@ router.post(
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
         
         const client = await db.connect();
+        let invitationId;
         try {
           await client.query("BEGIN");
           const invRes = await client.query(
-            `INSERT INTO invitations (email, token_hash, invited_by, expires_at, project_id, project_role) 
+            `INSERT INTO invitations (email, token_hash, invited_by, expires_at, project_id, project_role)
              VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
             [email, tokenHash, req.session.user.id, expiresAt, req.params.projectId, role]
           );
-          
-          await createEmailLog(client, invRes.rows[0].id, email);
+          invitationId = invRes.rows[0].id;
+
+          await createEmailLog(client, invitationId, email);
           await client.query("COMMIT");
 
           // Bất đồng bộ gửi email
           const baseUrl = process.env.APP_BASE_URL || 'http://localhost:5173';
           const emailData = emailTemplates.renderProjectInvite({ inviterName: req.session.user.name || 'Người quản lý', projectName: 'Dự án', role, token, isNewUser: true, baseUrl });
           processEmailLogs({
-            id: invRes.rows[0].id,
+            id: invitationId,
             email,
             ...emailData
           }).catch(e => console.error(e));
@@ -683,8 +686,14 @@ router.post(
         } finally {
           client.release();
         }
-        
-        return res.status(201).json({ message: "Người dùng chưa có tài khoản. Đã gửi thư mời tham gia hệ thống và dự án." });
+
+        // invitation_id được trả về để frontend theo dõi trạng thái gửi email thật
+        // (xem GET /:projectId/invitations/:invId/status) — việc gửi mail chạy bất đồng bộ
+        // phía trên nên tại thời điểm response này, trạng thái vẫn còn là 'pending'.
+        return res.status(201).json({
+          message: "Người dùng chưa có tài khoản. Đã gửi thư mời tham gia hệ thống và dự án.",
+          invitation_id: invitationId,
+        });
       }
       
       const userId = userResult.rows[0].id;
@@ -743,7 +752,7 @@ router.delete(
   "/:projectId/members/:userId",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU]),
+  requirePermission("member.manage"),
   createAuditMiddleware('REMOVE_PROJECT_MEMBER', 'project_members'),
   async (req, res, next) => {
     const { projectId, userId } = req.params;
@@ -822,7 +831,7 @@ router.post(
   "/:projectId/members/:userId/unlock",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU]),
+  requirePermission("member.manage"),
   async (req, res, next) => {
     try {
       // Kiểm tra user có trong dự án này không
@@ -873,7 +882,7 @@ router.post(
   "/:projectId/invitations/:invId/resend",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.CHI_HUY_TRUONG, ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY]),
+  requirePermission("invitation.manage"),
   async (req, res, next) => {
     try {
       const { projectId, invId } = req.params;
@@ -925,7 +934,61 @@ router.post(
   }
 );
 
+// GET /api/projects/:projectId/invitations/:invId/status — Trạng thái gửi email thật
+// (dùng để frontend poll ngắn sau khi bấm "Gửi lời mời" / "Gửi lại", vì việc gửi mail
+// chạy bất đồng bộ nên response của POST không biết được kết quả sent/error).
+/**
+ * @swagger
+ * /api/projects/{projectId}/invitations/{invId}/status:
+ *   get:
+ *     summary: API GET /:projectId/invitations/:invId/status
+ *     tags: [Project]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: invId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
+ */
+router.get(
+  "/:projectId/invitations/:invId/status",
+  requireAuth,
+  checkProjectAccess,
+  requirePermission("invitation.manage"),
+  async (req, res, next) => {
+    try {
+      const { projectId, invId } = req.params;
 
+      const result = await db.query(
+        `SELECT e.status, i.expires_at <= CURRENT_TIMESTAMP as is_expired
+         FROM invitations i
+         LEFT JOIN (
+           SELECT invitation_id, status, ROW_NUMBER() OVER(PARTITION BY invitation_id ORDER BY id DESC) as rn
+           FROM email_logs
+         ) e ON i.id = e.invitation_id AND e.rn = 1
+         WHERE i.id = $1 AND i.project_id = $2`,
+        [invId, projectId]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ message: "Không tìm thấy thư mời" });
+      }
+
+      const { status, is_expired } = result.rows[0];
+      return res.json({ status: status || "pending", is_expired });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 // POST /api/projects/:projectId/schedule/recalculate
 /**
@@ -948,7 +1011,7 @@ router.post(
   "/:projectId/schedule/recalculate",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("schedule.recalculate"),
   async (req, res, next) => {
     try {
       const projectId = Number(req.params.projectId);
@@ -1051,7 +1114,7 @@ router.get(
   "/:projectId/schedule-jobs/:jobId",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   async (req, res, next) => {
     try {
       const projectId = Number(req.params.projectId);
@@ -1096,7 +1159,7 @@ router.get(
   "/:projectId/calendar",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   async (req, res, next) => {
     try {
       const projectId = Number(req.params.projectId);
@@ -1147,7 +1210,7 @@ router.put(
   "/:projectId/calendar",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU, ROLES.CHI_HUY_TRUONG]),
+  requirePermission("calendar.manage"),
   async (req, res, next) => {
     const projectId = Number(req.params.projectId);
     const { monday, tuesday, wednesday, thursday, friday, saturday, sunday } = req.body;
@@ -1230,7 +1293,7 @@ router.get(
   "/:projectId/holidays",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   async (req, res, next) => {
     try {
       const projectId = Number(req.params.projectId);
@@ -1272,7 +1335,7 @@ router.post(
   "/:projectId/holidays",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU, ROLES.CHI_HUY_TRUONG]),
+  requirePermission("calendar.manage"),
   async (req, res, next) => {
     const projectId = Number(req.params.projectId);
     const { holiday_date, name } = req.body;
@@ -1359,7 +1422,7 @@ router.delete(
   "/:projectId/holidays/:holidayId",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU, ROLES.CHI_HUY_TRUONG]),
+  requirePermission("calendar.manage"),
   async (req, res, next) => {
     const projectId = Number(req.params.projectId);
     const holidayId = Number(req.params.holidayId);
@@ -1424,7 +1487,7 @@ router.put(
   "/:projectId/holidays/:holidayId",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU, ROLES.CHI_HUY_TRUONG]),
+  requirePermission("calendar.manage"),
   async (req, res, next) => {
     const projectId = Number(req.params.projectId);
     const holidayId = Number(req.params.holidayId);
