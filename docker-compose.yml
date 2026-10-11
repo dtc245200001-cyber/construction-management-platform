@@ -31,14 +31,18 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:?missing}
       UPLOAD_DIR: /app/uploads
     ports:
-      - "3000:3000"
+      - "3001:3000"
     volumes:
       - backend_uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/ready"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://localhost:3000/ready > /dev/null || exit 1",
+        ]
       interval: 10s
       timeout: 5s
       retries: 3

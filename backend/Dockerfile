@@ -4,11 +4,11 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 
 # Công cụ cần thiết để build argon2
-RUN apk add --no-cache python3 make g++
+RUN apk add --no-cache python3 make g++ linux-headers
 
 COPY package*.json ./
 
-RUN npm ci --omit=dev
+RUN npm_config_nodedir=/usr/local npm ci --omit=dev --build-from-source
 
 
 # Stage 2: Image production
