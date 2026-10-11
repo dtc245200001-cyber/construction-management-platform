@@ -24,7 +24,8 @@ import {
   Pencil,
   Menu,
   Check,
-  ChevronsUpDown
+  ChevronsUpDown,
+  Coins
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "../components/ui/command";
@@ -32,6 +33,7 @@ import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, Command
 const navItems = [
   { label: "Tổng quan", icon: Home, path: "/dashboard" },
   { label: "Cơ cấu công việc (WBS)", icon: Network, path: "/wbs" },
+  { label: "Khối lượng hợp đồng", icon: Coins, path: "/contract-quantities" },
   { label: "Bảng đường găng (CPM)", icon: TrendingUp, path: "/schedule" },
   { label: "Tiến độ thi công", icon: CalendarDays, path: "/gantt" },
   { label: "Cảnh báo tiến độ", icon: Bell, path: "/warnings" },
