@@ -70,14 +70,7 @@ function App() {
 
         {/* ================= LOGIN ================= */}
         <Route element={<AuthLayout />}>
-          <Route
-            path="/login"
-            element={
-              user
-                ? <Navigate to="/" replace />
-                : <LoginPage setUser={setUser} />
-            }
-          />
+          <Route path="/login" element={<LoginPage setUser={setUser} />} />
         </Route>
 
         <Route

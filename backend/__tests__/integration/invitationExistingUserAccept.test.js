@@ -2,6 +2,7 @@
 
 const request = require("supertest");
 const crypto = require("crypto");
+const argon2 = require("argon2");
 const app = require("../../app");
 const pool = require("../../config/db");
 
@@ -23,10 +24,12 @@ describe("Invitation Acceptance for Existing User (Integration)", () => {
     );
 
     // Tạo 1 user đã có tài khoản sẵn trong hệ thống (id=2)
+    const pwdHash = await argon2.hash("Password123!");
     const userRes = await pool.query(
       `INSERT INTO users (id, email, password_hash, name, role_id, is_system_admin)
-       VALUES (2, 'existing@test.com', 'hashed_pwd', 'Existing User', 2, false)
-       RETURNING id`
+       VALUES (2, 'existing@test.com', $1, 'Existing User', 2, false)
+       RETURNING id`,
+      [pwdHash]
     );
     existingUserId = userRes.rows[0].id;
 
@@ -58,8 +61,22 @@ describe("Invitation Acceptance for Existing User (Integration)", () => {
     await pool.end();
   });
 
-  test("người dùng đã có tài khoản chấp nhận lời mời thành công và vào project_members với đúng role", async () => {
+  test("chưa đăng nhập thì không thể chấp nhận lời mời (401)", async () => {
     const res = await request(app)
+      .post(`/api/public/invitations/${rawToken}/accept`)
+      .send();
+
+    expect(res.status).toBe(401);
+  });
+
+  test("người dùng đã có tài khoản chấp nhận lời mời thành công và vào project_members với đúng role", async () => {
+    const agent = request.agent(app);
+    const loginRes = await agent
+      .post("/api/auth/login")
+      .send({ email: "existing@test.com", password: "Password123!" });
+    expect(loginRes.status).toBe(200);
+
+    const res = await agent
       .post(`/api/public/invitations/${rawToken}/accept`)
       .send();
 
