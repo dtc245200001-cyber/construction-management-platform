@@ -360,9 +360,9 @@ export default function TaskLogModal({
 
     if (
 
-      url.startsWith("http\://") ||
+      url.startsWith("http://") ||
 
-      url.startsWith("https\://") ||
+      url.startsWith("https://") ||
 
       url.startsWith("blob:") ||
 

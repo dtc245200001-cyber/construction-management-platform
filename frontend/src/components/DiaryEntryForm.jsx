@@ -31,7 +31,7 @@ export default function DiaryEntryForm({
 }) {
   const canWrite = ALLOWED_ROLES.includes(user?.role);
 
-  const draftKey = `diary_draft\_${projectId}`;
+  const draftKey = `diary_draft_${projectId}`;
 
   const [categories, setCategories] = useState([]);
 
