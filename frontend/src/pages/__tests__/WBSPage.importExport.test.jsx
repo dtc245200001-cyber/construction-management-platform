@@ -1,14 +1,16 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 
 vi.mock("../../lib/api", () => ({
   default: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
 }));
 
-// Mock xlsx: sheet_to_json trả về dữ liệu do từng test tự cấu hình qua __setSheetRows,
-// tránh phải dựng buffer .xlsx thật trong jsdom.
-vi.mock("xlsx", () => {
+// Mock @e965/xlsx (fork đã vá lỗ hổng SheetJS): sheet_to_json trả về dữ liệu
+// do từng test tự cấu hình qua __setSheetRows, tránh phải dựng buffer .xlsx
+// thật trong jsdom.
+vi.mock("@e965/xlsx", () => {
   let rows = [];
   return {
     __setSheetRows: (next) => { rows = next; },
@@ -24,7 +26,7 @@ vi.mock("xlsx", () => {
 });
 
 import api from "../../lib/api";
-import * as XLSX from "xlsx";
+import * as XLSX from "@e965/xlsx";
 import WBSPage from "../WBSPage.jsx";
 
 // Cây gốc rỗng để tập trung vào luồng nhập Excel (không có dữ liệu cũ gây trùng tên).
@@ -32,7 +34,11 @@ const emptyRows = [];
 
 const renderPage = async () => {
   api.get.mockResolvedValue({ data: emptyRows });
-  render(<WBSPage />);
+  render(
+    <MemoryRouter>
+      <WBSPage />
+    </MemoryRouter>
+  );
   return screen.findByText("Chưa có hạng mục nào.");
 };
 
@@ -138,7 +144,11 @@ describe("WBSPage — Xuất báo cáo", () => {
   test("bấm Xuất báo cáo gọi XLSX.writeFile", async () => {
     const user = userEvent.setup();
     api.get.mockResolvedValue({ data: emptyRows });
-    render(<WBSPage />);
+    render(
+      <MemoryRouter>
+        <WBSPage />
+      </MemoryRouter>
+    );
     await screen.findByText("Chưa có hạng mục nào.");
 
     await user.click(screen.getByText("Xuất báo cáo"));
@@ -148,12 +158,17 @@ describe("WBSPage — Xuất báo cáo", () => {
 });
 
 describe("WBSPage — Sơ đồ WBS", () => {
-  test("nút Sơ đồ WBS bị khóa vì chưa có trang sơ đồ", async () => {
+  test("nút Sơ đồ WBS mở được và dẫn sang /wbs-diagram", async () => {
     api.get.mockResolvedValue({ data: emptyRows });
-    render(<WBSPage />);
+    render(
+      <MemoryRouter>
+        <WBSPage />
+      </MemoryRouter>
+    );
     await screen.findByText("Chưa có hạng mục nào.");
 
-    const btn = screen.getByText("Sơ đồ WBS").closest("button");
-    expect(btn).toBeDisabled();
+    const link = screen.getByText("Sơ đồ WBS").closest("a");
+    expect(link).not.toBeNull();
+    expect(link.getAttribute("href")).toBe("/wbs-diagram");
   });
 });

@@ -5,7 +5,7 @@ const requireAuth = require("../middleware/auth");
 
 const {
   checkProjectAccess,
-  allow,
+  requirePermission,
   createProjectRouter,
 } = require("../middleware/projectAccess");
 
@@ -19,26 +19,19 @@ const { logAudit } = require("../utils/auditLogger");
 
 const router = createProjectRouter();
 
-const allRoles = allow(Object.values(ROLES));
+// Xem danh sách đội / thành viên đội / tải của đội / việc của 1 đội:
+// mọi thành viên dự án đều được xem.
+const allRoles = requirePermission("project.member");
 
-const teamManagementRoles = allow([
-  ROLES.CHU_DAU_TU,
-  ROLES.BAN_QUAN_LY,
-  ROLES.CHI_HUY_TRUONG,
-]);
+// Quản lý đội thi công (tạo đội, thêm thành viên vào đội).
+const teamManagementRoles = requirePermission("team.manage");
 
 // S-25 NFR:
 // chỉ Chỉ huy trưởng được giao việc / đặt khối lượng kế hoạch.
-const assignmentRoles = allow([
-  ROLES.CHI_HUY_TRUONG,
-]);
+const assignmentRoles = requirePermission("task.assign");
 
-const fieldViewRoles = allow([
-  ROLES.DOI_TRUONG,
-  ROLES.CHI_HUY_TRUONG,
-  ROLES.BAN_QUAN_LY,
-  ROLES.CHU_DAU_TU,
-]);
+// Xem việc theo đội (đội trưởng bị ép về đúng đội mình trong handler).
+const fieldViewRoles = requirePermission("task.view_team");
 
 const MAX_QUANTITY = 9999999999.99;
 
@@ -903,11 +896,7 @@ router.patch(
 // ở dưới, nếu không Express sẽ khớp "all" vào :teamId và trả 400.
 // ============================================================
 
-const overviewRoles = allow([
-  ROLES.CHI_HUY_TRUONG,
-  ROLES.BAN_QUAN_LY,
-  ROLES.CHU_DAU_TU,
-]);
+const overviewRoles = requirePermission("team.view_all");
 
 // GET /api/projects/:projectId/teams/all/tasks
 router.get(
@@ -1552,9 +1541,7 @@ router.post(
   "/:projectId/tasks/:taskId/quantity-reports",
   requireAuth,
   checkProjectAccess,
-  allow([
-    ROLES.DOI_TRUONG,
-  ]),
+  requirePermission("quantity.report"),
   asyncHandler(async (req, res) => {
     const projectId =
       positiveId(

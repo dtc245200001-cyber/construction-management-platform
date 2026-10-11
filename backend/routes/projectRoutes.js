@@ -2,7 +2,7 @@
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
 const logger = require('../utils/logger');
-const { checkProjectAccess, allow, createProjectRouter } = require('../middleware/projectAccess');
+const { checkProjectAccess, requirePermission, createProjectRouter } = require('../middleware/projectAccess');
 const { ROLES } = require('../utils/constants');
 const { createEmailLog, processEmailLogs } = require('../lib/emailSender');
 const emailTemplates = require('../lib/emailTemplates');
@@ -284,7 +284,7 @@ router.get(
   "/:projectId/schedule-results",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   async (req, res, next) => {
     try {
       const projectId = Number(req.params.projectId);
@@ -360,7 +360,7 @@ router.get(
   "/:projectId/schedule-summary",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   async (req, res, next) => {
     try {
       const projectId = Number(req.params.projectId);
@@ -418,7 +418,7 @@ router.post(
   "/:projectId/baselines/freeze",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY]),
+  requirePermission("baseline.manage"),
   async (req, res, next) => {
     const projectId = req.params.projectId;
     const client = await db.connect();
@@ -486,7 +486,7 @@ router.get(
   "/:projectId",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   async (req, res, next) => {
     try {
       const result = await db.query(
@@ -533,7 +533,7 @@ router.post(
   "/:projectId/open",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   async (req, res, next) => {
     try {
       await db.query(
@@ -574,7 +574,7 @@ router.get(
   "/:projectId/members",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   async (req, res, next) => {
     try {
       const result = await db.query(
@@ -632,7 +632,8 @@ router.post(
   "/:projectId/members",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU]),
+  // Giữ cả BQL + CĐT như hành vi cũ (ghi chú lệch đặc tả trong permissions.js).
+  requirePermission("member.manage"),
   createAuditMiddleware('ADD_PROJECT_MEMBER', 'project_members'),
   async (req, res, next) => {
     const { email, role } = req.body;
@@ -751,7 +752,7 @@ router.delete(
   "/:projectId/members/:userId",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU]),
+  requirePermission("member.manage"),
   createAuditMiddleware('REMOVE_PROJECT_MEMBER', 'project_members'),
   async (req, res, next) => {
     const { projectId, userId } = req.params;
@@ -830,7 +831,7 @@ router.post(
   "/:projectId/members/:userId/unlock",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU]),
+  requirePermission("member.manage"),
   async (req, res, next) => {
     try {
       // Kiểm tra user có trong dự án này không
@@ -881,7 +882,7 @@ router.post(
   "/:projectId/invitations/:invId/resend",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.CHI_HUY_TRUONG, ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY]),
+  requirePermission("invitation.manage"),
   async (req, res, next) => {
     try {
       const { projectId, invId } = req.params;
@@ -961,7 +962,7 @@ router.get(
   "/:projectId/invitations/:invId/status",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.CHI_HUY_TRUONG, ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY]),
+  requirePermission("invitation.manage"),
   async (req, res, next) => {
     try {
       const { projectId, invId } = req.params;
@@ -1010,7 +1011,7 @@ router.post(
   "/:projectId/schedule/recalculate",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("schedule.recalculate"),
   async (req, res, next) => {
     try {
       const projectId = Number(req.params.projectId);
@@ -1113,7 +1114,7 @@ router.get(
   "/:projectId/schedule-jobs/:jobId",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   async (req, res, next) => {
     try {
       const projectId = Number(req.params.projectId);
@@ -1158,7 +1159,7 @@ router.get(
   "/:projectId/calendar",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   async (req, res, next) => {
     try {
       const projectId = Number(req.params.projectId);
@@ -1209,7 +1210,7 @@ router.put(
   "/:projectId/calendar",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU, ROLES.CHI_HUY_TRUONG]),
+  requirePermission("calendar.manage"),
   async (req, res, next) => {
     const projectId = Number(req.params.projectId);
     const { monday, tuesday, wednesday, thursday, friday, saturday, sunday } = req.body;
@@ -1292,7 +1293,7 @@ router.get(
   "/:projectId/holidays",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   async (req, res, next) => {
     try {
       const projectId = Number(req.params.projectId);
@@ -1334,7 +1335,7 @@ router.post(
   "/:projectId/holidays",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU, ROLES.CHI_HUY_TRUONG]),
+  requirePermission("calendar.manage"),
   async (req, res, next) => {
     const projectId = Number(req.params.projectId);
     const { holiday_date, name } = req.body;
@@ -1421,7 +1422,7 @@ router.delete(
   "/:projectId/holidays/:holidayId",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU, ROLES.CHI_HUY_TRUONG]),
+  requirePermission("calendar.manage"),
   async (req, res, next) => {
     const projectId = Number(req.params.projectId);
     const holidayId = Number(req.params.holidayId);
@@ -1486,7 +1487,7 @@ router.put(
   "/:projectId/holidays/:holidayId",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU, ROLES.CHI_HUY_TRUONG]),
+  requirePermission("calendar.manage"),
   async (req, res, next) => {
     const projectId = Number(req.params.projectId);
     const holidayId = Number(req.params.holidayId);

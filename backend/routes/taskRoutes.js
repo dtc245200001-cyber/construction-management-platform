@@ -4,11 +4,10 @@ const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
 const {
   checkProjectAccess,
-  allow,
+  requirePermission,
   createProjectRouter,
 } = require("../middleware/projectAccess");
 
-const { ROLES } = require("../utils/constants");
 const {
   markProjectScheduleDirty,
 } = require("../services/scheduleRecalculation");
@@ -36,7 +35,7 @@ router.post(
   "/:projectId/tasks",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   async (req, res, next) => {
     const projectId = Number(req.params.projectId);
     const workItemId = Number(req.body.work_item_id);
@@ -446,7 +445,7 @@ router.put(
   "/:projectId/tasks/:taskId",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   handleUpdateTask
 );
 
@@ -476,7 +475,7 @@ router.patch(
   "/:projectId/tasks/:taskId",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   handleUpdateTask
 );
 
@@ -506,7 +505,7 @@ router.patch(
   "/:projectId/tasks/:taskId/progress",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   handleUpdateTask
 );
 
@@ -536,7 +535,7 @@ router.delete(
   "/:projectId/tasks/:taskId",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   async (req, res, next) => {
     const projectId = Number(req.params.projectId);
     const taskId = Number(req.params.taskId);

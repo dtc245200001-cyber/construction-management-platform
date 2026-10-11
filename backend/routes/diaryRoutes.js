@@ -2,10 +2,9 @@
 
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
-const { checkProjectAccess, allow, createProjectRouter } = require("../middleware/projectAccess");
+const { checkProjectAccess, requirePermission, createProjectRouter } = require("../middleware/projectAccess");
 const asyncHandler = require("../utils/asyncHandler");
 const { parsePositiveInt } = require("../utils/validators");
-const { ROLES } = require("../utils/constants");
 const { validateCreateDiaryEntry, validateGetDiaryEntries } = require("../utils/diaryValidators");
 const { logAudit } = require("../utils/auditLogger");
 
@@ -22,7 +21,8 @@ router.post(
   "/:projectId/diary-entries",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.KY_SU_GIAM_SAT, ROLES.CHI_HUY_TRUONG, ROLES.BAN_QUAN_LY, ROLES.DOI_TRUONG]),
+  // Giữ 4 role như hành vi cũ (ghi chú lệch đặc tả trong permissions.js).
+  requirePermission("site_log.create"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });
@@ -129,7 +129,7 @@ router.get(
   "/:projectId/diary-entries",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("site_log.view"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });
@@ -203,7 +203,7 @@ router.get(
   "/:projectId/diary-locks/:date",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("site_log.view"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });
@@ -231,7 +231,8 @@ router.post(
   "/:projectId/diary-locks/:date/lock",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.KY_SU_GIAM_SAT]),
+  // S-27: chốt sổ cuối ngày — Chỉ huy trưởng (đổi theo đặc tả, rút KSGS).
+  requirePermission("site_log.close_daily"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });
@@ -276,7 +277,9 @@ router.post(
   "/:projectId/diary-locks/:date/unlock",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY]),
+  // Điều chỉnh nhật ký đã chốt (có lý do + audit) — Chỉ huy trưởng
+  // (đổi theo đặc tả, rút BQL).
+  requirePermission("site_log.correct_locked"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });
@@ -322,7 +325,7 @@ router.get(
   "/:projectId/diary-locks/:date/history",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("site_log.view"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });

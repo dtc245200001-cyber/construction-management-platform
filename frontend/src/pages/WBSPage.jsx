@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { useOutletContext } from "react-router-dom";
-import * as XLSX from "xlsx";
+import { useOutletContext, Link } from "react-router-dom";
+import * as XLSX from "@e965/xlsx";
 import api from "../lib/api";
 import TaskForm from "../components/TaskForm";
+import CategoryModal, { saveCategory } from "../components/CategoryModal";
+import { buildTree, rollupCategoryDates, isLeafCategory, flattenTasks } from "../utils/buildTree";
 import { format, parseISO } from "date-fns";
 import { 
   Search, Plus, List, LayoutGrid,
@@ -10,63 +12,6 @@ import {
   Lightbulb, X, FileSpreadsheet, Download, Network,
   Maximize2, Minimize2, Pencil, Trash2, PlusCircle, FolderPlus, CalendarRange, Flag
 } from "lucide-react";
-
-function buildTree(data) {
-  const map = {};
-  const roots = [];
-  data.forEach(item => {
-    map[item.id] = { ...item, children: [], hasChildren: false };
-  });
-  data.forEach(item => {
-    if (item.parent_id != null && map[item.parent_id]) {
-      map[item.parent_id].children.push(map[item.id]);
-      map[item.parent_id].hasChildren = true;
-    } else {
-      roots.push(map[item.id]);
-    }
-  });
-  return roots;
-}
-
-const toTime = (value) => {
-  if (!value) return null;
-  const t = new Date(value).getTime();
-  return Number.isNaN(t) ? null : t;
-};
-
-/**
- * T-09: Ngày của hạng mục được tổng hợp hoàn toàn ở frontend (không lưu DB):
- * - Bắt đầu = ngày bắt đầu sớm nhất (min ES) của mọi con cháu
- * - Kết thúc = ngày kết thúc muộn nhất (max EF) của mọi con cháu
- * Hạng mục chưa có công việc nào được tính lịch thì để null.
- * Trả về cây mới, không thay đổi cây đầu vào.
- */
-export function rollupCategoryDates(nodes) {
-  return (nodes || []).map((node) => {
-    if (node.type !== "category") return node;
-
-    const children = rollupCategoryDates(node.children);
-    let start = null;
-    let end = null;
-    let startTime = Infinity;
-    let endTime = -Infinity;
-
-    for (const child of children) {
-      const s = toTime(child.start_date);
-      if (s !== null && s < startTime) {
-        startTime = s;
-        start = child.start_date;
-      }
-      const e = toTime(child.end_date);
-      if (e !== null && e > endTime) {
-        endTime = e;
-        end = child.end_date;
-      }
-    }
-
-    return { ...node, children, start_date: start, end_date: end };
-  });
-}
 
 const COLORS = [
   { text: "text-[#1F63E0]", bg: "bg-[#EAF2FF]" },
@@ -150,23 +95,6 @@ function WBSPage() {
   const fileInputRef = useRef(null);
   const [importPreview, setImportPreview] = useState(null); // { rows, skipped, fileName }
   const [importLoading, setImportLoading] = useState(false);
-
-  // NFR T-12: Kiểm tra hạng mục lá (không có work_item con nào)
-  const isLeafCategory = (node) => {
-    if (!node) return false;
-
-    if (!node.children || node.children.length === 0) {
-      return true;
-    }
-
-    return node.children.every((child) => child.type === "task");
-  };
-
-  const flattenTasks = (nodes) =>
-  nodes.flatMap((n) => [
-    ...(n.type === "task" ? [n] : []),
-    ...flattenTasks(n.children || []),
-  ]);
 
   const openCreateTaskForm = (workItem) => {
   setSelectedWorkItem(workItem);
@@ -312,34 +240,21 @@ const closeTaskForm = () => {
 
   const handleModalSubmit = async (e) => {
     e.preventDefault();
-    const trimmedName = modalConfig.name.trim();
-    if (!trimmedName) {
-      setModalConfig(prev => ({ ...prev, error: "Vui lòng nhập tên hạng mục" }));
-      return;
-    }
 
     try {
       setModalLoading(true);
       setModalConfig(prev => ({ ...prev, error: "" }));
 
-      if (modalConfig.mode === "add_root") {
-        await api.post(`/categories/${projectId}`, {
-          name: trimmedName,
-          code: modalConfig.code.trim() || undefined,
-          parent_id: null,
-        });
-      } else if (modalConfig.mode === "add_child") {
-        await api.post(`/categories/${projectId}`, {
-          name: trimmedName,
-          code: modalConfig.code.trim() || undefined,
-          parent_id: modalConfig.targetNode.id,
-        });
-        // Tự động mở rộng node cha để thấy con mới tạo
-        setExpanded(prev => new Set([...prev, modalConfig.targetNode.id]));
-      } else if (modalConfig.mode === "edit_category") {
-        await api.put(`/categories/${projectId}/${modalConfig.targetNode.id}`, {
-          name: trimmedName,
-        });
+      const { expandedParentId } = await saveCategory({
+        projectId,
+        mode: modalConfig.mode,
+        targetNode: modalConfig.targetNode,
+        name: modalConfig.name,
+        code: modalConfig.code,
+      });
+      // Tự động mở rộng node cha để thấy con mới tạo
+      if (expandedParentId != null) {
+        setExpanded(prev => new Set([...prev, expandedParentId]));
       }
 
       closeModal();
@@ -1023,15 +938,14 @@ const visibleItems = useMemo(() => {
                 <div className="size-10 bg-white rounded-full flex items-center justify-center text-[#8B5CF6] shadow-sm"><Download className="size-5" /></div>
                 <span className="text-[12px] font-medium text-[#0F1B3D]">Xuất báo cáo</span>
               </button>
-              <button
-                type="button"
-                disabled
-                title="Sơ đồ WBS dạng cây/sơ đồ chưa có trong hệ thống — sẽ bổ sung sau"
-                className="bg-[#F4F7FC] p-3 rounded-xl flex flex-col items-center justify-center gap-2 border border-transparent opacity-50 cursor-not-allowed"
+              <Link
+                to="/wbs-diagram"
+                title="Xem cây công việc dạng sơ đồ tổ chức"
+                className="bg-[#F4F7FC] p-3 rounded-xl flex flex-col items-center justify-center gap-2 hover:-translate-y-0.5 hover:border-[#1F63E0] border border-transparent transition-all cursor-pointer"
               >
                 <div className="size-10 bg-white rounded-full flex items-center justify-center text-[#1F63E0] shadow-sm"><Network className="size-5" /></div>
                 <span className="text-[12px] font-medium text-[#0F1B3D]">Sơ đồ WBS</span>
-              </button>
+              </Link>
             </div>
           </div>
 
@@ -1221,171 +1135,15 @@ const visibleItems = useMemo(() => {
       )}
 
       {/* Modal Thêm / Sửa Hạng mục & Công việc theo bố cục chuẩn T-05 / Design System */}
-      {modalConfig.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl border border-[#E6EBF3] animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between pb-4 border-b border-[#EEF2F7]">
-              <div className="flex items-center gap-3">
-                <div className="size-10 rounded-xl bg-blue-50 text-[#1F63E0] flex items-center justify-center">
-                  {modalConfig.mode === "edit_category" || modalConfig.mode === "edit_task" ? (
-                    <Pencil className="size-5" />
-                  ) : modalConfig.entryType === "task" ? (
-                    <FileText className="size-5 text-[#15803D]" />
-                  ) : (
-                    <FolderPlus className="size-5" />
-                  )}
-                </div>
-                <div>
-                  <h3 className="font-bold text-[#0F1B3D] text-[16px]">
-                    {modalConfig.mode === "add_root" && "Thêm hạng mục gốc"}
-                    {modalConfig.mode === "add_child" && (
-                      modalConfig.entryType === "task" ? "Thêm công việc thi công" : "Thêm hạng mục con"
-                    )}
-                    {modalConfig.mode === "edit_category" && "Đổi tên hạng mục"}
-                    {modalConfig.mode === "edit_task" && "Chỉnh sửa công việc"}
-                  </h3>
-                  {modalConfig.mode === "add_child" && modalConfig.targetNode && (
-                    <p className="text-xs text-[#64748B]">Trực thuộc: <span className="font-semibold text-[#0F1B3D]">{modalConfig.targetNode.name}</span></p>
-                  )}
-                </div>
-              </div>
-              <button 
-                onClick={closeModal}
-                className="size-8 rounded-lg text-[#64748B] hover:bg-slate-100 flex items-center justify-center cursor-pointer"
-              >
-                <X className="size-5" />
-              </button>
-            </div>
-
-            {/* NFR T-12: Chỉ hiển thị chọn loại nếu là hạng mục LÁ (không có work_item con). Nếu đã có hạng mục con, ẩn hẳn tab Công việc */}
-            {modalConfig.mode === "add_child" && isLeafCategory(modalConfig.targetNode) && (
-              <div className="flex p-1 bg-slate-100 rounded-xl mt-4">
-                <button
-                  type="button"
-                  onClick={switchToTaskForm}
-                  className="flex-1 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 text-[#64748B] hover:text-[#0F1B3D] hover:bg-white"
-                >
-                  <FileText className="size-3.5" /> Công việc thi công
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setModalConfig(prev => ({ ...prev, entryType: "category", error: "" }))}
-                  className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                    modalConfig.entryType === "category" ? "bg-white text-[#1F63E0] shadow-sm" : "text-[#64748B] hover:text-[#0F1B3D]"
-                  }`}
-                >
-                  <FolderOpen className="size-3.5" /> Hạng mục con
-                </button>
-              </div>
-            )}
-
-            {modalConfig.error && (
-              <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl">
-                {modalConfig.error}
-              </div>
-            )}
-
-            <form onSubmit={handleModalSubmit} className="mt-4 space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-[#0F1B3D] mb-1.5">
-                  {modalConfig.entryType === "task" ? "Tên công việc" : "Tên hạng mục"} <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  autoFocus
-                  placeholder={modalConfig.entryType === "task" ? "Ví dụ: Đào móng bằng máy, Đổ bê tông..." : "Nhập tên hạng mục..."}
-                  value={modalConfig.name}
-                  onChange={(e) => setModalConfig(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full h-11 px-3.5 rounded-xl border border-[#E6EBF3] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F63E0]/20 focus:border-[#1F63E0]"
-                  disabled={modalLoading}
-                />
-              </div>
-
-              {/* Nếu là Công việc: ô nhập Thời lượng thi công với validation > 0 tức thì */}
-              {modalConfig.entryType === "task" && (
-                <div>
-                  <label className="block text-xs font-semibold text-[#0F1B3D] mb-1.5">
-                    Thời lượng thi công (số ngày) <span className="text-red-500">*</span>
-                  </label>
-                  {(() => {
-                    const days = Number(modalConfig.duration_days);
-                    const isInvalid = !modalConfig.duration_days || !Number.isInteger(days) || days <= 0;
-                    return (
-                      <>
-                        <input
-                          type="number"
-                          min="1"
-                          step="1"
-                          placeholder="Ví dụ: 3, 5, 10..."
-                          value={modalConfig.duration_days}
-                          onChange={(e) => setModalConfig(prev => ({ ...prev, duration_days: e.target.value }))}
-                          className={`w-full h-11 px-3.5 rounded-xl border text-sm focus:outline-none transition-colors ${
-                            isInvalid
-                              ? "border-red-500 ring-2 ring-red-100 focus:border-red-500"
-                              : "border-[#E6EBF3] focus:ring-2 focus:ring-[#1F63E0]/20 focus:border-[#1F63E0]"
-                          }`}
-                          disabled={modalLoading}
-                        />
-                        {isInvalid && (
-                          <p className="text-xs text-red-500 mt-1">
-                            Thời lượng phải là số nguyên dương lớn hơn 0
-                          </p>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-              )}
-
-              {/* Nếu là Hạng mục và không phải edit: mã hạng mục */}
-              {modalConfig.entryType === "category" && modalConfig.mode !== "edit_category" && (
-                <div>
-                  <label className="block text-xs font-semibold text-[#0F1B3D] mb-1.5">
-                    Mã hạng mục (tùy chọn)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ví dụ: HM-01, KET-CAU..."
-                    value={modalConfig.code}
-                    onChange={(e) => setModalConfig(prev => ({ ...prev, code: e.target.value }))}
-                    className="w-full h-11 px-3.5 rounded-xl border border-[#E6EBF3] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F63E0]/20 focus:border-[#1F63E0]"
-                    disabled={modalLoading}
-                  />
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#EEF2F7]">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  disabled={modalLoading}
-                  className="h-10 px-4 rounded-xl text-sm font-medium text-[#475569] hover:bg-slate-100 transition-colors cursor-pointer"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  disabled={
-                    modalLoading ||
-                    !modalConfig.name.trim() ||
-                    (modalConfig.entryType === "task" &&
-                      (!modalConfig.duration_days ||
-                        !Number.isInteger(Number(modalConfig.duration_days)) ||
-                        Number(modalConfig.duration_days) <= 0))
-                  }
-                  className="h-10 px-5 rounded-xl text-sm font-semibold text-white bg-[#1F63E0] hover:bg-[#1A54C2] transition-colors shadow-sm cursor-pointer disabled:opacity-60"
-                >
-                  {modalLoading
-                    ? "Đang lưu..."
-                    : modalConfig.mode === "edit_category" || modalConfig.mode === "edit_task"
-                    ? "Cập nhật"
-                    : "Thêm mới"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <CategoryModal
+        config={modalConfig}
+        loading={modalLoading}
+        canAddTask={isLeafCategory(modalConfig.targetNode)}
+        onPatch={(patch) => setModalConfig(prev => ({ ...prev, ...patch }))}
+        onClose={closeModal}
+        onSubmit={handleModalSubmit}
+        onSwitchToTask={switchToTaskForm}
+      />
     </div>
   );
 }
