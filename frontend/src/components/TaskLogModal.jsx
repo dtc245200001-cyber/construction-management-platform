@@ -685,9 +685,21 @@ export default function TaskLogModal({
 
 
 
+      const isNetworkError =
+
+        (typeof navigator !== "undefined" && !navigator.onLine) ||
+
+        err.message === "Network Error" ||
+
+        err.code === "ERR_NETWORK" ||
+
+        (!err.response && !err.status && err.name === "AxiosError");
+
+
+
       // Nếu thiết bị mất mạng ngoại tuyến trong lúc gửi thì lưu dữ liệu offline
 
-      if (typeof navigator !== "undefined" && !navigator.onLine) {
+      if (isNetworkError) {
 
         try {
 
