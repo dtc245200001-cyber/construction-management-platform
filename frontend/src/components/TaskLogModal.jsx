@@ -8,11 +8,15 @@ import {
 
   saveDiaryAttachment,
 
+  createDiaryEntry,
+
   getDiaryLogsByProject,
 
   getDiaryLogsByTask,
 
   getDiaryAttachmentsByLog,
+
+  isBlob,
 
 } from "../lib/diaryDb";
 
@@ -120,7 +124,24 @@ export default function TaskLogModal({
 
   const [viewingImageIndex, setViewingImageIndex] = useState(null);
 
+  const [currentLogClientId, setCurrentLogClientId] = useState(() => crypto.randomUUID());
 
+  // Lưu trữ các Object URL đã tạo để thu hồi khi unmount
+  const createdUrlsRef = useRef(new Set());
+
+  useEffect(() => {
+    const urls = createdUrlsRef.current;
+    return () => {
+      urls.forEach((url) => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          /* ignore */
+        }
+      });
+      urls.clear();
+    };
+  }, []);
 
   const allAttachments = logs.flatMap((l) => l.attachments || []);
 
@@ -192,11 +213,21 @@ export default function TaskLogModal({
 
       }
 
-      // Khôi phục các nhật ký đã lưu cục bộ trong IndexedDB (T66)
+      // Khôi phục các nhật ký đã lưu cục bộ trong IndexedDB (T66 / T67)
 
       let offlineLogs = [];
 
       try {
+
+        // Thu hồi các URL đã tạo trước đó trong fetchLogs để tránh rò rỉ bộ nhớ
+        createdUrlsRef.current.forEach((url) => {
+          try {
+            URL.revokeObjectURL(url);
+          } catch {
+            /* ignore */
+          }
+        });
+        createdUrlsRef.current.clear();
 
         const localLogs = await getDiaryLogsByTask(Number(effectiveTaskId));
 
@@ -212,9 +243,19 @@ export default function TaskLogModal({
 
           try {
 
-            const rawAttach = await getDiaryAttachmentsByLog(pl.id);
+            const rawAttach = await getDiaryAttachmentsByLog(pl.id || pl.clientId || pl.client_id);
 
             for (const att of rawAttach || []) {
+
+              let objectUrl = "";
+
+              if (isBlob(att.blob)) {
+
+                objectUrl = URL.createObjectURL(att.blob);
+
+                createdUrlsRef.current.add(objectUrl);
+
+              }
 
               localAttachments.push({
 
@@ -222,17 +263,13 @@ export default function TaskLogModal({
 
                 id: att.id,
 
-                url:
-
-                  typeof Blob !== "undefined" && att.blob instanceof Blob
-
-                    ? URL.createObjectURL(att.blob)
-
-                    : att.url || "",
+                url: objectUrl || att.url || "",
 
                 file_name: att.fileName || att.file_name || "anh-hien-truong",
 
                 file_size: att.size || att.file_size || 0,
+
+                isOffline: true,
 
               });
 
@@ -591,91 +628,103 @@ export default function TaskLogModal({
 
 
 
-    // Lưu nhật ký và Blob ảnh vào IndexedDB
+    // Lưu nhật ký và Blob ảnh nguyên tử vào IndexedDB (T65 / T67)
 
     const persistOffline = async () => {
 
       const now = new Date().toISOString();
 
+      const clientUuid = currentLogClientId || crypto.randomUUID();
 
+      const imagesToStore = validImagesToUpload.map((img) => ({
 
-      const offlineLog = await saveDiaryLog({
+        id: img.id,
 
-        projectId: Number(effectiveProjectId),
+        blob: img.file,
 
-        taskId: Number(effectiveTaskId),
+        fileName: img.name || img.file.name || "anh-hien-truong.jpg",
 
-        content: content.trim(),
+        mimeType: img.file?.type || "image/jpeg",
 
-        createdAt: now,
+        size: img.file?.size || 0,
 
-        created_at: now,
+      }));
 
-        syncStatus: "pending",
+      const offlineResult = await createDiaryEntry(
 
-        user_name: "Đã lưu trên thiết bị - chờ đồng bộ",
+        {
 
-      });
+          id: clientUuid,
 
+          clientId: clientUuid,
 
-
-      const localAttachments = [];
-
-
-
-      for (const img of validImagesToUpload) {
-
-        const attachment = await saveDiaryAttachment({
-
-          logId: offlineLog.id,
+          client_id: clientUuid,
 
           projectId: Number(effectiveProjectId),
 
           taskId: Number(effectiveTaskId),
 
-          blob: img.file,
+          content: content.trim(),
 
-          name: img.name || img.file.name || "anh-hien-truong",
+          createdAt: now,
 
-          file_name: img.name || img.file.name || "anh-hien-truong",
+          created_at: now,
 
-          mimeType: img.file.type || "application/octet-stream",
+          syncStatus: "pending",
 
-          file_size: img.file.size,
+          user_name: "Đã lưu trên thiết bị - chờ đồng bộ",
 
-        });
+        },
 
+        imagesToStore
 
+      );
 
-        localAttachments.push({
+      const localAttachments = (offlineResult.attachments || []).map((att) => {
 
-          ...attachment,
+        let objectUrl = "";
 
-          id: attachment.id,
+        if (isBlob(att.blob)) {
 
-          url: URL.createObjectURL(img.file),
+          objectUrl = URL.createObjectURL(att.blob);
 
-          file_name: img.name || img.file.name || "anh-hien-truong",
+          createdUrlsRef.current.add(objectUrl);
 
-          file_size: img.file.size,
+        }
 
-        });
+        return {
 
-      }
+          ...att,
 
+          id: att.id,
 
+          url: objectUrl || att.url || "",
+
+          file_name: att.fileName || att.file_name || "anh-hien-truong",
+
+          file_size: att.size || att.file_size || 0,
+
+          isOffline: true,
+
+        };
+
+      });
 
       return {
 
-        ...offlineLog,
+        ...offlineResult,
 
-        created_at: offlineLog.created_at || offlineLog.createdAt || now,
+        id: clientUuid,
+
+        created_at: now,
 
         content: content.trim(),
 
         attachments: localAttachments,
 
         syncStatus: "pending",
+
+        isOffline: true,
 
       };
 
@@ -695,8 +744,6 @@ export default function TaskLogModal({
 
       });
 
-
-
       setSelectedImages((prev) =>
 
         prev.filter((img) => !validImagesToUpload.includes(img)),
@@ -704,6 +751,8 @@ export default function TaskLogModal({
       );
 
       setContent("");
+
+      setCurrentLogClientId(crypto.randomUUID());
 
 
 
@@ -1731,7 +1780,7 @@ export function AttachmentThumbnail({
 
   const imageUrl =
 
-    retryCount > 0
+    retryCount > 0 && !rawUrl?.startsWith("blob:") && !rawUrl?.startsWith("data:")
 
       ? `${rawUrl}${rawUrl.includes("?") ? "&" : "?"}retry=${retryCount}`
 
@@ -1901,11 +1950,25 @@ export function AttachmentThumbnail({
 
       <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-1.5 text-[10px] text-white flex items-center justify-between pointer-events-none">
 
-        <span className="truncate max-w-[70%]" title={attachment.file_name}>
+        <div className="flex items-center gap-1 truncate max-w-[70%]">
 
-          {attachment.file_name}
+          {attachment.isOffline && (
 
-        </span>
+            <span className="bg-amber-500/90 text-white text-[9px] px-1 py-0.5 rounded font-medium shrink-0">
+
+              Offline
+
+            </span>
+
+          )}
+
+          <span className="truncate" title={attachment.file_name}>
+
+            {attachment.file_name}
+
+          </span>
+
+        </div>
 
         {attachment.file_size && (
 
@@ -2015,7 +2078,7 @@ export function ImageViewerModal({
 
   const fullImageUrl =
 
-    retryCount > 0
+    retryCount > 0 && !rawUrl?.startsWith("blob:") && !rawUrl?.startsWith("data:")
 
       ? `${rawUrl}${rawUrl.includes("?") ? "&" : "?"}retry=${retryCount}`
 
@@ -2072,6 +2135,16 @@ export function ImageViewerModal({
               {currentImage.file_name}
 
             </span>
+
+            {currentImage.isOffline && (
+
+              <span className="text-xs bg-amber-500/90 text-white font-medium px-2 py-0.5 rounded">
+
+                Offline
+
+              </span>
+
+            )}
 
             {currentImage.file_size && (
 
