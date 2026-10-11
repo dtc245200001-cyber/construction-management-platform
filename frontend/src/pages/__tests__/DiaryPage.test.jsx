@@ -172,7 +172,10 @@ describe('DiaryPage', () => {
       
       renderPage(mockUserWrite, { openForm: true });
       await waitFor(() => expect(screen.getByText('Ghi nhật ký thi công')).toBeInTheDocument());
-      
+      // Đợi hạng mục nạp xong (tránh flaky trên CI chậm: select chưa có option
+      // thì fireEvent.change không set được workItemId → submit bị chặn).
+      await screen.findByTestId('category-option-101');
+
       const user = userEvent.setup();
       
       // Select category
@@ -209,7 +212,10 @@ describe('DiaryPage', () => {
       
       renderPage(mockUserWrite, { openForm: true });
       await waitFor(() => expect(screen.getByText('Ghi nhật ký thi công')).toBeInTheDocument());
-      
+      // Đợi hạng mục nạp xong (tránh flaky trên CI chậm: select chưa có option
+      // thì fireEvent.change không set được workItemId → submit bị chặn).
+      await screen.findByTestId('category-option-101');
+
       const user = userEvent.setup();
       
       // Select & Fill
@@ -259,7 +265,10 @@ describe('DiaryPage', () => {
       
       renderPage(mockUserWrite, { openForm: true });
       await waitFor(() => expect(screen.getByText('Ghi nhật ký thi công')).toBeInTheDocument());
-      
+      // Đợi hạng mục nạp xong (tránh flaky trên CI chậm: select chưa có option
+      // thì fireEvent.change không set được workItemId → submit bị chặn).
+      await screen.findByTestId('category-option-101');
+
       const user = userEvent.setup();
       
       const select = screen.getByTestId('category-dropdown');
