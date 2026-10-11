@@ -1,0 +1,145 @@
+{
+  "metadata": {
+    "source": "chương trình số học thập phân độc lập, không dùng mã của dự án",
+    "description": "Các vector cố định kiểm thử tính tổng giá trị hợp đồng theo cây (S-35 / T-88)",
+    "verifiedBy": "",
+    "verifiedDate": ""
+  },
+  "treeA": {
+    "description": "Dự án có cây 3 tầng; R là gốc",
+    "nodes": [
+      { "id": "R", "parent_id": null, "name": "Gốc R", "is_leaf": false },
+      { "id": "A", "parent_id": "R", "name": "Nhánh A", "is_leaf": false },
+      { "id": "A1", "parent_id": "A", "name": "Lá A1", "is_leaf": true, "quantity": "333.333", "unit": "m3", "unit_price": "3.00", "expected_contract_value": "1000.00" },
+      { "id": "A2", "parent_id": "A", "name": "Lá A2", "is_leaf": true, "quantity": "2.675", "unit": "tấn", "unit_price": "1.00", "expected_contract_value": "2.68" },
+      { "id": "A3", "parent_id": "A", "name": "Lá A3", "is_leaf": true, "quantity": "1.005", "unit": "m", "unit_price": "1.00", "expected_contract_value": "1.01" },
+      { "id": "B", "parent_id": "R", "name": "Nhánh B", "is_leaf": false },
+      { "id": "B1", "parent_id": "B", "name": "Nhánh B1", "is_leaf": false },
+      { "id": "B11", "parent_id": "B1", "name": "Lá B11", "is_leaf": true, "quantity": "1234.567", "unit": "cái", "unit_price": "89000.50", "expected_contract_value": "109877080.28" },
+      { "id": "B12", "parent_id": "B1", "name": "Lá B12", "is_leaf": true, "quantity": "0.001", "unit": "kg", "unit_price": "0.01", "expected_contract_value": "0.00" },
+      { "id": "B2", "parent_id": "B", "name": "Lá B2", "is_leaf": true, "quantity": "0.100", "unit": "m2", "unit_price": "0.20", "expected_contract_value": "0.02" }
+    ],
+    "expected_totals": {
+      "A1": "1000.00",
+      "A2": "2.68",
+      "A3": "1.01",
+      "A": "1003.69",
+      "B11": "109877080.28",
+      "B12": "0.00",
+      "B1": "109877080.28",
+      "B2": "0.02",
+      "B": "109877080.30",
+      "R": "109878083.99",
+      "project_total": "109878083.99"
+    },
+    "expected_ui_display": {
+      "R": "109.878.083,99 ₫",
+      "A": "1.003,69 ₫",
+      "B": "109.877.080,30 ₫",
+      "B1": "109.877.080,28 ₫",
+      "B12": "0,00 ₫"
+    }
+  },
+  "scenarios": {
+    "S1": {
+      "description": "Đổi đơn giá A3 thành 2.00",
+      "mutations": [
+        { "id": "A3", "unit_price": "2.00" }
+      ],
+      "expected_contract_value": {
+        "A3": "2.01"
+      },
+      "expected_totals": {
+        "A3": "2.01",
+        "A": "1004.69",
+        "R": "109878084.99",
+        "project_total": "109878084.99"
+      }
+    },
+    "S2": {
+      "description": "Xoá khối lượng của A2 (DELETE contract-quantity)",
+      "deletions": ["A2"],
+      "expected_contract_value": {
+        "A2": null
+      },
+      "expected_totals": {
+        "A2": "0.00",
+        "A": "1001.01",
+        "R": "109878081.31",
+        "project_total": "109878081.31"
+      }
+    },
+    "S3": {
+      "description": "Xoá khối lượng của B12",
+      "deletions": ["B12"],
+      "expected_contract_value": {
+        "B12": null
+      },
+      "expected_totals": {
+        "B12": "0.00",
+        "B1": "109877080.28",
+        "B": "109877080.30",
+        "R": "109878083.99",
+        "project_total": "109878083.99"
+      }
+    },
+    "S4": {
+      "description": "Xoá toàn bộ khối lượng của mọi lá của A",
+      "deletions": ["A1", "A2", "A3"],
+      "expected_totals": {
+        "A": "0.00",
+        "R": "109877080.30",
+        "project_total": "109877080.30"
+      }
+    }
+  },
+  "additionalVectors": {
+    "V1": {
+      "description": "Ba lá cùng cha: 0.333 x 1.00",
+      "leaf_quantity": "0.333",
+      "leaf_unit_price": "1.00",
+      "leaf_count": 3,
+      "expected_leaf_value": "0.33",
+      "expected_parent_total": "0.99"
+    },
+    "V2": {
+      "description": "Số lẻ kiểu 0.1 + 0.2: hai lá 1 x 0.10 và 1 x 0.20",
+      "leaves": [
+        { "quantity": "1", "unit_price": "0.10", "expected": "0.10" },
+        { "quantity": "1", "unit_price": "0.20", "expected": "0.20" }
+      ],
+      "expected_parent_total": "0.30"
+    },
+    "V3": {
+      "description": "Biên lớn nhất: 3 lá cùng cha mỗi lá 99999999999.999 x 99999999999999.99",
+      "leaf_quantity": "99999999999.999",
+      "leaf_unit_price": "99999999999999.99",
+      "leaf_count": 3,
+      "expected_leaf_value": "9999999999999899000000000.00",
+      "expected_parent_total": "29999999999999697000000000.00",
+      "expected_project_total": "29999999999999697000000000.00",
+      "expected_ui_display": "29.999.999.999.999.697.000.000.000,00 ₫"
+    },
+    "V4": {
+      "description": "Rất nhiều lá",
+      "case1": {
+        "leaf_count": 2000,
+        "quantity": "0.1",
+        "unit_price": "0.1",
+        "expected_leaf_value": "0.01",
+        "expected_parent_total": "20.00"
+      },
+      "case2": {
+        "leaf_count": 1000,
+        "quantity": "0.1",
+        "unit_price": "0.20",
+        "expected_leaf_value": "0.02",
+        "expected_parent_total": "20.00"
+      }
+    },
+    "V5": {
+      "description": "Chưa khai: contract_value null đóng góp 0, cha có toàn nhánh chưa khai contract_total '0.00'",
+      "expected_parent_total": "0.00"
+    }
+  }
+}
