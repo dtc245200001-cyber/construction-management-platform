@@ -3,8 +3,9 @@ import { useLocation } from 'react-router-dom';
 import api from '../lib/api';
 import { format, parseISO } from 'date-fns';
 
-import { FileText, Search, Plus, Filter, X, Clock, User, Hash, Lock, Unlock, History, AlertCircle } from 'lucide-react';
+import { FileText, Search, Plus, Filter, X, Clock, User, Hash, Lock, Unlock, History, AlertCircle, CloudOff } from 'lucide-react';
 import { can } from '../lib/permissions';
+import { getDiaryLogsByProject } from '../lib/diaryDb';
 import DiaryEntryForm from '../components/DiaryEntryForm';
 import DiaryWeekStrip from '../components/DiaryWeekStrip';
 import DiaryDayCard from '../components/DiaryDayCard';
@@ -63,6 +64,10 @@ export default function DiaryPage({ user }) {
   const fetchEntries = async () => {
     setLoading(true);
     setError(null);
+    let serverEntries = [];
+    let serverTotal = 0;
+    let fetchError = null;
+
     try {
       const params = new URLSearchParams();
       if (dateFilter) params.append('date', dateFilter);
@@ -70,10 +75,52 @@ export default function DiaryPage({ user }) {
       params.append('limit', 50);
 
       const res = await api.get(`/projects/${projectId}/diary-entries?${params.toString()}`);
-      setEntries(res.data.data || []);
-      setTotal(res.data.total || 0);
+      serverEntries = res.data.data || [];
+      serverTotal = res.data.total || 0;
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Lỗi khi tải danh sách nhật ký');
+      fetchError = err.response?.data?.message || err.message || 'Lỗi khi tải danh sách nhật ký';
+    }
+
+    try {
+      // Đọc các nhật ký lưu ngoại tuyến trong IndexedDB
+      const offlineLogs = await getDiaryLogsByProject(Number(projectId));
+      const pendingLogs = (offlineLogs || [])
+        .filter(l => l.syncStatus === 'pending' || l.isOffline)
+        .filter(l => {
+          if (dateFilter) {
+            const entryDate = l.entry_date || (l.entry_at ? format(parseISO(l.entry_at), 'yyyy-MM-dd') : '');
+            if (entryDate !== dateFilter) return false;
+          }
+          if (workItemFilter) {
+            const wid = l.work_item_id !== undefined ? l.work_item_id : l.workItemId;
+            if (String(wid) !== String(workItemFilter)) return false;
+          }
+          return true;
+        })
+        .map(l => ({
+          ...l,
+          id: l.id || l.client_id,
+          client_id: l.client_id || l.id,
+          syncStatus: 'pending',
+          isOffline: true,
+          created_by_name: l.created_by_name || l.createdBy || 'Tôi (Cục bộ)',
+        }));
+
+      const serverClientIds = new Set(serverEntries.map(e => e.client_id).filter(Boolean));
+      const uniquePending = pendingLogs.filter(p => !serverClientIds.has(p.client_id));
+
+      const mergedEntries = [...uniquePending, ...serverEntries];
+      setEntries(mergedEntries);
+      setTotal(serverTotal + uniquePending.length);
+
+      if (fetchError && uniquePending.length === 0) {
+        setError(fetchError);
+      }
+    } catch (dbErr) {
+      console.error("Lỗi khi đọc nhật ký offline:", dbErr);
+      setEntries(serverEntries);
+      setTotal(serverTotal);
+      if (fetchError) setError(fetchError);
     } finally {
       setLoading(false);
     }
@@ -116,17 +163,22 @@ export default function DiaryPage({ user }) {
     // Check if new entry matches current filters
     let matchesDate = true;
     if (dateFilter) {
-      // Both are 'yyyy-MM-dd' strings according to API
-      matchesDate = newEntry.entry_date === dateFilter;
+      const entryDate = newEntry.entry_date || (newEntry.entry_at ? format(parseISO(newEntry.entry_at), 'yyyy-MM-dd') : '');
+      matchesDate = entryDate === dateFilter;
     }
     
     let matchesWorkItem = true;
-    if (workItemFilter) {
-      matchesWorkItem = newEntry.work_item_id.toString() === workItemFilter.toString();
+    if (workItemFilter && (newEntry.work_item_id !== undefined || newEntry.workItemId !== undefined)) {
+      const wid = newEntry.work_item_id !== undefined ? newEntry.work_item_id : newEntry.workItemId;
+      matchesWorkItem = wid.toString() === workItemFilter.toString();
     }
 
     if (matchesDate && matchesWorkItem) {
-      setEntries(prev => [newEntry, ...prev]);
+      setEntries(prev => {
+        const exists = prev.some(e => (e.client_id && e.client_id === newEntry.client_id) || (e.id && e.id === newEntry.id));
+        if (exists) return prev;
+        return [newEntry, ...prev];
+      });
       setTotal(prev => prev + 1);
     } else {
       alert("Đã lưu (không nằm trong bộ lọc hiện tại)");
@@ -313,7 +365,13 @@ export default function DiaryPage({ user }) {
                       {entry.work_item_code ? `${entry.work_item_code} - ${entry.work_item_name}` : entry.work_item_name}
                       {lockInfo?.is_locked && <Lock className="size-3.5 text-orange-600 ml-1" title="Đã khóa" />}
                     </div>
-                    <div className="flex items-center gap-4 text-[13px] text-gray-500 shrink-0">
+                    <div className="flex flex-wrap items-center gap-3 text-[13px] text-gray-500 shrink-0">
+                      {(entry.syncStatus === 'pending' || entry.isOffline) && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                          <CloudOff className="size-3.5 text-amber-500" />
+                          Đã lưu trên thiết bị — chờ đồng bộ
+                        </span>
+                      )}
                       <div className="flex items-center gap-1.5">
                         <Clock className="size-4" />
                         {format(parseISO(entry.entry_at), 'HH:mm - dd/MM/yyyy')}

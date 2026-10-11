@@ -10,6 +10,8 @@ import {
 
   getDiaryLogsByProject,
 
+  getDiaryLogsByTask,
+
   getDiaryAttachmentsByLog,
 
 } from "../lib/diaryDb";
@@ -41,6 +43,8 @@ import {
   ChevronRight,
 
   ZoomIn,
+
+  CloudOff,
 
 } from "lucide-react";
 
@@ -152,13 +156,137 @@ export default function TaskLogModal({
 
     try {
 
-      const res = await api.get(
+      let serverLogs = [];
 
-        `/projects/${effectiveProjectId}/tasks/${effectiveTaskId}/logs`,
+      let isApiFailure = false;
 
-      );
+      try {
 
-      setLogs(res.data?.data || []);
+        const res = await api.get(
+
+          `/projects/${effectiveProjectId}/tasks/${effectiveTaskId}/logs`,
+
+        );
+
+        serverLogs = res.data?.data || [];
+
+      } catch (apiErr) {
+
+        isApiFailure = true;
+
+        const isNetErr =
+
+          (typeof navigator !== "undefined" && !navigator.onLine) ||
+
+          apiErr.message === "Network Error" ||
+
+          apiErr.code === "ERR_NETWORK" ||
+
+          !apiErr.response;
+
+        if (!isNetErr) {
+
+          throw apiErr;
+
+        }
+
+      }
+
+      // Khôi phục các nhật ký đã lưu cục bộ trong IndexedDB (T66)
+
+      let offlineLogs = [];
+
+      try {
+
+        const localLogs = await getDiaryLogsByTask(Number(effectiveTaskId));
+
+        const pendingLogs = (localLogs || []).filter(
+
+          (l) => l.syncStatus === "pending" || l.syncStatus === "failed",
+
+        );
+
+        for (const pl of pendingLogs) {
+
+          const localAttachments = [];
+
+          try {
+
+            const rawAttach = await getDiaryAttachmentsByLog(pl.id);
+
+            for (const att of rawAttach || []) {
+
+              localAttachments.push({
+
+                ...att,
+
+                id: att.id,
+
+                url:
+
+                  typeof Blob !== "undefined" && att.blob instanceof Blob
+
+                    ? URL.createObjectURL(att.blob)
+
+                    : att.url || "",
+
+                file_name: att.fileName || att.file_name || "anh-hien-truong",
+
+                file_size: att.size || att.file_size || 0,
+
+              });
+
+            }
+
+          } catch {
+
+            /* ignore attachment restoration error */
+
+          }
+
+          offlineLogs.push({
+
+            ...pl,
+
+            id: pl.id,
+
+            content: pl.content,
+
+            created_at: pl.createdAt || pl.created_at || new Date().toISOString(),
+
+            user_name: pl.user_name || "Đã lưu trên thiết bị - chờ đồng bộ",
+
+            syncStatus: pl.syncStatus || "pending",
+
+            attachments: localAttachments,
+
+          });
+
+        }
+
+      } catch (dbErr) {
+
+        console.warn("Không thể đọc nhật ký từ IndexedDB:", dbErr);
+
+      }
+
+      // Hợp nhất: đặt các bản ghi offline lên đầu, tránh trùng lặp
+
+      const serverLogIds = new Set(serverLogs.map((l) => l.id));
+
+      const filteredOffline = offlineLogs.filter((ol) => !serverLogIds.has(ol.id));
+
+      const mergedLogs = [...filteredOffline, ...serverLogs];
+
+      if (isApiFailure && mergedLogs.length === 0) {
+
+        setError("Không thể kết nối đến máy chủ và chưa có nhật ký lưu trên thiết bị.");
+
+      } else {
+
+        setLogs(mergedLogs);
+
+      }
 
     } catch (err) {
 
@@ -207,9 +335,7 @@ export default function TaskLogModal({
       }
 
     }
-
     // eslint-disable-next-line react-hooks/exhaustive-deps
-
   }, [isOpen, projectId, taskId]);
 
 
@@ -1369,19 +1495,35 @@ export default function TaskLogModal({
 
                       <div className="flex items-center justify-between text-xs text-slate-500 border-b border-slate-100 pb-2">
 
-                        <div className="flex items-center gap-1.5 font-medium text-slate-700">
+                        <div className="flex items-center gap-2">
 
-                          <User className="w-3.5 h-3.5 text-blue-600" />
+                          <div className="flex items-center gap-1.5 font-medium text-slate-700">
 
-                          <span>
+                            <User className="w-3.5 h-3.5 text-blue-600" />
 
-                            {log.user_name ||
+                            <span>
 
-                              log.user_email ||
+                              {log.user_name ||
 
-                              `Người dùng #${log.user_id}`}
+                                log.user_email ||
 
-                          </span>
+                                `Người dùng #${log.user_id}`}
+
+                            </span>
+
+                          </div>
+
+                          {(log.syncStatus === "pending" || log.isOffline) && (
+
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+
+                              <CloudOff className="w-3 h-3 text-amber-500" />
+
+                              Đã lưu trên thiết bị — chờ đồng bộ
+
+                            </span>
+
+                          )}
 
                         </div>
 

@@ -180,33 +180,68 @@ export default function DiaryEntryForm({
     if (isSubmitting) return;
 
     const wErr = validate("workItemId", workItemId);
-
     const cErr = validate("content", content);
-
     const dErr = validate("entryAt", entryAt);
 
     setErrors({ workItemId: wErr, content: cErr, entryAt: dErr });
-
     if (wErr || cErr || dErr) return;
 
     setIsSubmitting(true);
-
     setSubmitMessage(null);
+
+    const clientUuid = clientId || crypto.randomUUID();
+    if (!clientId) setClientId(clientUuid);
 
     const payload = {
       work_item_id: parseInt(workItemId, 10),
-
       content: content.trim(),
-
-      client_id: clientId,
-
+      client_id: clientUuid,
       entry_at: new Date(entryAt).toISOString(),
     };
+
+    const handleOfflineStorage = async () => {
+      try {
+        await saveDiaryLog({
+          id: clientUuid,
+          client_id: clientUuid,
+          clientId: clientUuid,
+          projectId: Number(projectId),
+          project_id: Number(projectId),
+          work_item_id: parseInt(workItemId, 10),
+          workItemId: parseInt(workItemId, 10),
+          work_item_name: selectedCategory?.name || `Hạng mục #${workItemId}`,
+          work_item_code: selectedCategory?.code || "",
+          content: content.trim(),
+          entry_at: new Date(entryAt).toISOString(),
+          entry_date: format(parseISO(entryAt), "yyyy-MM-dd"),
+          created_by_name: user?.name || user?.full_name || user?.email || "Tôi",
+          syncStatus: "pending",
+          isOffline: true,
+        });
+
+        setSubmitMessage({
+          type: "warning",
+          text: "Đã lưu trên thiết bị — chờ đồng bộ. Chưa gửi được, nội dung vẫn được giữ. Vui lòng thử lại.",
+        });
+      } catch (storageError) {
+        console.error("Không thể lưu nhật ký ngoại tuyến:", storageError);
+        setSubmitMessage({
+          type: "error",
+          text: "Không thể lưu cục bộ trên thiết bị. Vui lòng thử lại.",
+        });
+      }
+    };
+
+    // Nếu trình duyệt đang offline, lưu trực tiếp IndexedDB, không gọi API
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      await handleOfflineStorage();
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       const res = await api.post(
         `/projects/${projectId}/diary-entries`,
-
         payload,
       );
 
@@ -218,54 +253,38 @@ export default function DiaryEntryForm({
 
       onSuccess(res.data.entry || res.data);
     } catch (err) {
-      if (!err.response) {
-        // Không có phản hồi từ máy chủ: lưu nhật ký vào IndexedDB để dùng ngoại tuyến
-        try {
-          await saveDiaryLog({
-            projectId: Number(projectId),
-            work_item_id: parseInt(workItemId, 10),
-            content: content.trim(),
-            client_id: clientId,
-            entry_at: new Date(entryAt).toISOString(),
-            syncStatus: "pending",
-          });
-        } catch (storageError) {
-          console.error("Không thể lưu nhật ký ngoại tuyến:", storageError);
-        }
+      const isNetworkError =
+        (typeof navigator !== "undefined" && !navigator.onLine) ||
+        err.message === "Network Error" ||
+        err.message === "Network error" ||
+        err.code === "ERR_NETWORK" ||
+        (!err.response && !err.status);
 
-        // Giữ lại bản nháp trong localStorage và giữ form mở để người dùng có thể gửi lại
-        setSubmitMessage({
-          type: "warning",
-          text: "Chưa gửi được, nội dung vẫn được giữ. Vui lòng thử lại.",
-        });
+      if (isNetworkError) {
+        await handleOfflineStorage();
       } else {
-        const status = err.response.status;
-
-        const code = err.response.data?.code;
+        const status = err.response?.status;
+        const code = err.response?.data?.code;
 
         if (status === 403) {
           setSubmitMessage({
             type: "error",
-
             text: "Bạn không có quyền ghi nhật ký.",
           });
         } else if (status === 422 && code === "INVALID_WORK_ITEM") {
           setSubmitMessage({
             type: "error",
-
             text: "Hạng mục không hợp lệ hoặc không thuộc dự án.",
           });
         } else if (status === 400) {
           setSubmitMessage({
             type: "error",
-
             text: "Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.",
           });
         } else {
           setSubmitMessage({
             type: "error",
-
-            text: err.response.data?.message || "Có lỗi xảy ra khi lưu.",
+            text: err.response?.data?.message || "Có lỗi xảy ra khi lưu.",
           });
         }
       }
