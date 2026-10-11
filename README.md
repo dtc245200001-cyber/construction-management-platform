@@ -199,3 +199,49 @@ Trong quá trình kiểm thử T-47, kết quả sau khi restore khớp với da
 | `roles` | 6 | 6 |
 
 Việc kiểm thử cũng xác nhận rằng script từ chối restore trực tiếp vào database đang chạy của ứng dụng.
+
+## Khối lượng và đơn giá hợp đồng (S-35, T-85)
+
+### Bảng cấu trúc cột (bảng `work_items`)
+
+| Tên cột | Kiểu dữ liệu | Ý nghĩa | Ràng buộc |
+|---|---|---|---|
+| `quantity` | `NUMERIC(14,3)` | Khối lượng hợp đồng của hạng mục lá | Cho phép `NULL`, `>= 0` (`work_items_quantity_non_negative`) |
+| `unit` | `VARCHAR(30)` | Đơn vị tính hợp đồng (m3, m2, tấn...) | Cho phép `NULL`, không rỗng, đã trim khoảng trắng đầu/cuối (`work_items_unit_trimmed_not_empty`) |
+| `unit_price` | `NUMERIC(16,2)` | Đơn giá hợp đồng của hạng mục lá | Cho phép `NULL`, `>= 0` (`work_items_unit_price_non_negative`) |
+| `contract_value` | `NUMERIC(30,2)` | Thành tiền / giá trị hợp đồng của hạng mục lá | Cột sinh tự động: `GENERATED ALWAYS AS (ROUND(quantity * unit_price, 2)) STORED` |
+
+- Ràng buộc phối hợp `work_items_contract_all_or_none`: hoặc cả 3 cột (`quantity`, `unit`, `unit_price`) đều `NULL`, hoặc cả 3 cột đều `NOT NULL`.
+- Cột sinh `contract_value` được bảo vệ: PostgreSQL từ chối can thiệp trực tiếp (lỗi mã `428C9`).
+
+### Định nghĩa hạng mục lá
+- Hạng mục lá là `work_item` không có bất kỳ hạng mục con nào (`parent_id = item.id`).
+- Công việc ở bảng `tasks` trực thuộc hạng mục KHÔNG tính là hạng mục con. Hạng mục lá có chứa tasks vẫn được phép khai báo khối lượng, đơn vị và đơn giá hợp đồng bình thường.
+
+### Quy tắc làm tròn của `contract_value`
+- Giá trị hợp đồng của từng lá được làm tròn bằng hàm `ROUND` của PostgreSQL: `ROUND(quantity * unit_price, 2)` (quy tắc làm tròn nửa ra xa số 0 - round half away from zero).
+- Mỗi hạng mục lá làm tròn độc lập trước khi lưu trữ (`STORED`).
+- Giá trị hợp đồng của hạng mục cha sau này sẽ bằng tổng (`SUM`) các giá trị `contract_value` đã làm tròn của các hạng mục lá con cháu. Nhờ đó, tổng ở cha luôn khớp tuyệt đối 100% với các lá, không có độ lệch số học do làm tròn sau phép cộng.
+
+### Ba lưu ý quan trọng cho lập trình viên T-86 (API) và T-87 (Giao diện)
+1. **Kiểu dữ liệu và định dạng chuỗi**:
+   - Thư viện `pg` trả về kiểu `NUMERIC` dưới dạng `string` (chuỗi ký tự).
+   - **TUYỆT ĐỐI KHÔNG** dùng `Number()`, `parseFloat()`, hay các phép toán số thực (`+`, `-`, `*`, `/`) nguyên bản của JavaScript trên các cột này để tránh lỗi mất độ chính xác dấu phẩy động nhị phân (binary floating-point).
+   - Nếu cần tính toán ở tầng backend/frontend, hãy sử dụng thư viện số học thập phân chính xác (như `decimal.js`, `bignumber.js`) hoặc ủy quyền cho SQL (`SUM()`, `ROUND()`).
+2. **Kiểm tra số chữ số thập phân ở API (chống làm tròn im lặng)**:
+   - PostgreSQL tự động làm tròn im lặng các số vượt quá scale của cột (ví dụ `1.0005` thành `1.001` cho `numeric(14,3)` và `0.005` thành `0.01` cho `numeric(16,2)`).
+   - Do database không chủ động từ chối, tầng API (T-86) **BẮT BUỘC** phải validate dữ liệu đầu vào: từ chối các giá trị có quá 3 chữ số thập phân đối với `quantity` và quá 2 chữ số thập phân đối với `unit_price`.
+3. **Ánh xạ lỗi cơ sở dữ liệu sang thông báo người dùng**:
+   - Khi trigger hoặc constraint cơ sở dữ liệu phát hiện vi phạm, Postgres trả về mã lỗi:
+     - `23514` (`check_violation`):
+       - `work_items_contract_leaf_only`: Ánh xạ sang thông báo tiếng Việt giải thích hạng mục cha không được khai giá trị hoặc không được thêm con vào cha đã có giá trị.
+       - `work_items_contract_all_or_none`: Phải nhập đồng thời cả khối lượng, đơn vị tính và đơn giá.
+       - `work_items_quantity_non_negative`: Khối lượng hợp đồng không được âm.
+       - `work_items_unit_price_non_negative`: Đơn giá hợp đồng không được âm.
+       - `work_items_unit_trimmed_not_empty`: Đơn vị tính không được rỗng hoặc chứa khoảng trắng thừa.
+     - `22003` (`numeric_value_out_of_range`): Số lượng hoặc đơn giá vượt quá giới hạn lưu trữ cho phép.
+     - `22001` (`string_data_right_truncation`): Đơn vị tính vượt quá 30 ký tự.
+
+### Phân biệt với `tasks.planned_quantity`
+- `work_items.quantity` / `unit` / `unit_price`: Khối lượng và đơn giá HỢP ĐỒNG ký kết với chủ đầu tư/nhà thầu cho từng hạng mục công việc WBS (Story S-35).
+- `tasks.planned_quantity` / `quantity_unit`: Khối lượng KẾ HOẠCH thi công chi tiết của từng đầu việc (task) do đội thi công thực hiện (Story S-26). Hai khái niệm này độc lập và không thay thế cho nhau.
