@@ -31,6 +31,7 @@ import DiaryPage from './pages/DiaryPage';
 
 // S-26 / T-60
 import FieldPage from './pages/FieldPage';
+import ContractQuantityPage from './pages/ContractQuantityPage';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -187,6 +188,11 @@ function App() {
           <Route
             path="/wbs-diagram"
             element={<WBSDiagramPage user={user} />}
+          />
+
+          <Route
+            path="/contract-quantities"
+            element={<ContractQuantityPage user={user} />}
           />
 
           <Route
