@@ -245,3 +245,146 @@ Việc kiểm thử cũng xác nhận rằng script từ chối restore trực t
 ### Phân biệt với `tasks.planned_quantity`
 - `work_items.quantity` / `unit` / `unit_price`: Khối lượng và đơn giá HỢP ĐỒNG ký kết với chủ đầu tư/nhà thầu cho từng hạng mục công việc WBS (Story S-35).
 - `tasks.planned_quantity` / `quantity_unit`: Khối lượng KẾ HOẠCH thi công chi tiết của từng đầu việc (task) do đội thi công thực hiện (Story S-26). Hai khái niệm này độc lập và không thay thế cho nhau.
+
+## API khối lượng và đơn giá hợp đồng (S-35, T-86)
+
+### 1. Bảng phân quyền (Server-side Role Matrix)
+
+| Endpoint | Phương thức | Quyền xem/thao tác | Mô tả phản hồi |
+|---|---|---|---|
+| `/api/projects/:projectId/contract-quantities` | `GET` | `CHU_DAU_TU`, `BAN_QUAN_LY`, `KE_TOAN` | Đầy đủ: gồm `quantity`, `unit`, `unit_price`, `contract_value`, `contract_total` và `project_total`. |
+| `/api/projects/:projectId/contract-quantities` | `GET` | `KY_SU_GIAM_SAT`, `CHI_HUY_TRUONG` | Chỉ khối lượng: BỎ HẲN các khoá giá (`unit_price`, `contract_value`, `contract_total`, `project_total`). |
+| `/api/projects/:projectId/contract-quantities` | `GET` | `DOI_TRUONG`, người ngoài dự án | Từ chối: `403 Forbidden`. |
+| `/api/projects/:projectId/work-items/:workItemId/contract-quantity` | `PUT` | `CHU_DAU_TU`, `BAN_QUAN_LY` | Cập nhật khối lượng, đơn vị, đơn giá cho hạng mục lá (`200 OK`). Các vai trò khác: `403`. |
+| `/api/projects/:projectId/work-items/:workItemId/contract-quantity` | `DELETE` | `CHU_DAU_TU`, `BAN_QUAN_LY` | Xoá giá trị (đưa về NULL - idempotent `200 OK`). Các vai trò khác: `403`. |
+
+### 2. Danh sách Endpoint & Định dạng dữ liệu
+
+#### 2.1. GET `/api/projects/:projectId/contract-quantities`
+- Header: `Cache-Control: no-store`
+- Phản hồi mẫu (đầy đủ giá - `can_view_prices = true`):
+```json
+{
+  "project_id": 1,
+  "can_view_prices": true,
+  "units": ["m", "m2", "m3", "md", "kg", "tấn", "lít", "cái", "bộ", "cây", "viên", "tấm", "công", "ca", "trọn gói"],
+  "items": [
+    {
+      "id": 10,
+      "parent_id": null,
+      "code": "HM-01",
+      "name": "Phần ngầm",
+      "is_leaf": false,
+      "quantity": null,
+      "unit": null,
+      "unit_price": null,
+      "contract_value": null,
+      "contract_total": "1003.69"
+    },
+    {
+      "id": 11,
+      "parent_id": 10,
+      "code": "HM-01.01",
+      "name": "Đào đất móng",
+      "is_leaf": true,
+      "quantity": "333.333",
+      "unit": "bộ",
+      "unit_price": "3.00",
+      "contract_value": "1000.00",
+      "contract_total": "1000.00"
+    }
+  ],
+  "project_total": "1003.69"
+}
+```
+- Phản hồi mẫu (chỉ khối lượng - `can_view_prices = false`):
+```json
+{
+  "project_id": 1,
+  "can_view_prices": false,
+  "units": ["m", "m2", "m3", "md", "kg", "tấn", "lít", "cái", "bộ", "cây", "viên", "tấm", "công", "ca", "trọn gói"],
+  "items": [
+    {
+      "id": 11,
+      "parent_id": 10,
+      "code": "HM-01.01",
+      "name": "Đào đất móng",
+      "is_leaf": true,
+      "quantity": "333.333",
+      "unit": "bộ"
+    }
+  ]
+}
+```
+
+#### 2.2. PUT `/api/projects/:projectId/work-items/:workItemId/contract-quantity`
+- Body mẫu:
+```json
+{
+  "quantity": "1234.567",
+  "unit": "m3",
+  "unit_price": "89000.50"
+}
+```
+- Phản hồi thành công `200 OK`:
+```json
+{
+  "id": 11,
+  "quantity": "1234.567",
+  "unit": "m3",
+  "unit_price": "89000.50",
+  "contract_value": "109877080.28"
+}
+```
+
+#### 2.3. DELETE `/api/projects/:projectId/work-items/:workItemId/contract-quantity`
+- Phản hồi thành công `200 OK` (idempotent):
+```json
+{
+  "id": 11,
+  "quantity": null,
+  "unit": null,
+  "unit_price": null,
+  "contract_value": null
+}
+```
+
+### 3. Quy tắc kiểm tra số thập phân và đơn vị tính
+- **Số thập phân**:
+  - `quantity`: tối đa 11 chữ số nguyên, tối đa 3 chữ số thập phân (`NUMERIC(14,3)`).
+  - `unit_price`: tối đa 14 chữ số nguyên, tối đa 2 chữ số thập phân (`NUMERIC(16,2)`).
+  - Từ chối số âm, phân tách hàng nghìn bằng dấu chấm `"1.000.000"`, dấu phẩy, dạng khoa học `"1e3"`, chuỗi rỗng.
+  - Phần thập phân thừa toàn số 0 được chấp nhận và cắt gọn (ví dụ `"1.2300"` -> lưu `"1.230"`). Phần thập phân thừa khác 0 bị từ chối để chống Postgres làm tròn im lặng.
+- **Đơn vị tính**:
+  - Tự động chuẩn hoá Unicode NFC, trim khoảng trắng, hỗ trợ ký hiệu mũ `"m²" -> "m2"`, `"m³" -> "m3"`.
+  - So khớp không phân biệt hoa thường với danh mục chuẩn: `m`, `m2`, `m3`, `md`, `kg`, `tấn`, `lít`, `cái`, `bộ`, `cây`, `viên`, `tấm`, `công`, `ca`, `trọn gói`.
+
+### 4. Bảng mã lỗi HTTP trả về
+- `200 OK`: Thành công.
+- `400 Bad Request`: Tham số ID sai, đơn vị tính không hợp lệ, hoặc dữ liệu số sai định dạng (trả về `{ message, errors: { quantity, unit, unit_price } }` gom toàn bộ lỗi).
+- `401 Unauthorized`: Chưa đăng nhập.
+- `403 Forbidden`: Người dùng không có quyền trên endpoint này hoặc không thuộc dự án.
+- `404 Not Found`: Không tìm thấy hạng mục trong dự án (`"Không tìm thấy hạng mục"`).
+- `422 Unprocessable Entity`: Cố tình khai khối lượng cho hạng mục cha (`"Hạng mục cha không khai khối lượng hợp đồng trực tiếp; hãy khai ở các hạng mục lá bên dưới (hiện có N hạng mục con)."`).
+
+### 5. Lệnh cURL mẫu
+```bash
+# 1. Đăng nhập lấy cookie
+curl -i -X POST http://localhost:5000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"bql@company.com","password":"Password123"}'
+
+# 2. Đọc danh sách khối lượng và giá trị hợp đồng
+curl -X GET http://localhost:5000/api/projects/1/contract-quantities \
+  -b "cmp.sid=s%3AosBnnoMXD1SJEj56..."
+
+# 3. Cập nhật khối lượng hợp đồng cho hạng mục lá ID 5
+curl -X PUT http://localhost:5000/api/projects/1/work-items/5/contract-quantity \
+  -b "cmp.sid=s%3AosBnnoMXD1SJEj56..." \
+  -H "Content-Type: application/json" \
+  -d '{"quantity":"1234.567","unit":"m3","unit_price":"89000.50"}'
+
+# 4. Xoá khối lượng hợp đồng
+curl -X DELETE http://localhost:5000/api/projects/1/work-items/5/contract-quantity \
+  -b "cmp.sid=s%3AosBnnoMXD1SJEj56..."
+```
