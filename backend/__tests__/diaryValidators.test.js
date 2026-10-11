@@ -4,8 +4,15 @@ describe('Diary Validators', () => {
   describe('validateCreateDiaryEntry', () => {
     it('should return errors for invalid work_item_id', () => {
       expect(validateCreateDiaryEntry({})).toContain('work_item_id must be a positive integer');
+      expect(validateCreateDiaryEntry({ work_item_id: null })).toContain('work_item_id must be a positive integer');
+      expect(validateCreateDiaryEntry({ work_item_id: undefined })).toContain('work_item_id must be a positive integer');
+      expect(validateCreateDiaryEntry({ work_item_id: 0 })).toContain('work_item_id must be a positive integer');
       expect(validateCreateDiaryEntry({ work_item_id: -1 })).toContain('work_item_id must be a positive integer');
       expect(validateCreateDiaryEntry({ work_item_id: '123' })).toContain('work_item_id must be a positive integer');
+      expect(validateCreateDiaryEntry({ work_item_id: 'task-1' })).toContain('work_item_id must be a positive integer');
+      expect(validateCreateDiaryEntry({ work_item_id: 'Hạng mục A' })).toContain('work_item_id must be a positive integer');
+      expect(validateCreateDiaryEntry({ work_item_id: NaN })).toContain('work_item_id must be a positive integer');
+      expect(validateCreateDiaryEntry({ work_item_id: 1.5 })).toContain('work_item_id must be a positive integer');
     });
 
     it('should return errors for invalid content', () => {

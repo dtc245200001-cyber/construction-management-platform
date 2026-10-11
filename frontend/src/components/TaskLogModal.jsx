@@ -94,11 +94,21 @@ export default function TaskLogModal({
 
 }) {
 
-  const effectiveProjectId =
+  const parsePositiveIntOrNull = (val) => {
+    if (!val) return null;
+    if (typeof val === "string" && val.startsWith("task-")) {
+      const num = Number(val.replace(/^task-/, ""));
+      return Number.isInteger(num) && num > 0 ? num : null;
+    }
+    const num = Number(val);
+    return Number.isInteger(num) && num > 0 ? num : null;
+  };
 
-    projectId || localStorage.getItem("currentProjectId");
+  const effectiveProjectId = parsePositiveIntOrNull(
+    projectId || (typeof localStorage !== "undefined" ? localStorage.getItem("currentProjectId") : null)
+  );
 
-  const effectiveTaskId = taskId;
+  const effectiveTaskId = parsePositiveIntOrNull(taskId);
 
 
 

@@ -7,6 +7,7 @@ import { FileText, Search, Plus, Filter, X, Clock, User, Hash, Lock, Unlock, His
 import { can } from '../lib/permissions';
 import { getDiaryLogsByProject, getDiaryAttachmentsByLog, isBlob } from '../lib/diaryDb';
 import DiaryEntryForm from '../components/DiaryEntryForm';
+import { resolveWorkItemId } from '../utils/diaryUtils';
 import DiaryWeekStrip from '../components/DiaryWeekStrip';
 import DiaryDayCard from '../components/DiaryDayCard';
 
@@ -88,7 +89,12 @@ export default function DiaryPage({ user }) {
     try {
       const params = new URLSearchParams();
       if (dateFilter) params.append('date', dateFilter);
-      if (workItemFilter) params.append('work_item_id', workItemFilter);
+      if (workItemFilter) {
+        const resolvedFilterId = resolveWorkItemId(workItemFilter, categories);
+        if (resolvedFilterId) {
+          params.append('work_item_id', String(resolvedFilterId));
+        }
+      }
       params.append('limit', 50);
 
       const res = await api.get(`/projects/${projectId}/diary-entries?${params.toString()}`);
@@ -111,6 +117,7 @@ export default function DiaryPage({ user }) {
 
       // Đọc các nhật ký lưu ngoại tuyến trong IndexedDB
       const offlineLogs = await getDiaryLogsByProject(Number(projectId));
+      const resolvedFilterId = workItemFilter ? resolveWorkItemId(workItemFilter, categories) : null;
       const pendingLogs = (offlineLogs || [])
         .filter(l => l.syncStatus === 'pending' || l.isOffline)
         .filter(l => {
@@ -120,7 +127,7 @@ export default function DiaryPage({ user }) {
           }
           if (workItemFilter) {
             const wid = l.work_item_id !== undefined ? l.work_item_id : l.workItemId;
-            if (String(wid) !== String(workItemFilter)) return false;
+            if (resolvedFilterId && String(wid) !== String(resolvedFilterId)) return false;
           }
           return true;
         });
@@ -376,11 +383,17 @@ export default function DiaryPage({ user }) {
             className="min-h-[44px] w-full sm:max-w-[300px] flex-1 px-3.5 border border-gray-200 rounded-xl text-[14px] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-gray-50 hover:bg-gray-100 transition-colors"
           >
             <option value="">Tất cả hạng mục</option>
-            {categories.map(c => (
-              <option key={c.id} value={c.id}>
-                {c.code ? `${c.code} - ${c.name}` : c.name}
-              </option>
-            ))}
+            {categories.map(c => {
+              const isTask = c.type === "task" || String(c.id).startsWith("task-");
+              const label = isTask
+                ? `[Công việc] ${c.name}`
+                : (c.code ? `${c.code} - ${c.name}` : c.name);
+              return (
+                <option key={c.id} value={c.id}>
+                  {label}
+                </option>
+              );
+            })}
           </select>
 
           {(dateFilter || workItemFilter) && (
