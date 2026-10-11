@@ -219,9 +219,9 @@ export default function DiaryEntryForm({
       onSuccess(res.data.entry || res.data);
     } catch (err) {
       if (!err.response) {
-        // Không có phản hồi từ máy chủ: lưu nhật ký vào IndexedDB để dùng ngoại tuyến.
+        // Không có phản hồi từ máy chủ: lưu nhật ký vào IndexedDB để dùng ngoại tuyến
         try {
-          const offlineEntry = await saveDiaryLog({
+          await saveDiaryLog({
             projectId: Number(projectId),
             work_item_id: parseInt(workItemId, 10),
             content: content.trim(),
@@ -229,30 +229,15 @@ export default function DiaryEntryForm({
             entry_at: new Date(entryAt).toISOString(),
             syncStatus: "pending",
           });
-
-          // Chỉ xóa bản nháp sau khi IndexedDB xác nhận lưu thành công.
-          try {
-            localStorage.removeItem(draftKey);
-          } catch {
-            // Bản nháp localStorage không ảnh hưởng đến bản đã lưu trong IndexedDB.
-          }
-
-          setSubmitMessage({
-            type: "warning",
-            text: "Mất kết nối mạng. Nhật ký đã được lưu trên thiết bị và đang chờ đồng bộ.",
-          });
-
-          onSuccess({
-            ...offlineEntry,
-            isOffline: true,
-          });
         } catch (storageError) {
           console.error("Không thể lưu nhật ký ngoại tuyến:", storageError);
-          setSubmitMessage({
-            type: "error",
-            text: "Không thể lưu nhật ký ngoại tuyến. Vui lòng thử lại và kiểm tra dung lượng trình duyệt.",
-          });
         }
+
+        // Giữ lại bản nháp trong localStorage và giữ form mở để người dùng có thể gửi lại
+        setSubmitMessage({
+          type: "warning",
+          text: "Chưa gửi được, nội dung vẫn được giữ. Vui lòng thử lại.",
+        });
       } else {
         const status = err.response.status;
 

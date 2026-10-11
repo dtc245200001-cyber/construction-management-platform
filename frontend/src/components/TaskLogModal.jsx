@@ -675,9 +675,19 @@ export default function TaskLogModal({
 
     } catch (err) {
 
-      // Lỗi kết nối không có phản hồi HTTP: giữ dữ liệu offline
+      const errMsg =
 
-      if (!err.response) {
+        err.response?.data?.message ||
+
+        err.message ||
+
+        "Không thể gửi nhật ký lên máy chủ.";
+
+
+
+      // Nếu thiết bị mất mạng ngoại tuyến trong lúc gửi thì lưu dữ liệu offline
+
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
 
         try {
 
@@ -713,15 +723,7 @@ export default function TaskLogModal({
 
       } else {
 
-        setSubmitError(
-
-          err.response?.data?.message ||
-
-            err.message ||
-
-            "Không thể gửi nhật ký lên máy chủ.",
-
-        );
+        setSubmitError(errMsg);
 
       }
 
