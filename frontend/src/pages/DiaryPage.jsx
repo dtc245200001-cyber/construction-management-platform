@@ -4,11 +4,10 @@ import api from '../lib/api';
 import { format, parseISO } from 'date-fns';
 
 import { FileText, Search, Plus, Filter, X, Clock, User, Hash, Lock, Unlock, History, AlertCircle } from 'lucide-react';
+import { can } from '../lib/permissions';
 import DiaryEntryForm from '../components/DiaryEntryForm';
 import DiaryWeekStrip from '../components/DiaryWeekStrip';
 import DiaryDayCard from '../components/DiaryDayCard';
-
-const ALLOWED_ROLES = ['ky_su_giam_sat', 'chi_huy_truong', 'ban_quan_ly', 'doi_truong', 'system_admin'];
 
 
 export default function DiaryPage({ user }) {
@@ -38,8 +37,10 @@ export default function DiaryPage({ user }) {
 
   const [projectRole, setProjectRole] = useState(null);
 
-  const canLock = user && (user.is_system_admin || projectRole === 'ky_su_giam_sat');
-  const canUnlock = user && (user.is_system_admin || projectRole === 'ban_quan_ly');
+  // S-27: chốt/mở sổ nhật ký là quyền của Chỉ huy trưởng (đồng bộ backend
+  // site_log.close_daily / site_log.correct_locked qua ma trận dùng chung).
+  const canLock = user && (user.is_system_admin || can(projectRole, 'site_log.close_daily'));
+  const canUnlock = user && (user.is_system_admin || can(projectRole, 'site_log.correct_locked'));
   const isPastDate = dateFilter && dateFilter < todayVN;
   useEffect(() => {
     if (location.state?.openForm) {

@@ -2,10 +2,9 @@
 
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
-const { checkProjectAccess, allow, createProjectRouter } = require("../middleware/projectAccess");
+const { checkProjectAccess, requirePermission, createProjectRouter } = require("../middleware/projectAccess");
 const asyncHandler = require("../utils/asyncHandler");
 const { parsePositiveInt } = require("../utils/validators");
-const { ROLES } = require("../utils/constants");
 const { closeMilestoneWarnings } = require("../services/milestoneWarnings");
 const { getOffsetDays, DEFAULT_CALENDAR } = require("../algorithms/workingDays");
 
@@ -33,7 +32,7 @@ router.get(
   "/:projectId/milestones",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });
@@ -79,7 +78,7 @@ router.post(
   "/:projectId/work-items/:workItemId/milestones",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY]),
+  requirePermission("milestone.manage"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     const workItemId = parsePositiveInt(req.params.workItemId);
@@ -165,7 +164,7 @@ router.delete(
   "/:projectId/work-items/:workItemId/milestones",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY]),
+  requirePermission("milestone.manage"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     const workItemId = parsePositiveInt(req.params.workItemId);
@@ -228,7 +227,7 @@ router.get(
   "/:projectId/warnings",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
 
@@ -276,7 +275,7 @@ router.get(
   "/:projectId/warnings/:warningId/critical-path",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     const warningId = parsePositiveInt(req.params.warningId);

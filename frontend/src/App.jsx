@@ -17,6 +17,7 @@ import PublicProjectDetailPage from './pages/PublicProjectDetailPage';
 import ProjectsPage from './pages/ProjectsPage';
 import LandingPage from './pages/LandingPage';
 import WBSPage from './pages/WBSPage';
+import WBSDiagramPage from './pages/WBSDiagramPage';
 import MembersPage from './pages/MembersPage';
 import AdminPage from './pages/AdminPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -69,14 +70,7 @@ function App() {
 
         {/* ================= LOGIN ================= */}
         <Route element={<AuthLayout />}>
-          <Route
-            path="/login"
-            element={
-              user
-                ? <Navigate to="/" replace />
-                : <LoginPage setUser={setUser} />
-            }
-          />
+          <Route path="/login" element={<LoginPage setUser={setUser} />} />
         </Route>
 
         <Route
@@ -188,6 +182,11 @@ function App() {
           <Route
             path="/wbs"
             element={<WBSPage user={user} />}
+          />
+
+          <Route
+            path="/wbs-diagram"
+            element={<WBSDiagramPage user={user} />}
           />
 
           <Route

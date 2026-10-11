@@ -280,4 +280,53 @@ describe('DiaryPage', () => {
       await waitFor(() => expect(screen.getByText(/Bạn không có quyền ghi nhật ký/i)).toBeInTheDocument());
     });
   });
+
+  describe('Chốt / mở sổ nhật ký (S-27, đồng bộ backend)', () => {
+    // Render với membership role cho trước và ngày quá khứ (hôm qua) để nút
+    // Chốt sổ đủ điều kiện hiển thị (backend chỉ cho chốt ngày đã qua).
+    const renderWithRole = async (membership, dateFilter) => {
+      api.get.mockImplementation((url) => {
+        if (url.includes('/projects/') && !url.includes('/diary-entries') && !url.includes('/diary-locks')) {
+          return Promise.resolve({ data: { membership } });
+        }
+        if (url.includes('/tree/all')) {
+          return Promise.resolve({ data: mockCategories });
+        }
+        if (url.includes('/diary-entries')) {
+          return Promise.resolve({ data: mockEntries });
+        }
+        if (url.includes('/diary-locks/')) {
+          return Promise.resolve({ data: { is_locked: false } });
+        }
+        return Promise.reject(new Error('not mocked'));
+      });
+      renderPage({ id: 9, name: 'Test user' });
+      await waitFor(() => expect(screen.getByText('Đổ bê tông')).toBeInTheDocument());
+      if (dateFilter) {
+        fireEvent.change(document.querySelector('input[type="date"]'), {
+          target: { value: dateFilter },
+        });
+      }
+    };
+
+    // Hôm qua (trừ 1 ngày tuyệt đối — chắc chắn < hôm nay dù múi giờ nào).
+    const yesterday = format(new Date(Date.now() - 24 * 60 * 60 * 1000), 'yyyy-MM-dd');
+
+    it('Chỉ huy trưởng thấy nút Chốt sổ ở ngày đã qua', async () => {
+      await renderWithRole('chi_huy_truong', yesterday);
+      expect(await screen.findByText('Chốt sổ')).toBeInTheDocument();
+    });
+
+    it('Kỹ sư giám sát KHÔNG thấy nút Chốt sổ (đồng bộ site_log.close_daily)', async () => {
+      await renderWithRole('ky_su_giam_sat', yesterday);
+      await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/diary-entries')));
+      expect(screen.queryByText('Chốt sổ')).not.toBeInTheDocument();
+    });
+
+    it('Ban quản lý KHÔNG thấy nút Chốt sổ', async () => {
+      await renderWithRole('ban_quan_ly', yesterday);
+      await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/diary-entries')));
+      expect(screen.queryByText('Chốt sổ')).not.toBeInTheDocument();
+    });
+  });
 });

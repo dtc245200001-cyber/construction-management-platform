@@ -1,4 +1,4 @@
-const { createEmailLog, processEmailLogs } = require('../lib/emailSender');
+const { createEmailLog, processEmailLogs, reapStalePendingLogs } = require('../lib/emailSender');
 const db = require('../config/db');
 const { sendEmail } = require('../lib/mailer');
 
@@ -119,5 +119,67 @@ describe('Email Sender (E3)', () => {
     // DB không có log này
     const checkLog = await db.query('SELECT * FROM email_logs WHERE id = $1', [logId || 0]);
     expect(checkLog.rows.length).toBe(0);
+  });
+
+  it('sendEmail treo (không resolve) thì timeout và ghi pending+retry, không kẹt vĩnh viễn', async () => {
+    // Giả lập transporter treo vô hạn (firewall chặn SMTP im lặng).
+    // Rút timeout xuống 200ms qua env để test nhanh (code đọc env mỗi lần gọi).
+    process.env.EMAIL_SEND_TIMEOUT_MS = '200';
+    try {
+      sendEmail.mockImplementationOnce(() => new Promise(() => {}));
+
+      const userRes = await db.query(
+        "INSERT INTO users (email, password_hash, name, role_id) VALUES ('test4@a.com', 'h', 'Test', 1) RETURNING id"
+      );
+      const invRes = await db.query(
+        "INSERT INTO invitations (email, token_hash, invited_by, expires_at) VALUES ('user4@x.com', 'hash4', $1, CURRENT_TIMESTAMP + interval '1 day') RETURNING id",
+        [userRes.rows[0].id]
+      );
+      const invId = invRes.rows[0].id;
+
+      const logId = await createEmailLog(db, invId, 'user4@x.com');
+
+      await processEmailLogs({ id: invId, email: 'user4@x.com', subject: 'T', html: '', text: '' });
+
+      const checkLog = await db.query('SELECT status, retry_count, error_reason FROM email_logs WHERE id = $1', [logId]);
+      // Chưa đủ 3 lần retry → vẫn pending nhưng đã tăng retry_count + có lý do
+      // timeout (lần sau resend/process tiếp sẽ thử lại, đủ 3 lần thì thành error).
+      expect(checkLog.rows[0].status).toBe('pending');
+      expect(checkLog.rows[0].retry_count).toBe(1);
+      expect(checkLog.rows[0].error_reason).toMatch(/timeout|không phản hồi/i);
+    } finally {
+      delete process.env.EMAIL_SEND_TIMEOUT_MS;
+    }
+  });
+
+  it('reapStalePendingLogs: log pending quá 15 phút bị đánh error để bấm Gửi lại', async () => {
+    const userRes = await db.query(
+      "INSERT INTO users (email, password_hash, name, role_id) VALUES ('test5@a.com', 'h', 'Test', 1) RETURNING id"
+    );
+    const invRes = await db.query(
+      "INSERT INTO invitations (email, token_hash, invited_by, expires_at) VALUES ('user5@x.com', 'hash5', $1, CURRENT_TIMESTAMP + interval '1 day') RETURNING id",
+      [userRes.rows[0].id]
+    );
+    const invId = invRes.rows[0].id;
+
+    const logId = await createEmailLog(db, invId, 'user5@x.com');
+    // Giả lập log kẹt từ 20 phút trước
+    await db.query(
+      "UPDATE email_logs SET updated_at = CURRENT_TIMESTAMP - INTERVAL '20 minutes' WHERE id = $1",
+      [logId]
+    );
+
+    // Log mới (vừa tạo) không bị dọn
+    const freshLogId = await createEmailLog(db, invId, 'user5@x.com');
+
+    const reaped = await reapStalePendingLogs();
+    expect(reaped).toBeGreaterThanOrEqual(1);
+
+    const stale = await db.query('SELECT status, error_reason FROM email_logs WHERE id = $1', [logId]);
+    expect(stale.rows[0].status).toBe('error');
+    expect(stale.rows[0].error_reason).toMatch(/Gửi lại/);
+
+    const fresh = await db.query('SELECT status FROM email_logs WHERE id = $1', [freshLogId]);
+    expect(fresh.rows[0].status).toBe('pending');
   });
 });

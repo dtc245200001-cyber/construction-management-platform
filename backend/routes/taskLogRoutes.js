@@ -8,9 +8,8 @@ const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
 const {
   checkProjectAccess,
-  allow,
+  requirePermission,
 } = require("../middleware/projectAccess");
-const { ROLES } = require("../utils/constants");
 
 const router = express.Router({ mergeParams: true });
 
@@ -70,7 +69,7 @@ router.get(
   "/:projectId/tasks/:taskId/logs",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   async (req, res, next) => {
     const projectId = Number(req.params.projectId);
     const taskId = Number(req.params.taskId);
@@ -157,7 +156,7 @@ router.post(
   "/:projectId/tasks/:taskId/logs",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   (req, res, next) => {
     upload.array("images", 10)(req, res, (err) => {
       if (err instanceof multer.MulterError) {
@@ -281,7 +280,7 @@ router.get(
   "/:projectId/tasks/:taskId/logs/:logId/attachments/:attachmentId",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   async (req, res, next) => {
     const projectId = Number(req.params.projectId);
     const taskId = Number(req.params.taskId);

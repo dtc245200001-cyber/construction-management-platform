@@ -92,10 +92,18 @@ describe("Diary Locks API Integration Tests", () => {
     expect(res.body.is_locked).toBe(false);
   });
 
-  it('Kỹ sư giám sát khóa nhật ký ngày đã qua thành công', async () => {
+  // S-27: chốt sổ cuối ngày là quyền của Chỉ huy trưởng (site_log.close_daily).
+  it('Kỹ sư giám sát KHÔNG được khóa nhật ký (chỉ Chỉ huy trưởng được chốt sổ)', async () => {
     const res = await request(app)
       .post(`/api/projects/${projectAId}/diary-locks/${pastDate2}/lock`)
       .set('Cookie', cookieKSGS);
+    expect(res.status).toBe(403);
+  });
+
+  it('Chỉ huy trưởng khóa nhật ký ngày đã qua thành công', async () => {
+    const res = await request(app)
+      .post(`/api/projects/${projectAId}/diary-locks/${pastDate2}/lock`)
+      .set('Cookie', cookieCHT);
     expect(res.status).toBe(200);
     expect(res.body.is_locked).toBe(true);
   });
@@ -108,27 +116,43 @@ describe("Diary Locks API Integration Tests", () => {
     expect(res.status).toBe(403);
   });
 
-  it('Ban quản lý mở khóa nhật ký thành công (Thuộc dự án)', async () => {
+  it('Ban quản lý KHÔNG được mở khóa (chỉ Chỉ huy trưởng được điều chỉnh nhật ký đã chốt)', async () => {
     const res = await request(app)
       .post(`/api/projects/${projectAId}/diary-locks/${pastDate2}/unlock`)
       .set('Cookie', cookieBQL)
+      .send({ reason: "Khách yêu cầu" });
+    expect(res.status).toBe(403);
+  });
+
+  it('Chỉ huy trưởng mở khóa nhật ký thành công (Thuộc dự án)', async () => {
+    const res = await request(app)
+      .post(`/api/projects/${projectAId}/diary-locks/${pastDate2}/unlock`)
+      .set('Cookie', cookieCHT)
       .send({ reason: "Khách yêu cầu" });
     expect(res.status).toBe(200);
     expect(res.body.is_locked).toBe(false);
   });
 
-  it('Ban quản lý KHÔNG được khóa nhật ký', async () => {
+  it('Ban quản lý KHÔNG được khóa nhật ký (chỉ Chỉ huy trưởng được chốt sổ)', async () => {
     const res = await request(app)
       .post(`/api/projects/${projectAId}/diary-locks/${pastDate3}/lock`)
       .set('Cookie', cookieBQL);
     expect(res.status).toBe(403);
   });
 
-  it('Chỉ huy trưởng gọi API khóa bị 403', async () => {
+  it('Kỹ sư giám sát gọi API khóa bị 403', async () => {
+    const res = await request(app)
+      .post(`/api/projects/${projectAId}/diary-locks/${pastDate4}/lock`)
+      .set('Cookie', cookieKSGS);
+    expect(res.status).toBe(403);
+  });
+
+  it('Chỉ huy trưởng khóa nhật ký ngày đã qua thành công (ngày khác)', async () => {
     const res = await request(app)
       .post(`/api/projects/${projectAId}/diary-locks/${pastDate4}/lock`)
       .set('Cookie', cookieCHT);
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    expect(res.body.is_locked).toBe(true);
   });
   
   it('Ban quản lý không có quyền ở dự án khác bị 403', async () => {

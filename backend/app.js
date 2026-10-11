@@ -6,6 +6,7 @@
 "use strict";
 
 require("dotenv").config({ path: require("path").resolve(__dirname, "../.env") });
+require("dotenv").config({ path: require("path").resolve(__dirname, ".env") });
 
 const express = require("express");
 const cors = require("cors");
@@ -193,6 +194,8 @@ const diaryDaysRoutes = require("./routes/diaryDaysRoutes");
 app.use("/api/projects", diaryDaysRoutes);
 const baselineRoutes = require("./routes/baselineRoutes");
 app.use("/api/projects", baselineRoutes);
+const contractQuantityRoutes = require("./routes/contractQuantityRoutes");
+app.use("/api/projects", contractQuantityRoutes);
 
 // â”€â”€â”€ ERROR HANDLERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(notFoundHandler);

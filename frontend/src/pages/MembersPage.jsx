@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Search,
   Shield,
+  Trash2,
   Users,
   UserPlus,
   X,
@@ -36,6 +37,27 @@ const roleLabels = {
   doi_truong: "Đội trưởng thi công",
   ke_toan: "Kế toán",
 };
+
+// Trạng thái hiển thị cho 1 lời mời: ưu tiên trạng thái đang poll (real-time,
+// ngay sau khi bấm Gửi/Gửi lại), nếu không có thì dùng dữ liệu email_logs đã lưu.
+function getInvitationStatusBadge(inv, livePollStatus) {
+  if (inv.is_expired) {
+    return { label: "Đã hết hạn", className: "bg-site-baseline/10 text-site-baseline" };
+  }
+
+  const status = livePollStatus || inv.email_status;
+
+  if (status === "sent") {
+    return { label: "Đã gửi", className: "bg-site-success/10 text-site-success" };
+  }
+  if (status === "error") {
+    return { label: "Lỗi gửi", className: "bg-site-critical/10 text-site-critical" };
+  }
+  if (status === "pending") {
+    return { label: "Đang gửi...", className: "bg-site-warning/10 text-site-warning" };
+  }
+  return { label: "Chưa gửi", className: "bg-site-baseline/10 text-site-baseline" };
+}
 
 function getErrorMessage(
   error,
@@ -104,6 +126,19 @@ export default function MembersPage({
     resendingId,
     setResendingId,
   ] = useState(null);
+
+  // invitation_id -> 'pending' | 'sent' | 'error' — trạng thái gửi email THẬT,
+  // được cập nhật bằng cách hỏi lại backend (polling) sau khi bấm Gửi/Gửi lại,
+  // vì việc gửi mail chạy bất đồng bộ nên response ban đầu luôn là "đã tạo", chưa phải "đã gửi".
+  const [
+    sendingStatus,
+    setSendingStatus,
+  ] = useState({});
+
+  const [
+    inviteSubmitting,
+    setInviteSubmitting,
+  ] = useState(false);
 
   // ==========================================================
   // TEAMS
@@ -188,9 +223,16 @@ export default function MembersPage({
   // ROLE PERMISSIONS
   // ==========================================================
 
+  const currentMember = members.find(
+    (member) => Number(member.id) === Number(user?.id)
+  );
+
+  const currentProjectRole = currentMember?.role;
+
   const canInvite =
-    user?.role === "ban_quan_ly" ||
-    user?.role === "chu_dau_tu";
+    user?.is_system_admin === true ||
+    currentProjectRole === "ban_quan_ly" ||
+    currentProjectRole === "chu_dau_tu";
 
   const canManageTeams =
     user?.role === "chu_dau_tu" ||
@@ -206,6 +248,45 @@ export default function MembersPage({
   // LOAD DATA
   // ==========================================================
 
+  const [removingId, setRemovingId] = useState(null);
+
+  const handleRemoveMember = async (member) => {
+    if (Number(member.id) === Number(user?.id)) {
+      alert("Bạn không thể tự xóa mình khỏi dự án.");
+      return;
+    }
+
+    if (member.role === "chu_dau_tu") {
+      alert("Không thể xóa Chủ đầu tư khỏi dự án.");
+      return;
+    }
+
+    if (!window.confirm(
+      `Bạn có chắc muốn xóa ${member.name || member.email} khỏi dự án?
+Tài khoản và lịch sử thao tác vẫn được giữ lại.`
+    )) {
+      return;
+    }
+
+    setRemovingId(member.id);
+
+    try {
+      await api.delete(
+        `/projects/${currentProjectId}/members/${member.id}`
+      );
+
+      await fetchMembers();
+      alert("Đã xóa thành viên khỏi dự án thành công!");
+    } catch (err) {
+      alert(
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        "Không thể xóa thành viên"
+      );
+    } finally {
+      setRemovingId(null);
+    }
+  };
   const fetchMembers = async () => {
     try {
       setLoading(true);
@@ -484,20 +565,67 @@ export default function MembersPage({
   // MEMBERS
   // ==========================================================
 
+  // Hỏi lại trạng thái gửi email thật của 1 lời mời, lặp lại tối đa 5 lần
+  // (mỗi 1.5s) cho tới khi backend báo 'sent' hoặc 'error', rồi dừng.
+  // Nếu sau 5 lần vẫn 'pending', coi như đang gửi chậm — giữ nguyên hiển thị
+  // "Đang gửi...", lần fetchMembers() kế tiếp (vd. khi mở lại trang) sẽ cập nhật tiếp.
+  const pollInvitationStatus = (invitationId) => {
+    if (!invitationId) return;
+
+    setSendingStatus((prev) => ({ ...prev, [invitationId]: "pending" }));
+
+    let attempt = 0;
+    const maxAttempts = 5;
+
+    const tick = async () => {
+      attempt += 1;
+      try {
+        const res = await api.get(
+          `/projects/${currentProjectId}/invitations/${invitationId}/status`
+        );
+        const status = res.data.status;
+
+        if (status === "sent" || status === "error") {
+          setSendingStatus((prev) => ({ ...prev, [invitationId]: status }));
+          await fetchMembers();
+          return;
+        }
+      } catch {
+        // Lỗi mạng khi poll: thử lại ở lượt sau, không coi là gửi thất bại ngay.
+      }
+
+      if (attempt < maxAttempts) {
+        setTimeout(tick, 1500);
+      } else {
+        // Hết lượt hỏi mà vẫn pending: không khẳng định lỗi, chỉ bỏ trạng thái tạm
+        // để quay về hiển thị theo email_logs đã lưu (từ fetchMembers()).
+        setSendingStatus((prev) => {
+          const next = { ...prev };
+          delete next[invitationId];
+          return next;
+        });
+        await fetchMembers();
+      }
+    };
+
+    setTimeout(tick, 1500);
+  };
+
   const handleInvite = async (e) => {
     e.preventDefault();
 
     setInviteError("");
     setInviteSuccess("");
+    setInviteSubmitting(true);
 
     try {
-      await api.post(
+      const res = await api.post(
         `/projects/${currentProjectId}/members`,
         inviteData
       );
 
       setInviteSuccess(
-        "Đã mời thành viên thành công!"
+        "Đã tạo lời mời, đang gửi email..."
       );
 
       setInviteData({
@@ -506,6 +634,12 @@ export default function MembersPage({
       });
 
       await fetchMembers();
+
+      // Chỉ có invitation_id khi email chưa có tài khoản (trường hợp tạo invitation thật).
+      // Trường hợp email đã có tài khoản thì được thêm thẳng vào dự án, không có email nào để gửi.
+      if (res.data.invitation_id) {
+        pollInvitationStatus(res.data.invitation_id);
+      }
 
       setTimeout(() => {
         setShowInviteModal(false);
@@ -517,6 +651,8 @@ export default function MembersPage({
           "Lỗi khi mời thành viên"
         )
       );
+    } finally {
+      setInviteSubmitting(false);
     }
   };
 
@@ -533,10 +669,11 @@ export default function MembersPage({
       );
 
       setInviteSuccess(
-        "Đã gửi lại thư mời thành công!"
+        "Đã tạo lại thư mời, đang gửi email..."
       );
 
       await fetchMembers();
+      pollInvitationStatus(invitationId);
     } catch (err) {
       setInviteError(
         getErrorMessage(
@@ -1785,6 +1922,21 @@ export default function MembersPage({
                               Đã tham gia
                             </span>
                           )}
+
+                          {canInvite &&
+                            Number(member.id) !== Number(user?.id) &&
+                            member.role !== "chu_dau_tu" && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveMember(member)}
+                                disabled={removingId === member.id}
+                                title="Xóa thành viên khỏi dự án"
+                                className="ml-2 inline-flex items-center gap-1.5 rounded-full bg-site-critical/10 px-2.5 py-1 text-xs font-medium text-site-critical hover:bg-site-critical hover:text-white disabled:opacity-50"
+                              >
+                                <Trash2 className="size-3" />
+                                {removingId === member.id ? "Đang xóa..." : "Xóa"}
+                              </button>
+                            )}
                         </td>
                       </tr>
                     );
@@ -1795,7 +1947,7 @@ export default function MembersPage({
                   (inv) => (
                     <tr
                       key={`inv-${inv.id}`}
-                      className="border-l-4 border-site-alert opacity-75"
+                      className="border-l-4 border-site-warning opacity-75"
                     >
                       <td className="px-6 py-4">
                         <p className="font-semibold italic text-site-dark">
@@ -1814,26 +1966,46 @@ export default function MembersPage({
                       </td>
 
                       <td className="px-6 py-4 text-right">
-                        {canInvite && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleResend(
-                                inv.id
-                              )
-                            }
-                            disabled={
-                              resendingId ===
+                        <div className="flex items-center justify-end gap-2">
+                          {(() => {
+                            const badge = getInvitationStatusBadge(
+                              inv,
+                              sendingStatus[inv.id]
+                            );
+                            return (
+                              <span
+                                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}
+                              >
+                                <span className="size-1.5 rounded-full bg-current" />
+                                {badge.label}
+                              </span>
+                            );
+                          })()}
+
+                          {canInvite && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleResend(
+                                  inv.id
+                                )
+                              }
+                              disabled={
+                                resendingId ===
+                                  inv.id ||
+                                sendingStatus[
+                                  inv.id
+                                ] === "pending"
+                              }
+                              className="rounded-lg bg-site-primary/10 px-3 py-1.5 text-xs font-semibold text-site-primary disabled:opacity-50"
+                            >
+                              {resendingId ===
                               inv.id
-                            }
-                            className="rounded-lg bg-site-primary/10 px-3 py-1.5 text-xs font-semibold text-site-primary disabled:opacity-50"
-                          >
-                            {resendingId ===
-                              inv.id
-                              ? "Đang gửi..."
-                              : "Gửi lại"}
-                          </button>
-                        )}
+                                ? "Đang gửi..."
+                                : "Gửi lại"}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )
@@ -1979,9 +2151,10 @@ export default function MembersPage({
 
               <button
                 type="submit"
-                className="rounded-lg bg-site-primary px-4 py-2 text-sm font-medium text-white"
+                disabled={inviteSubmitting}
+                className="rounded-lg bg-site-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               >
-                Gửi lời mời
+                {inviteSubmitting ? "Đang gửi..." : "Gửi lời mời"}
               </button>
             </div>
           </form>

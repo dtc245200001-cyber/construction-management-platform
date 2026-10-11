@@ -5,7 +5,7 @@ const requireAuth = require("../middleware/auth");
 
 const {
   checkProjectAccess,
-  allow,
+  requirePermission,
   createProjectRouter,
 } = require("../middleware/projectAccess");
 
@@ -18,7 +18,6 @@ const {
 } = require("../utils/buildTempGraph");
 
 const { parsePositiveInt } = require("../utils/validators");
-const { ROLES } = require("../utils/constants");
 const asyncHandler = require("../utils/asyncHandler");
 const {
   markProjectScheduleDirty,
@@ -48,7 +47,7 @@ router.post(
   "/:projectId/dependencies",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY]),
+  requirePermission("dependency.manage"),
 
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
@@ -365,7 +364,7 @@ router.get(
   "/:projectId/tasks/:taskId/dependencies",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
 
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
