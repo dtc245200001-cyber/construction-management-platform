@@ -159,8 +159,7 @@ jobs:
     name: Deploy to Staging
     runs-on: ubuntu-latest
     needs: build-image
-    # Tạm thời tắt Deploy via SSH (đang dùng Render)
-    if: false && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
       - name: Check staging secrets
