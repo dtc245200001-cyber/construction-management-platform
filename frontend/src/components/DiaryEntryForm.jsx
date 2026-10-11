@@ -7,16 +7,13 @@ import { createDiaryEntry, saveDiaryAttachments, validateImage } from "../lib/di
 import { X, AlertCircle, Save, RotateCcw, Camera, Image as ImageIcon } from "lucide-react";
 
 import { format, parseISO, isAfter, addMinutes } from "date-fns";
+import { resolveWorkItemId } from "../utils/diaryUtils";
 
 const ALLOWED_ROLES = [
   "ky_su_giam_sat",
-
   "chi_huy_truong",
-
   "ban_quan_ly",
-
   "doi_truong",
-
   "system_admin",
 ];
 
@@ -208,10 +205,19 @@ export default function DiaryEntryForm({
   const validate = (field, value) => {
     let err = "";
 
-    if (field === "workItemId" && !value) err = "Vui lòng chọn hạng mục";
+    if (field === "workItemId") {
+      if (value === null || value === undefined || value === "") {
+        err = "Vui lòng chọn hạng mục";
+      } else {
+        const resolved = resolveWorkItemId(value, categories);
+        if (!resolved) {
+          err = "Hạng mục hoặc công việc không hợp lệ";
+        }
+      }
+    }
 
     if (field === "content") {
-      const trimmed = value.trim();
+      const trimmed = (value || "").trim();
 
       if (!trimmed) err = "Vui lòng nhập nội dung";
       else if (trimmed.length > 5000) err = "Nội dung tối đa 5000 ký tự";
@@ -250,6 +256,15 @@ export default function DiaryEntryForm({
     setErrors({ workItemId: wErr, content: cErr, entryAt: dErr });
     if (wErr || cErr || dErr) return;
 
+    const resolvedWorkItemId = resolveWorkItemId(workItemId, categories);
+    if (!resolvedWorkItemId || !Number.isInteger(resolvedWorkItemId) || resolvedWorkItemId <= 0) {
+      setErrors((prev) => ({
+        ...prev,
+        workItemId: !workItemId ? "Vui lòng chọn hạng mục" : "Hạng mục hoặc công việc không hợp lệ",
+      }));
+      return;
+    }
+
     setIsSubmitting(true);
     setSubmitMessage(null);
 
@@ -257,11 +272,28 @@ export default function DiaryEntryForm({
     if (!clientId) setClientId(clientUuid);
 
     const payload = {
-      work_item_id: parseInt(workItemId, 10),
+      work_item_id: resolvedWorkItemId,
       content: content.trim(),
       client_id: clientUuid,
       entry_at: new Date(entryAt).toISOString(),
     };
+
+    const selectedCategory = categories.find(
+      (c) => String(c.id) === String(workItemId),
+    );
+    const parentCategory =
+      selectedCategory?.type === "task" ||
+      String(selectedCategory?.id).startsWith("task-")
+        ? categories.find(
+            (c) =>
+              Number(c.id) ===
+              Number(
+                selectedCategory.parent_id !== undefined
+                  ? selectedCategory.parent_id
+                  : selectedCategory.work_item_id,
+              ),
+          )
+        : selectedCategory;
 
     const handleOfflineStorage = async () => {
       try {
@@ -280,10 +312,13 @@ export default function DiaryEntryForm({
           clientId: clientUuid,
           projectId: Number(projectId),
           project_id: Number(projectId),
-          work_item_id: parseInt(workItemId, 10),
-          workItemId: parseInt(workItemId, 10),
-          work_item_name: selectedCategory?.name || `Hạng mục #${workItemId}`,
-          work_item_code: selectedCategory?.code || "",
+          work_item_id: resolvedWorkItemId,
+          workItemId: resolvedWorkItemId,
+          work_item_name:
+            parentCategory?.name ||
+            selectedCategory?.name ||
+            `Hạng mục #${resolvedWorkItemId}`,
+          work_item_code: parentCategory?.code || selectedCategory?.code || "",
           content: content.trim(),
           entry_at: new Date(entryAt).toISOString(),
           entry_date: format(parseISO(entryAt), "yyyy-MM-dd"),
@@ -466,17 +501,21 @@ export default function DiaryEntryForm({
             >
               <option value="">Chọn hạng mục...</option>
 
-              {categories.map((c) => (
-                <option
-                  key={c.id}
-
-                  value={c.id}
-
-                  data-testid={`category-option-${c.id}`}
-                >
-                  {c.code ? `${c.code} - ${c.name}` : c.name}
-                </option>
-              ))}
+              {categories.map((c) => {
+                const isTask = c.type === "task" || String(c.id).startsWith("task-");
+                const label = isTask
+                  ? `[Công việc] ${c.name}`
+                  : (c.code ? `${c.code} - ${c.name}` : c.name);
+                return (
+                  <option
+                    key={c.id}
+                    value={c.id}
+                    data-testid={`category-option-${c.id}`}
+                  >
+                    {label}
+                  </option>
+                );
+              })}
             </select>
 
             {errors.workItemId && (

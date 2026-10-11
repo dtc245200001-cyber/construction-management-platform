@@ -94,8 +94,12 @@ export default function TaskProgressModal({
     wasCompleted &&
     (parsedPercent < 100 || !actualEndDate);
 
-  const effectiveTaskId = task?.id || task?.task_id;
-  const effectiveProjectId = projectId || task?.project_id || localStorage.getItem("currentProjectId");
+  const rawTaskId = task?.task_id || task?.id;
+  const effectiveTaskId =
+    typeof rawTaskId === "string" && rawTaskId.startsWith("task-")
+      ? Number(rawTaskId.replace(/^task-/, ""))
+      : (task?.task_id || task?.id);
+  const effectiveProjectId = projectId || task?.project_id || (typeof localStorage !== "undefined" ? localStorage.getItem("currentProjectId") : null);
 
   const performSave = async () => {
     setLoading(true);
