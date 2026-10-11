@@ -3,9 +3,9 @@ import { useLocation } from 'react-router-dom';
 import api from '../lib/api';
 import { format, parseISO } from 'date-fns';
 
-import { FileText, Search, Plus, Filter, X, Clock, User, Hash, Lock, Unlock, History, AlertCircle, CloudOff } from 'lucide-react';
+import { FileText, Search, Plus, Filter, X, Clock, User, Hash, Lock, Unlock, History, AlertCircle, CloudOff, Image as ImageIcon } from 'lucide-react';
 import { can } from '../lib/permissions';
-import { getDiaryLogsByProject } from '../lib/diaryDb';
+import { getDiaryLogsByProject, getDiaryAttachmentsByLog, isBlob } from '../lib/diaryDb';
 import DiaryEntryForm from '../components/DiaryEntryForm';
 import DiaryWeekStrip from '../components/DiaryWeekStrip';
 import DiaryDayCard from '../components/DiaryDayCard';
@@ -37,6 +37,23 @@ export default function DiaryPage({ user }) {
   const [actionLoading, setActionLoading] = useState(false);
 
   const [projectRole, setProjectRole] = useState(null);
+
+  // Quản lý các Object URL ảnh offline để thu hồi khi unmount
+  const pageCreatedUrlsRef = useRef(new Set());
+
+  useEffect(() => {
+    const urls = pageCreatedUrlsRef.current;
+    return () => {
+      urls.forEach((url) => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          /* ignore */
+        }
+      });
+      urls.clear();
+    };
+  }, []);
 
   // S-27: chốt/mở sổ nhật ký là quyền của Chỉ huy trưởng (đồng bộ backend
   // site_log.close_daily / site_log.correct_locked qua ma trận dùng chung).
@@ -82,6 +99,16 @@ export default function DiaryPage({ user }) {
     }
 
     try {
+      // Dọn dẹp các Object URL đã tạo trước đó trong trang để tránh rò rỉ bộ nhớ
+      pageCreatedUrlsRef.current.forEach((url) => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          /* ignore */
+        }
+      });
+      pageCreatedUrlsRef.current.clear();
+
       // Đọc các nhật ký lưu ngoại tuyến trong IndexedDB
       const offlineLogs = await getDiaryLogsByProject(Number(projectId));
       const pendingLogs = (offlineLogs || [])
@@ -96,18 +123,47 @@ export default function DiaryPage({ user }) {
             if (String(wid) !== String(workItemFilter)) return false;
           }
           return true;
-        })
-        .map(l => ({
+        });
+
+      const enrichedPendingLogs = [];
+      for (const l of pendingLogs) {
+        let attachments = [];
+        try {
+          const rawAtts = await getDiaryAttachmentsByLog(l.id || l.client_id || l.clientId);
+          for (const att of rawAtts || []) {
+            let objectUrl = "";
+            if (isBlob(att.blob)) {
+              objectUrl = URL.createObjectURL(att.blob);
+              pageCreatedUrlsRef.current.add(objectUrl);
+            }
+            attachments.push({
+              ...att,
+              id: att.id,
+              url: objectUrl || att.url || "",
+              fileName: att.fileName || att.file_name || "anh-hien-truong.jpg",
+              file_name: att.fileName || att.file_name || "anh-hien-truong.jpg",
+              fileSize: att.size || att.file_size || 0,
+              file_size: att.size || att.file_size || 0,
+              isOffline: true,
+            });
+          }
+        } catch (attErr) {
+          console.warn("Không thể tải ảnh offline cho nhật ký:", attErr);
+        }
+
+        enrichedPendingLogs.push({
           ...l,
           id: l.id || l.client_id,
           client_id: l.client_id || l.id,
           syncStatus: 'pending',
           isOffline: true,
           created_by_name: l.created_by_name || l.createdBy || 'Tôi (Cục bộ)',
-        }));
+          attachments,
+        });
+      }
 
       const serverClientIds = new Set(serverEntries.map(e => e.client_id).filter(Boolean));
-      const uniquePending = pendingLogs.filter(p => !serverClientIds.has(p.client_id));
+      const uniquePending = enrichedPendingLogs.filter(p => !serverClientIds.has(p.client_id));
 
       const mergedEntries = [...uniquePending, ...serverEntries];
       setEntries(mergedEntries);
@@ -385,6 +441,52 @@ export default function DiaryPage({ user }) {
                   <div className="text-[15px] text-gray-800 leading-relaxed whitespace-pre-wrap pl-1">
                     {entry.content}
                   </div>
+
+                  {/* Danh sách ảnh đính kèm (T67) */}
+                  {entry.attachments && entry.attachments.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <div className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
+                        <ImageIcon className="size-3.5 text-blue-500" />
+                        <span>Hình ảnh đính kèm ({entry.attachments.length}):</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2.5">
+                        {entry.attachments.map((att) => (
+                          <button
+                            type="button"
+                            key={att.id}
+                            onClick={() => {
+                              if (att.url) {
+                                window.open(att.url, '_blank');
+                              }
+                            }}
+                            className="relative group size-20 sm:size-24 rounded-xl overflow-hidden border border-gray-200 bg-gray-50 shadow-sm cursor-pointer hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            title={`Bấm để xem ảnh: ${att.file_name || att.fileName}`}
+                          >
+                            <img
+                              src={att.url}
+                              alt={att.file_name || att.fileName}
+                              className="size-full object-cover group-hover:scale-105 transition-transform"
+                              loading="lazy"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                if (e.target.nextSibling) {
+                                  e.target.nextSibling.style.display = 'flex';
+                                }
+                              }}
+                            />
+                            <div className="hidden size-full items-center justify-center bg-gray-100 text-gray-400 text-[10px] p-1 text-center font-medium">
+                              Lỗi tải ảnh
+                            </div>
+                            {att.isOffline && (
+                              <span className="absolute bottom-1 right-1 bg-black/60 backdrop-blur-xs text-white text-[9px] px-1 py-0.5 rounded font-medium">
+                                Offline
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))
             )}

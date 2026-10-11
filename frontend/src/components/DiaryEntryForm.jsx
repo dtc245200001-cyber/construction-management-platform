@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from "react";
 
 import api from "../lib/api";
 
-import { saveDiaryLog } from "../lib/diaryDb";
+import { createDiaryEntry, saveDiaryAttachments, validateImage } from "../lib/diaryDb";
 
-import { X, Search, Check, AlertCircle, Save, RotateCcw } from "lucide-react";
+import { X, AlertCircle, Save, RotateCcw, Camera, Image as ImageIcon } from "lucide-react";
 
 import { format, parseISO, isAfter, addMinutes } from "date-fns";
 
@@ -56,6 +56,70 @@ export default function DiaryEntryForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [submitMessage, setSubmitMessage] = useState(null);
+
+  const [selectedImages, setSelectedImages] = useState([]);
+  const [imageError, setImageError] = useState("");
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      selectedImages.forEach((img) => {
+        if (img.previewUrl && img.previewUrl.startsWith("blob:")) {
+          try {
+            URL.revokeObjectURL(img.previewUrl);
+          } catch {
+            /* ignore */
+          }
+        }
+      });
+    };
+  }, [selectedImages]);
+
+  const handleImageChange = (e) => {
+    setImageError("");
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    if (selectedImages.length + files.length > 10) {
+      setImageError("Chỉ được đính kèm tối đa 10 ảnh.");
+      return;
+    }
+
+    const newImages = [];
+    for (const f of files) {
+      try {
+        validateImage({ blob: f });
+        const previewUrl = URL.createObjectURL(f);
+        newImages.push({
+          id: crypto.randomUUID(),
+          file: f,
+          name: f.name,
+          size: f.size,
+          previewUrl,
+        });
+      } catch (valErr) {
+        setImageError(valErr.message || "Ảnh không hợp lệ.");
+        return;
+      }
+    }
+
+    setSelectedImages((prev) => [...prev, ...newImages]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleRemoveImage = (imgId) => {
+    setSelectedImages((prev) => {
+      const target = prev.find((img) => img.id === imgId);
+      if (target?.previewUrl?.startsWith("blob:")) {
+        try {
+          URL.revokeObjectURL(target.previewUrl);
+        } catch {
+          /* ignore */
+        }
+      }
+      return prev.filter((img) => img.id !== imgId);
+    });
+  };
 
   useEffect(() => {
     if (!canWrite) return;
@@ -201,7 +265,16 @@ export default function DiaryEntryForm({
 
     const handleOfflineStorage = async () => {
       try {
-        await saveDiaryLog({
+        const imagesToStore = selectedImages.map((img) => ({
+          id: img.id,
+          blob: img.file,
+          fileName: img.name || img.file.name,
+          mimeType: img.file.type || "image/jpeg",
+          size: img.file.size,
+          syncStatus: "pending",
+        }));
+
+        await createDiaryEntry({
           id: clientUuid,
           client_id: clientUuid,
           clientId: clientUuid,
@@ -217,7 +290,7 @@ export default function DiaryEntryForm({
           created_by_name: user?.name || user?.full_name || user?.email || "Tôi",
           syncStatus: "pending",
           isOffline: true,
-        });
+        }, imagesToStore);
 
         setSubmitMessage({
           type: "warning",
@@ -250,6 +323,33 @@ export default function DiaryEntryForm({
       } catch (e) {
         /* ignore */
       }
+
+      if (selectedImages.length > 0) {
+        try {
+          const imagesToStore = selectedImages.map((img) => ({
+            id: img.id,
+            blob: img.file,
+            fileName: img.name || img.file.name,
+            mimeType: img.file.type || "image/jpeg",
+            size: img.file.size,
+            syncStatus: "pending",
+          }));
+          await saveDiaryAttachments(clientUuid, imagesToStore);
+        } catch (saveImgErr) {
+          console.warn("Không thể lưu ảnh cục bộ:", saveImgErr);
+        }
+      }
+
+      selectedImages.forEach((img) => {
+        if (img.previewUrl?.startsWith("blob:")) {
+          try {
+            URL.revokeObjectURL(img.previewUrl);
+          } catch {
+            /* ignore */
+          }
+        }
+      });
+      setSelectedImages([]);
 
       onSuccess(res.data.entry || res.data);
     } catch (err) {
@@ -447,6 +547,66 @@ export default function DiaryEntryForm({
               <span className="text-[12px] text-red-500 font-medium">
                 {errors.content}
               </span>
+            )}
+          </div>
+
+          {/* Đính kèm hình ảnh (T67) */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <label className="text-[13px] font-bold text-gray-700 flex items-center gap-1.5">
+                <ImageIcon className="size-4 text-blue-600" />
+                <span>Hình ảnh đính kèm (tối đa 10 ảnh)</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={selectedImages.length >= 10}
+                className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+              >
+                <Camera className="size-3.5" />
+                <span>+ Thêm ảnh</span>
+              </button>
+            </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              onChange={handleImageChange}
+              className="hidden"
+              data-testid="diary-image-input"
+            />
+
+            {imageError && (
+              <span className="text-[12px] text-red-500 font-medium">
+                {imageError}
+              </span>
+            )}
+
+            {selectedImages.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-1" data-testid="selected-images-preview">
+                {selectedImages.map((img) => (
+                  <div
+                    key={img.id}
+                    className="relative group size-16 rounded-xl border border-gray-200 overflow-hidden bg-gray-50 shadow-xs"
+                  >
+                    <img
+                      src={img.previewUrl}
+                      alt={img.name}
+                      className="size-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveImage(img.id)}
+                      className="absolute top-1 right-1 bg-black/60 hover:bg-red-600 text-white rounded-full p-0.5 transition-colors cursor-pointer"
+                      title="Xóa ảnh"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 
