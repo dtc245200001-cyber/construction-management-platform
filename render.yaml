@@ -21,6 +21,13 @@ services:
       - key: CORS_ORIGINS
         # Update this URL once Render provides the frontend domain
         value: https://construction-ui.onrender.com
+      - key: COOKIE_SAMESITE
+        # Frontend và API khác subdomain onrender.com (cross-site) nên
+        # cookie session bắt buộc SameSite=None thì mobile mới giữ được.
+        value: none
+      - key: COOKIE_SECURE
+        # SameSite=None chỉ có tác dụng khi cookie Secure (HTTPS).
+        value: true
       - key: UPLOAD_DIR
         value: ./uploads
 

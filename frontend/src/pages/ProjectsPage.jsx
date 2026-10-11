@@ -43,6 +43,13 @@ export default function ProjectsPage({ user, setUser }) {
       const res = await api.get('/projects');
       setProjects(res.data.projects || []);
     } catch (err) {
+      // 401 = cookie session không được trình duyệt gửi lên (thường do
+      // chặn cookie bên thứ ba trên mobile/in-app browser) -> về login
+      // ngay thay vì hiện thẻ lỗi "Chưa đăng nhập" gây hiểu lầm.
+      if (err.response?.status === 401) {
+        navigate('/login', { replace: true });
+        return;
+      }
       setError(err.response?.data?.message || err.message || "Lỗi tải dự án");
     } finally {
       setLoading(false);

@@ -52,6 +52,19 @@ const LoginPage = ({ setUser }) => {
 
     try {
       const response = await api.post('/auth/login', { email, password });
+      // Xác minh cookie session có được trình duyệt giữ lại không.
+      // WebView trong app chat (Zalo/Messenger/Facebook) và chế độ chặn
+      // cookie bên thứ ba thường nuốt Set-Cookie cross-site: login vẫn 200
+      // nhưng request sau mất session -> user bị đá về login khó hiểu.
+      try {
+        await api.get('/auth/me');
+      } catch (verifyErr) {
+        if (verifyErr.response?.status === 401) {
+          setMessage("Đăng nhập thành công nhưng trình duyệt đã chặn cookie phiên làm việc. Vui lòng mở link bằng Safari/Chrome (không mở trong Zalo/Messenger), bật cho phép cookie rồi đăng nhập lại.");
+          return;
+        }
+        throw verifyErr;
+      }
       setUser(response.data.user);
 
 const redirect = new URLSearchParams(location.search).get('redirect');
