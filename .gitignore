@@ -1,11 +1,20 @@
 node_modules/
 .env
+.env.*
+!.env.example
+!backend/.env.example
+!deploy/.env.staging.example
+!backend/.env.test
+backend/.env
+frontend/.env
 npm-debug.log*
 coverage/
-backend/.env
 *.log
 *_output.txt
 dist/
+*.zip
+TTCS.xlsx
+
 
 # Thu muc cong cu AI
 .agents/
