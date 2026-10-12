@@ -133,6 +133,38 @@ describe("Task Logs & Attachments API Integration Tests (S-23 / T-52 / T-53)", (
     expect(res.body.log.attachments[0].url).toContain(`/api/projects/${projectId}/tasks/${taskId}/logs/`);
   });
 
+  it("POST task log retries with the same client_id without duplicating the log or images", async () => {
+    const clientId = "261571cf-0e2f-49a0-a30a-bc4a31fce3cb";
+    const retryTask = await pool.query(
+      "INSERT INTO tasks (work_item_id, name, duration_days) SELECT work_item_id, 'Retry task', 1 FROM tasks WHERE id = $1 RETURNING id",
+      [taskId]
+    );
+    const retryTaskId = retryTask.rows[0].id;
+    const postLog = (content) =>
+      request(app)
+        .post(`/api/projects/${projectId}/tasks/${retryTaskId}/logs`)
+        .set("Cookie", cookieKySu)
+        .field("client_id", clientId)
+        .field("content", content)
+        .attach("images", testImagePath);
+
+    const first = await postLog("Retry-safe task log");
+    const retry = await postLog("Retry-safe task log");
+    expect(first.status).toBe(201);
+    expect(retry.status).toBe(200);
+    expect(retry.body.log.id).toBe(first.body.log.id);
+    expect(retry.body.log.attachments).toHaveLength(1);
+
+    const counts = await pool.query(
+      `SELECT
+         (SELECT COUNT(*) FROM task_logs WHERE task_id = $1 AND client_id = $2) AS logs,
+         (SELECT COUNT(*) FROM task_attachments WHERE task_log_id = $3) AS attachments`,
+      [retryTaskId, clientId, first.body.log.id]
+    );
+    expect(counts.rows[0].logs).toBe("1");
+    expect(counts.rows[0].attachments).toBe("1");
+  });
+
   it("GET /api/projects/:projectId/tasks/:taskId/logs - returns logs list with attachments", async () => {
     const res = await request(app)
       .get(`/api/projects/${projectId}/tasks/${taskId}/logs`)

@@ -735,7 +735,9 @@ export async function getPendingSyncEntries() {
         const val = cursor.value;
         if (
           val.syncStatus === SYNC_STATUS.PENDING ||
-          val.syncStatus === SYNC_STATUS.FAILED
+          val.syncStatus === SYNC_STATUS.FAILED ||
+          (val.syncStatus === SYNC_STATUS.SYNCING &&
+            Date.now() - Date.parse(val.syncStartedAt || 0) > 2 * 60 * 1000)
         ) {
           results.push(val);
         }
@@ -749,6 +751,70 @@ export async function getPendingSyncEntries() {
 }
 
 export const getPendingDiaryLogs = getPendingSyncEntries;
+
+export async function claimDiaryEntryForSync(clientId) {
+  if (!clientId) return null;
+  const db = await openDiaryDB();
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORES.DIARY_LOGS, "readwrite");
+    const store = transaction.objectStore(STORES.DIARY_LOGS);
+    let claimed = null;
+    const request = store.get(clientId);
+
+    request.onsuccess = () => {
+      const entry = request.result;
+      if (!entry || entry.syncStatus === SYNC_STATUS.SYNCED) return;
+
+      const staleSync =
+        entry.syncStatus === SYNC_STATUS.SYNCING &&
+        Date.now() - Date.parse(entry.syncStartedAt || 0) > 2 * 60 * 1000;
+      if (
+        entry.syncStatus !== SYNC_STATUS.PENDING &&
+        entry.syncStatus !== SYNC_STATUS.FAILED &&
+        !staleSync
+      ) {
+        return;
+      }
+
+      claimed = {
+        ...entry,
+        syncStatus: SYNC_STATUS.SYNCING,
+        syncStartedAt: new Date().toISOString(),
+        syncError: null,
+      };
+      store.put(claimed);
+    };
+    request.onerror = () => reject(request.error);
+    transaction.oncomplete = () => resolve(claimed);
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  });
+}
+
+export async function updateDiaryAttachment(attachmentId, updates) {
+  if (!attachmentId) throw new Error("Cần attachmentId để cập nhật ảnh.");
+  const db = await openDiaryDB();
+  const sanitized = sanitizeData(updates);
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORES.DIARY_ATTACHMENTS, "readwrite");
+    const store = transaction.objectStore(STORES.DIARY_ATTACHMENTS);
+    const request = store.get(attachmentId);
+
+    request.onsuccess = () => {
+      if (!request.result) {
+        reject(new Error(`Không tìm thấy ảnh với id '${attachmentId}' để cập nhật.`));
+        return;
+      }
+      store.put({ ...request.result, ...sanitized, id: request.result.id });
+    };
+    request.onerror = () => reject(request.error);
+    transaction.oncomplete = () => resolve(true);
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  });
+}
 
 /**
  * Cập nhật nội dung hoặc trạng thái đồng bộ của mục nhật ký

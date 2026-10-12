@@ -119,7 +119,7 @@ export default function DiaryPage({ user }) {
       const offlineLogs = await getDiaryLogsByProject(Number(projectId));
       const resolvedFilterId = workItemFilter ? resolveWorkItemId(workItemFilter, categories) : null;
       const pendingLogs = (offlineLogs || [])
-        .filter(l => l.syncStatus === 'pending' || l.isOffline)
+        .filter(l => ['pending', 'syncing', 'failed'].includes(l.syncStatus))
         .filter(l => {
           if (dateFilter) {
             const entryDate = l.entry_date || (l.entry_at ? format(parseISO(l.entry_at), 'yyyy-MM-dd') : '');
@@ -162,17 +162,37 @@ export default function DiaryPage({ user }) {
           ...l,
           id: l.id || l.client_id,
           client_id: l.client_id || l.id,
-          syncStatus: 'pending',
+          syncStatus: l.syncStatus || 'pending',
           isOffline: true,
           created_by_name: l.created_by_name || l.createdBy || 'Tôi (Cục bộ)',
           attachments,
         });
       }
 
-      const serverClientIds = new Set(serverEntries.map(e => e.client_id).filter(Boolean));
-      const uniquePending = enrichedPendingLogs.filter(p => !serverClientIds.has(p.client_id));
+      const serverClientIds = new Set(
+        serverEntries.map((entry) => entry.client_id).filter(Boolean),
+      );
+      const uniquePending = enrichedPendingLogs.filter(
+        (entry) => !serverClientIds.has(entry.client_id),
+      );
+      const pendingByClientId = new Map(
+        enrichedPendingLogs.map((entry) => [entry.client_id, entry]),
+      );
+      const mergedServerEntries = serverEntries.map((entry) => {
+        const localEntry = pendingByClientId.get(entry.client_id);
+        if (!localEntry) return entry;
+        return {
+          ...localEntry,
+          ...entry,
+          id: entry.id,
+          client_id: entry.client_id,
+          syncStatus: localEntry.syncStatus,
+          isOffline: true,
+          attachments: localEntry.attachments,
+        };
+      });
 
-      const mergedEntries = [...uniquePending, ...serverEntries];
+      const mergedEntries = [...uniquePending, ...mergedServerEntries];
       setEntries(mergedEntries);
       setTotal(serverTotal + uniquePending.length);
 
@@ -213,7 +233,13 @@ export default function DiaryPage({ user }) {
     fetchEntries();
     fetchLockStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, dateFilter, workItemFilter]);
+  }, [projectId, dateFilter, workItemFilter, refreshKey]);
+
+  useEffect(() => {
+    const refreshAfterSync = () => setRefreshKey((key) => key + 1);
+    window.addEventListener('diary-sync-updated', refreshAfterSync);
+    return () => window.removeEventListener('diary-sync-updated', refreshAfterSync);
+  }, []);
 
   const clearFilters = () => {
     setDateFilter('');
@@ -435,10 +461,14 @@ export default function DiaryPage({ user }) {
                       {lockInfo?.is_locked && <Lock className="size-3.5 text-orange-600 ml-1" title="Đã khóa" />}
                     </div>
                     <div className="flex flex-wrap items-center gap-3 text-[13px] text-gray-500 shrink-0">
-                      {(entry.syncStatus === 'pending' || entry.isOffline) && (
+                      {entry.syncStatus && entry.syncStatus !== 'synced' && (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                           <CloudOff className="size-3.5 text-amber-500" />
-                          Đã lưu trên thiết bị — chờ đồng bộ
+                          {entry.syncStatus === 'syncing'
+                            ? 'Đang đồng bộ...'
+                            : entry.syncStatus === 'failed'
+                              ? 'Đồng bộ thất bại — sẽ tự thử lại'
+                              : 'Đã lưu trên thiết bị — chờ đồng bộ'}
                         </span>
                       )}
                       <div className="flex items-center gap-1.5">

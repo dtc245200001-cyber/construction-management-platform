@@ -193,6 +193,17 @@ describe('T66 — Form ghi nhật ký khi mất mạng & Khôi phục dữ liệ
     const netErr = new Error('Network Error');
     netErr.code = 'ERR_NETWORK';
     api.post.mockRejectedValueOnce(netErr);
+    api.post.mockResolvedValueOnce({
+      data: {
+        id: 11,
+        work_item_id: 101,
+        content: 'Ghi nhật ký lúc mạng chập chờn',
+        client_id: 'uuid-t66-stable-001',
+        entry_at: new Date().toISOString(),
+        entry_date: format(new Date(), 'yyyy-MM-dd'),
+        created_by_name: 'Kỹ sư Giám sát',
+      },
+    });
 
     render(
       <DiaryEntryForm
@@ -212,39 +223,22 @@ describe('T66 — Form ghi nhật ký khi mất mạng & Khôi phục dữ liệ
 
     fireEvent.submit(screen.getByTestId('submit-diary-btn').closest('form'));
 
-    // Báo trạng thái đã lưu trên thiết bị và giữ form
-    await waitFor(() => {
-      expect(screen.getByText(/Đã lưu trên thiết bị — chờ đồng bộ/i)).toBeInTheDocument();
-    });
+    // Giữ form trong lúc hàng đợi tự đồng bộ lại.
     expect(screen.getByDisplayValue('Ghi nhật ký lúc mạng chập chờn')).toBeInTheDocument();
 
     // Dữ liệu đã an toàn trong IndexedDB
+    await waitFor(async () => {
+      expect(await getDiaryLogsByProject(13)).toHaveLength(1);
+    });
     const saved = await getDiaryLogsByProject(13);
     expect(saved.length).toBe(1);
     expect(saved[0].client_id).toBe('uuid-t66-stable-001');
-
-    // Thử lại lần 2 (có mạng lại) -> gửi thành công với CÙNG client_id
-    api.post.mockResolvedValueOnce({
-      data: {
-        entry: {
-          id: 11,
-          work_item_id: 101,
-          content: 'Ghi nhật ký lúc mạng chập chờn',
-          client_id: 'uuid-t66-stable-001',
-          entry_at: new Date().toISOString(),
-          entry_date: format(new Date(), 'yyyy-MM-dd'),
-          created_by_name: 'Kỹ sư Giám sát',
-        },
-      },
-    });
-
-    const retryBtn = screen.getByRole('button', { name: /Gửi lại/i });
-    fireEvent.click(retryBtn);
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledTimes(2);
       expect(api.post.mock.calls[0][1].client_id).toBe('uuid-t66-stable-001');
       expect(api.post.mock.calls[1][1].client_id).toBe('uuid-t66-stable-001');
+      expect(screen.getByText(/đã được đồng bộ thành công/i)).toBeInTheDocument();
     });
   });
 
