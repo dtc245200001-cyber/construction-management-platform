@@ -1770,6 +1770,35 @@ router.post(
         "COMMIT"
       );
 
+      // S-39 / T-103: ghi audit "ai đã lập" báo cáo khối lượng.
+      // Ghi sau COMMIT theo pattern S-24 (fail-open: không chặn nghiệp vụ
+      // nếu audit fail). Chi tiết giữ quantity/report_date để tra cứu
+      // tranh chấp và để endpoint history hiển thị timeline.
+      try {
+        await logAudit({
+          userId: req.user.id,
+          action: "CREATE_QUANTITY_REPORT",
+          entity: "task_quantity_reports",
+          entityId: insertResult.rows[0].id,
+          projectId,
+          details: {
+            task_id: taskId,
+            team_id: ownTeam.id,
+            // Lưu đúng giá trị người dùng đã báo (không qua NUMERIC
+            // làm tròn hiển thị "10.50"), để đối chiếu tranh chấp.
+            quantity,
+            report_date:
+              reportDate,
+          },
+          ipAddress: req.ip,
+        });
+      } catch (e) {
+        console.error(
+          "Audit error:",
+          e
+        );
+      }
+
       return res
         .status(201)
         .json({
@@ -2000,6 +2029,214 @@ router.get(
 
     return res.json({
       reports: result.rows,
+    });
+  })
+);
+
+// ============================================================
+// S-39 / T-104: LỊCH SỬ THAO TÁC (AUDIT TIMELINE)
+// ============================================================
+
+// GET /api/projects/:projectId/tasks/:taskId/quantity-reports/history
+//
+// Trả về timeline "ai đã lập báo cáo khối lượng, khi nào" cho một
+// công việc — để chủ đầu tư truy trách nhiệm khi có tranh chấp.
+// Mẫu sao chép từ GET diary-locks/:date/history của S-24 nhưng lọc
+// thêm project_id (cột mới của T-102) để cô lập phạm vi dự án.
+router.get(
+  "/:projectId/tasks/:taskId/quantity-reports/history",
+  requireAuth,
+  checkProjectAccess,
+  fieldViewRoles,
+  asyncHandler(async (req, res) => {
+    const projectId =
+      positiveId(
+        req.params.projectId
+      );
+
+    const taskId =
+      positiveId(
+        req.params.taskId
+      );
+
+    if (
+      !projectId ||
+      !taskId
+    ) {
+      return res.status(400).json({
+        message:
+          "ID không hợp lệ",
+      });
+    }
+
+    // Xác nhận task nằm trong project hiện tại.
+    const taskExists =
+      await db.query(
+        `
+          SELECT t.id
+
+          FROM tasks t
+
+          JOIN work_items wi
+            ON wi.id =
+               t.work_item_id
+
+          WHERE t.id = $1
+            AND wi.project_id = $2
+        `,
+        [taskId, projectId]
+      );
+
+    if (
+      taskExists.rows.length ===
+      0
+    ) {
+      return res.status(404).json({
+        message:
+          "Không tìm thấy công việc trong dự án",
+      });
+    }
+
+    // Đội trưởng chỉ xem lịch sử
+    // công việc của đúng đội mình.
+    if (
+      req.projectRole ===
+      ROLES.DOI_TRUONG
+    ) {
+      const ownTeam =
+        await findUserTeam(
+          projectId,
+          req.user.id
+        );
+
+      if (!ownTeam) {
+        return res.status(403).json({
+          message:
+            "Đội trưởng chưa thuộc đội thi công nào",
+        });
+      }
+
+      const assigned =
+        await db.query(
+          `
+            SELECT 1
+
+            FROM task_assignments ta
+
+            JOIN tasks t
+              ON t.id =
+                 ta.task_id
+
+            JOIN work_items wi
+              ON wi.id =
+                 t.work_item_id
+
+            WHERE ta.task_id = $1
+              AND ta.team_id = $2
+              AND wi.project_id = $3
+
+            LIMIT 1
+          `,
+          [
+            taskId,
+            ownTeam.id,
+            projectId,
+          ]
+        );
+
+      if (
+        assigned.rows.length === 0
+      ) {
+        return res.status(403).json({
+          message:
+            "Công việc này không được giao cho đội của bạn",
+        });
+      }
+    }
+
+    // Mỗi báo cáo khối lượng được join với dòng audit
+    // CREATE_QUANTITY_REPORT tương ứng (nếu có) để hiển thị
+    // "ai đã lập" cạnh từng dòng báo cáo.
+    const result =
+      await db.query(
+        `
+          SELECT
+            qr.id,
+            qr.quantity,
+            qr.report_date,
+            qr.created_at,
+            qr.reported_by,
+
+            u.name
+              AS reported_by_name,
+
+            tm.id
+              AS team_id,
+
+            tm.name
+              AS team_name,
+
+            a.id
+              AS audit_id,
+
+            a.action
+              AS audit_action,
+
+            a.created_at
+              AS audit_created_at,
+
+            a.ip_address
+              AS audit_ip_address,
+
+            au.name
+              AS audit_user_name
+
+          FROM task_quantity_reports qr
+
+          JOIN tasks t
+            ON t.id =
+               qr.task_id
+
+          JOIN work_items wi
+            ON wi.id =
+               t.work_item_id
+           AND wi.project_id =
+               qr.project_id
+
+          JOIN users u
+            ON u.id =
+               qr.reported_by
+
+          JOIN teams tm
+            ON tm.id =
+               qr.team_id
+           AND tm.project_id =
+               qr.project_id
+
+          LEFT JOIN audit_logs a
+            ON a.entity =
+               'task_quantity_reports'
+           AND a.entity_id =
+               qr.id
+           AND a.action =
+               'CREATE_QUANTITY_REPORT'
+
+          LEFT JOIN users au
+            ON au.id =
+               a.user_id
+
+          WHERE qr.project_id = $1
+            AND qr.task_id = $2
+
+          ORDER BY
+            qr.report_date DESC,
+            qr.created_at DESC
+        `,
+        [projectId, taskId]
+      );
+
+    return res.json({
+      history: result.rows,
     });
   })
 );
