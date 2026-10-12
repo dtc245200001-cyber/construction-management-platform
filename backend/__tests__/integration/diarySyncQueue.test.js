@@ -226,7 +226,7 @@ describe("Diary Sync Queue Integration Tests (T-73 / S-30)", () => {
     const spy = jest.spyOn(logger, "error").mockImplementation((...args) => {
       logged.push(args);
     });
-    const secretContent = "Nội dung riêng tư mat-ma-khong-duoc-lot-ra-ngoai";
+    const secretContent = "Nội dung riêng tư dùng để kiểm thử";
     try {
       const err = new Error("DB connection failed");
       err.code = "ECONNREFUSED";
