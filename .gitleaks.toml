@@ -1,0 +1,12 @@
+title = "Construction Management Gitleaks Configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "False positive test fixture in diary sync"
+condition = "AND"
+commits = ["5cac5bb"]
+paths = ['''^backend/__tests__/integration/diarySyncQueue\.test\.js$''']
+regexTarget = "match"
+regexes = ['''password=Secret123-khong-duoc-lot''']
