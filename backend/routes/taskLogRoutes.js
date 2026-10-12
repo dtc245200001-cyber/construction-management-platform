@@ -202,6 +202,10 @@ router.post(
         return res.status(404).json({ message: "Không tìm thấy task trong project" });
       }
 
+      // Idempotency theo client_id (T-70/S-30): đường nhanh cho request tuần tự
+      // (SELECT thấy bản cũ thì trả 200 ngay), còn race đồng thời được xử lý ở
+      // catch 23505 bên dưới bằng INSERT trực tiếp + query lại. UNIQUE constraint
+      // task_logs_task_client_id_idx ở tầng DB là lưới an toàn cuối cùng.
       if (clientId) {
         const existingLog = await client.query(
           `SELECT tl.id, tl.task_id, tl.user_id, tl.content, tl.created_at, tl.updated_at,
@@ -311,6 +315,56 @@ router.post(
         }
       });
     } catch (error) {
+      // Race đồng thời cùng client_id: cả hai SELECT đều 0 dòng, cả hai INSERT,
+      // bên thua ăn 23505. Sau lỗi này transaction đã aborted — ROLLBACK rồi
+      // query lại bản thắng và trả 200 cùng shape với nhánh existingLog ở trên.
+      const isClientIdConflict =
+        error &&
+        error.code === "23505" &&
+        (error.constraint === "task_logs_task_client_id_idx" ||
+          String(error.message || "").includes("task_logs_task_client_id_idx"));
+      if (clientId && isClientIdConflict) {
+        try {
+          await client.query("ROLLBACK");
+          const winner = await client.query(
+            `SELECT tl.id, tl.task_id, tl.user_id, tl.content, tl.created_at, tl.updated_at,
+                    u.name AS user_name, u.email AS user_email
+             FROM task_logs tl
+             JOIN users u ON u.id = tl.user_id
+             WHERE tl.task_id = $1 AND tl.client_id = $2`,
+            [taskId, clientId]
+          );
+          if (winner.rows.length > 0) {
+            const existing = winner.rows[0];
+            const existingAttachments = await client.query(
+              `SELECT id, task_log_id, file_path, file_name, file_size, mime_type, created_at
+               FROM task_attachments
+               WHERE task_log_id = $1
+               ORDER BY id ASC`,
+              [existing.id]
+            );
+            return res.status(200).json({
+              message: "Nhật ký đã được đồng bộ",
+              log: {
+                ...existing,
+                attachments: existingAttachments.rows.map((attachment) => ({
+                  id: attachment.id,
+                  task_log_id: existing.id,
+                  file_name: attachment.file_name,
+                  file_size: attachment.file_size,
+                  mime_type: attachment.mime_type,
+                  created_at: attachment.created_at,
+                  url: formatAttachmentUrl(projectId, taskId, existing.id, attachment),
+                })),
+              },
+            });
+          }
+        } catch (retryError) {
+          await client.query("ROLLBACK").catch(() => {});
+          next(retryError);
+          return;
+        }
+      }
       await client.query("ROLLBACK");
       next(error);
     } finally {

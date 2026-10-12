@@ -136,11 +136,13 @@ describe("diary offline synchronization", () => {
     });
 
     await syncPendingDiaryEntries();
+    // T-72: lỗi mạng khi upload ảnh → entry về pending (không phải failed),
+    // giữ serverId để vòng sau chỉ retry ảnh, không POST log lại.
     const failedEntry = await getDiaryEntryById(clientId);
     let [failedAttachment] = await getDiaryAttachmentsByLog(clientId);
-    expect(failedEntry.syncStatus).toBe("failed");
+    expect(failedEntry.syncStatus).toBe("pending");
     expect(failedEntry.serverId).toBe(601);
-    expect(failedAttachment.syncStatus).toBe("failed");
+    expect(failedAttachment.syncStatus).toBe("pending");
     expect(failedAttachment.blob).toBeInstanceOf(Blob);
 
     await syncPendingDiaryEntries();
@@ -225,9 +227,11 @@ describe("diary offline synchronization", () => {
 
     await syncPendingDiaryEntries();
 
+    // T-72: lỗi mạng không response → pending (giữ log + Blob để retry),
+    // không phải failed.
     const failedEntry = await getDiaryEntryById(clientId);
     const [failedAttachment] = await getDiaryAttachmentsByLog(clientId);
-    expect(failedEntry.syncStatus).toBe("failed");
+    expect(failedEntry.syncStatus).toBe("pending");
     expect(failedEntry.syncError).toBe("Network Error");
     expect(failedEntry.serverId).toBeNull();
     expect(failedAttachment.syncStatus).toBe("pending");
@@ -275,9 +279,11 @@ describe("diary offline synchronization", () => {
 
     await syncPendingDiaryEntries();
 
+    // T-72: server không xác nhận (không response dùng được) → pending để retry,
+    // Blob giữ nguyên, không mất mục.
     const failedEntry = await getDiaryEntryById(clientId);
     const [failedAttachment] = await getDiaryAttachmentsByLog(clientId);
-    expect(failedEntry.syncStatus).toBe("failed");
+    expect(failedEntry.syncStatus).toBe("pending");
     expect(failedEntry.syncError).toBe(
       "Máy chủ không xác nhận đã lưu nhật ký công việc.",
     );
@@ -312,9 +318,11 @@ describe("diary offline synchronization", () => {
 
     await syncPendingDiaryEntries();
 
+    // T-72: server trả thiếu ảnh (response không đầy đủ) → pending để retry
+    // ảnh còn thiếu, nhưng giữ serverId đã xác nhận.
     const failedEntry = await getDiaryEntryById(clientId);
     const [failedAttachment] = await getDiaryAttachmentsByLog(clientId);
-    expect(failedEntry.syncStatus).toBe("failed");
+    expect(failedEntry.syncStatus).toBe("pending");
     expect(failedEntry.serverId).toBe(805);
     expect(failedAttachment.syncStatus).toBe("pending");
     expect(failedAttachment.blob).toBeInstanceOf(Blob);
@@ -333,5 +341,90 @@ describe("diary offline synchronization", () => {
 
     expect(api.post).not.toHaveBeenCalled();
     expect((await getDiaryEntryById("invalid-work-item")).syncStatus).toBe("failed");
+  });
+
+  it("registers background sync when supported and still syncs", async () => {
+    await createDiaryEntry({
+      id: "bgsync-diary",
+      client_id: "bgsync-diary",
+      projectId: 13,
+      work_item_id: 105,
+      content: "BGSync",
+    });
+    api.post.mockResolvedValue({ data: { id: 504 } });
+    const register = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "serviceWorker", {
+      value: { ready: Promise.resolve({ sync: { register } }) },
+      configurable: true,
+    });
+
+    stopSync = startDiarySync();
+    await vi.waitFor(async () => {
+      expect((await getDiaryEntryById("bgsync-diary")).syncStatus).toBe("synced");
+    });
+    await vi.waitFor(() => expect(register).toHaveBeenCalledWith("diary-sync"));
+
+    delete navigator.serviceWorker;
+  });
+
+  it("syncs normally when background sync is unsupported or rejected", async () => {
+    await createDiaryEntry({
+      id: "no-bgsync-diary",
+      client_id: "no-bgsync-diary",
+      projectId: 13,
+      work_item_id: 106,
+      content: "NoBGSync",
+    });
+    api.post.mockResolvedValue({ data: { id: 505 } });
+    // Không có serviceWorker trong navigator (jsdom mặc định) + register reject
+    // cũng không được làm hỏng vòng sync chính — đây là fallback bắt buộc.
+    Object.defineProperty(navigator, "serviceWorker", {
+      value: {
+        ready: Promise.resolve({
+          sync: { register: vi.fn().mockRejectedValue(new Error("QuotaExceeded")) },
+        }),
+      },
+      configurable: true,
+    });
+
+    stopSync = startDiarySync();
+    await vi.waitFor(async () => {
+      expect((await getDiaryEntryById("no-bgsync-diary")).syncStatus).toBe("synced");
+    });
+
+    delete navigator.serviceWorker;
+  });
+
+  it("triggers a sync when the tab becomes visible again", async () => {
+    await createDiaryEntry({
+      id: "visibility-diary",
+      client_id: "visibility-diary",
+      projectId: 13,
+      work_item_id: 107,
+      content: "Visibility",
+    });
+    api.post.mockResolvedValue({ data: { id: 506 } });
+
+    Object.defineProperty(navigator, "onLine", {
+      value: false,
+      configurable: true,
+    });
+    stopSync = startDiarySync();
+    expect(api.post).not.toHaveBeenCalled();
+
+    Object.defineProperty(navigator, "onLine", {
+      value: true,
+      configurable: true,
+    });
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible",
+      configurable: true,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    await vi.waitFor(async () => {
+      expect((await getDiaryEntryById("visibility-diary")).syncStatus).toBe("synced");
+    });
+    expect(api.post).toHaveBeenCalledTimes(1);
   });
 });

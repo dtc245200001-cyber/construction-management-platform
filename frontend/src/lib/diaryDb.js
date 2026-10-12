@@ -25,9 +25,17 @@ export const STORES = {
 export const SYNC_STATUS = {
   PENDING: "pending",
   SYNCING: "syncing",
+  // Đặc tả S-30 gọi trạng thái đang gửi là "sending"; cài đặt giữ chuỗi
+  // "syncing" để tương thích dữ liệu IndexedDB đã lưu ngoài hiện trường.
+  SENDING: "syncing",
   SYNCED: "synced",
   FAILED: "failed",
 };
+
+// Sau khoảng này mà một claim "syncing" vẫn chưa xong (tab crash giữa chừng),
+// vòng quét sau được phép nhặt lại mục đó. Giữ 2 phút để không giẫm chân lên
+// lần gửi đang chạy (timeout axios 15s + withRetry 2 lần) ở tab khác.
+export const STALE_CLAIM_TIMEOUT_MS = 2 * 60 * 1000;
 
 export const ALLOWED_IMAGE_TYPES = [
   "image/jpeg",
@@ -762,7 +770,10 @@ export async function getDiaryEntryWithImages(clientId) {
 }
 
 /**
- * Lấy danh sách các nhật ký đang chờ đồng bộ (pending hoặc failed)
+ * Lấy danh sách các nhật ký đang chờ đồng bộ (pending hoặc failed).
+ * Kết quả sắp xếp theo thời điểm tạo (createdAt) tăng dần để hàng đợi gửi
+ * đúng thứ tự tạo (AC S-30), vì keyPath "id" là UUID ngẫu nhiên nên thứ tự
+ * duyệt cursor của IndexedDB không phản ánh thứ tự tạo.
  */
 export async function getPendingSyncEntries() {
   const db = await openDiaryDB();
@@ -772,7 +783,7 @@ export async function getPendingSyncEntries() {
   const results = [];
   const completion = watchTransaction(
     transaction,
-    () => results,
+    () => sortByCreatedAt(results),
     "Lỗi khi đọc hàng đợi đồng bộ từ IndexedDB.",
   );
   const request = store.openCursor();
@@ -786,7 +797,7 @@ export async function getPendingSyncEntries() {
       (val.syncStatus === SYNC_STATUS.PENDING ||
         val.syncStatus === SYNC_STATUS.FAILED ||
         (val.syncStatus === SYNC_STATUS.SYNCING &&
-          Date.now() - Date.parse(val.syncStartedAt || 0) > 2 * 60 * 1000))
+          Date.now() - Date.parse(val.syncStartedAt || 0) > STALE_CLAIM_TIMEOUT_MS))
     ) {
       results.push(val);
     }
@@ -796,8 +807,28 @@ export async function getPendingSyncEntries() {
   return completion.promise;
 }
 
+/**
+ * Sắp xếp mục hàng đợi theo thời điểm tạo tăng dần.
+ * createdAt là chuỗi ISO nên so sánh chuỗi tương đương so sánh thời gian;
+ * dùng Date.parse kèm fallback 0 để mục thiếu createdAt lên đầu, không vỡ sort.
+ */
+function sortByCreatedAt(entries) {
+  return entries.sort((a, b) => {
+    const aTime = Date.parse(a?.createdAt || a?.created_at || 0);
+    const bTime = Date.parse(b?.createdAt || b?.created_at || 0);
+    return (Number.isNaN(aTime) ? 0 : aTime) - (Number.isNaN(bTime) ? 0 : bTime);
+  });
+}
+
 export const getPendingDiaryLogs = getPendingSyncEntries;
 
+/**
+ * Đánh dấu một mục đang chờ để gửi (claim).
+ * LƯU Ý: đây là read-then-write trong một transaction, KHÔNG đảm bảo nguyên tử
+ * liên tab (hai tab có thể cùng đọc "pending" trước khi bên nào ghi "syncing").
+ * Tầng gọi (diarySync) phải bọc bằng navigator.locks; server khử trùng bằng
+ * UNIQUE constraint nên POST kép chỉ tốn request, không sinh dòng trùng.
+ */
 export async function claimDiaryEntryForSync(clientId) {
   if (!clientId) return null;
   const db = await openDiaryDB();
@@ -818,7 +849,7 @@ export async function claimDiaryEntryForSync(clientId) {
 
     const staleSync =
       entry.syncStatus === SYNC_STATUS.SYNCING &&
-      Date.now() - Date.parse(entry.syncStartedAt || 0) > 2 * 60 * 1000;
+      Date.now() - Date.parse(entry.syncStartedAt || 0) > STALE_CLAIM_TIMEOUT_MS;
     if (
       entry.syncStatus !== SYNC_STATUS.PENDING &&
       entry.syncStatus !== SYNC_STATUS.FAILED &&
@@ -835,6 +866,49 @@ export async function claimDiaryEntryForSync(clientId) {
     };
     try {
       const putRequest = store.put(claimed);
+      putRequest.onerror = () => completion.reject(putRequest.error);
+    } catch (error) {
+      completion.reject(error);
+      transaction.abort();
+    }
+  };
+  request.onerror = () => completion.reject(request.error);
+
+  return completion.promise;
+}
+
+/**
+ * Nhả claim của một mục đang gửi về lại "pending" (dùng khi lỗi mạng/timeout,
+ * xem T-72): giữ nguyên syncError để hiển thị, xóa syncStartedAt để vòng quét
+ * sau nhặt ngay mà không phải chờ stale timeout.
+ */
+export async function releaseClaimToPending(clientId, errorMessage) {
+  if (!clientId) return false;
+  const db = await openDiaryDB();
+  const sanitized = sanitizeData({
+    syncStatus: SYNC_STATUS.PENDING,
+    syncError: typeof errorMessage === "string" ? errorMessage : null,
+    syncStartedAt: null,
+  });
+
+  const transaction = db.transaction(STORES.DIARY_LOGS, "readwrite");
+  const store = transaction.objectStore(STORES.DIARY_LOGS);
+  let released = false;
+  const completion = watchTransaction(
+    transaction,
+    () => released,
+    "Lỗi khi nhả claim đồng bộ về pending.",
+  );
+  const request = store.get(clientId);
+
+  request.onsuccess = () => {
+    const entry = request.result;
+    if (!entry || entry.syncStatus !== SYNC_STATUS.SYNCING) return;
+    try {
+      const putRequest = store.put({ ...entry, ...sanitized });
+      putRequest.onsuccess = () => {
+        released = true;
+      };
       putRequest.onerror = () => completion.reject(putRequest.error);
     } catch (error) {
       completion.reject(error);
