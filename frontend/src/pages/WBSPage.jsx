@@ -60,6 +60,9 @@ function WBSPage() {
   const [expanded, setExpanded] = useState(new Set());
   const [search, setSearch] = useState("");
   const [showRightPanel, setShowRightPanel] = useState(true);
+  // Lỗi 2 responsive: id node đang mở kebab menu hành động trên mobile
+  // (null = không mở menu nào). Chỉ dùng ở màn hẹp (nút kebab lg:hidden).
+  const [openMenuNodeId, setOpenMenuNodeId] = useState(null);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine !== false);
   const [isFromCache, setIsFromCache] = useState(false);
   const [cachedAt, setCachedAt] = useState(null);
