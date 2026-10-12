@@ -19,6 +19,7 @@ import {
   isBlob,
 
 } from "../lib/diaryDb";
+import { requestDiarySync } from "../services/diarySync";
 
 import {
 
@@ -243,7 +244,7 @@ export default function TaskLogModal({
 
         const pendingLogs = (localLogs || []).filter(
 
-          (l) => l.syncStatus === "pending" || l.syncStatus === "failed",
+          (l) => ["pending", "syncing", "failed"].includes(l.syncStatus),
 
         );
 
@@ -319,9 +320,15 @@ export default function TaskLogModal({
 
       // Hợp nhất: đặt các bản ghi offline lên đầu, tránh trùng lặp
 
-      const serverLogIds = new Set(serverLogs.map((l) => l.id));
+      const serverLogIds = new Set(
+        serverLogs.flatMap((log) => [log.id, log.client_id].filter(Boolean)),
+      );
 
-      const filteredOffline = offlineLogs.filter((ol) => !serverLogIds.has(ol.id));
+      const filteredOffline = offlineLogs.filter(
+        (log) =>
+          !serverLogIds.has(log.id) &&
+          !serverLogIds.has(log.client_id || log.clientId),
+      );
 
       const mergedLogs = [...filteredOffline, ...serverLogs];
 
@@ -384,6 +391,15 @@ export default function TaskLogModal({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, projectId, taskId]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const refreshAfterSync = () => fetchLogs();
+    window.addEventListener("diary-sync-updated", refreshAfterSync);
+    return () => window.removeEventListener("diary-sync-updated", refreshAfterSync);
+    // fetchLogs captures the current project and task IDs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, effectiveProjectId, effectiveTaskId]);
 
 
 
@@ -669,10 +685,9 @@ export default function TaskLogModal({
           clientId: clientUuid,
 
           client_id: clientUuid,
-
           projectId: Number(effectiveProjectId),
-
           taskId: Number(effectiveTaskId),
+          entryType: "taskLog",
 
           content: content.trim(),
 
@@ -687,8 +702,9 @@ export default function TaskLogModal({
         },
 
         imagesToStore
-
       );
+
+      await requestDiarySync();
 
       const localAttachments = (offlineResult.attachments || []).map((att) => {
 
@@ -812,6 +828,8 @@ export default function TaskLogModal({
 
       }
 
+      formData.append("client_id", currentLogClientId);
+
 
 
       validImagesToUpload.forEach((img) => {
@@ -893,9 +911,7 @@ export default function TaskLogModal({
           clearSavedForm();
 
           setLogs((prev) => [offlineLog, ...prev]);
-
           setError("");
-
           setSubmitError(
 
             "Mất kết nối mạng. Nhật ký và ảnh đã được lưu trên thiết bị, chờ đồng bộ.",
@@ -1572,13 +1588,17 @@ export default function TaskLogModal({
 
                           </div>
 
-                          {(log.syncStatus === "pending" || log.isOffline) && (
+                          {log.syncStatus && log.syncStatus !== "synced" && (
 
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
 
                               <CloudOff className="w-3 h-3 text-amber-500" />
 
-                              Đã lưu trên thiết bị — chờ đồng bộ
+                              {log.syncStatus === "syncing"
+                                ? "Đang đồng bộ..."
+                                : log.syncStatus === "failed"
+                                  ? "Đồng bộ thất bại — sẽ tự thử lại"
+                                  : "Đã lưu trên thiết bị — chờ đồng bộ"}
 
                             </span>
 

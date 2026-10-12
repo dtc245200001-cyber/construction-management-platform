@@ -28,6 +28,7 @@ import GanttPage from './pages/GanttPage';
 import MilestoneWarningsPage from './pages/MilestoneWarningsPage';
 import ProjectCalendarPage from './pages/ProjectCalendarPage';
 import DiaryPage from './pages/DiaryPage';
+import { startDiarySync } from './services/diarySync';
 
 // S-26 / T-60
 import FieldPage from './pages/FieldPage';
@@ -55,6 +56,11 @@ function App() {
 
     checkSession();
   }, []);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    return startDiarySync();
+  }, [user]);
 
   if (checkingSession) {
     return (

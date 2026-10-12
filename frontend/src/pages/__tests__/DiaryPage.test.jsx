@@ -203,9 +203,16 @@ describe('DiaryPage', () => {
       expect(screen.getByText('Ghi test')).toBeInTheDocument();
     });
 
-    it('Lỗi mạng: giữ form, hiện nút Gửi lại, gửi lại đúng client_id, sau đó thành công', async () => {
+    it('Lỗi mạng: lưu cục bộ rồi tự đồng bộ lại với cùng client_id', async () => {
       // Fail first
       api.post.mockRejectedValueOnce(new Error('Network error')); // No response obj
+      api.post.mockResolvedValueOnce({
+        data: {
+          entry: {
+            id: 2, work_item_id: 101, content: 'Loi mang test', entry_at: new Date().toISOString(), entry_date: format(new Date(), 'yyyy-MM-dd'), created_by_name: 'Ky su'
+          }
+        }
+      });
       
       renderPage(mockUserWrite, { openForm: true });
       await waitFor(() => expect(screen.getByText('Ghi nhật ký thi công')).toBeInTheDocument());
@@ -220,7 +227,7 @@ describe('DiaryPage', () => {
       const submitBtn = screen.getByTestId('submit-diary-btn');
       fireEvent.submit(submitBtn.closest('form'));
       
-      await waitFor(() => expect(screen.getByText(/Chưa gửi được, nội dung vẫn được giữ/i)).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText(/đã được đồng bộ thành công/i)).toBeInTheDocument());
       
       // Content still there
       expect(screen.getByDisplayValue('Loi mang test')).toBeInTheDocument();
@@ -228,28 +235,15 @@ describe('DiaryPage', () => {
       // Draft should be saved
       expect(localStorage.getItem('diary_draft_13')).toContain('Loi mang test');
       
-      // Second attempt success
-      api.post.mockResolvedValueOnce({
-        data: {
-          entry: {
-            id: 2, work_item_id: 101, content: 'Loi mang test', entry_at: new Date().toISOString(), entry_date: format(new Date(), 'yyyy-MM-dd'), created_by_name: 'Ky su'
-          }
-        }
-      });
-      
-      const retryBtn = screen.getByRole('button', { name: /Gửi lại/i });
-      fireEvent.click(retryBtn);
-      
       await waitFor(() => {
-        // Should be called twice with SAME UUID
+        // The offline queue retries automatically with the same UUID.
         expect(api.post).toHaveBeenCalledTimes(2);
         expect(api.post.mock.calls[0][1].client_id).toBe('test-uuid-123');
         expect(api.post.mock.calls[1][1].client_id).toBe('test-uuid-123');
       });
       
-      // Form closes, draft removed
-      await waitFor(() => expect(screen.queryByText('Ghi nhật ký thi công')).not.toBeInTheDocument());
-      expect(localStorage.getItem('diary_draft_13')).toBeNull();
+      // The diary remains visible with an acknowledged synced state.
+      await waitFor(() => expect(screen.getByText(/đã được đồng bộ thành công/i)).toBeInTheDocument());
     });
 
     it('Lỗi 422 INVALID_WORK_ITEM, 403 → hiện tiếng Việt, không tự thử lại', async () => {

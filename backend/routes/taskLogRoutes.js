@@ -63,6 +63,8 @@ const upload = multer({
   },
   fileFilter: fileFilter,
 });
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // GET /api/projects/:projectId/tasks/:taskId/logs
 router.get(
@@ -93,7 +95,7 @@ router.get(
       }
 
       const logsResult = await db.query(
-        `SELECT tl.id, tl.task_id, tl.user_id, tl.content, tl.created_at, tl.updated_at,
+        `SELECT tl.id, tl.task_id, tl.user_id, tl.content, tl.client_id, tl.created_at, tl.updated_at,
                 u.name AS user_name, u.email AS user_email
          FROM task_logs tl
          JOIN users u ON u.id = tl.user_id
@@ -134,6 +136,7 @@ router.get(
         id: log.id,
         task_id: log.task_id,
         user_id: log.user_id,
+        client_id: log.client_id,
         user_name: log.user_name,
         user_email: log.user_email,
         content: log.content,
@@ -172,9 +175,13 @@ router.post(
     const taskId = Number(req.params.taskId);
     const userId = req.user.id;
     const content = req.body.content || null;
+    const clientId = req.body.client_id || null;
 
     if (!Number.isInteger(taskId) || taskId <= 0) {
       return res.status(400).json({ message: "taskId không hợp lệ" });
+    }
+    if (clientId && !UUID_PATTERN.test(clientId)) {
+      return res.status(400).json({ message: "client_id không hợp lệ" });
     }
 
     const client = await db.connect();
@@ -195,11 +202,48 @@ router.post(
         return res.status(404).json({ message: "Không tìm thấy task trong project" });
       }
 
+      if (clientId) {
+        const existingLog = await client.query(
+          `SELECT tl.id, tl.task_id, tl.user_id, tl.content, tl.created_at, tl.updated_at,
+                  u.name AS user_name, u.email AS user_email
+           FROM task_logs tl
+           JOIN users u ON u.id = tl.user_id
+           WHERE tl.task_id = $1 AND tl.client_id = $2`,
+          [taskId, clientId]
+        );
+        if (existingLog.rows.length > 0) {
+          const existing = existingLog.rows[0];
+          const existingAttachments = await client.query(
+            `SELECT id, task_log_id, file_path, file_name, file_size, mime_type, created_at
+             FROM task_attachments
+             WHERE task_log_id = $1
+             ORDER BY id ASC`,
+            [existing.id]
+          );
+          await client.query("ROLLBACK");
+          return res.status(200).json({
+            message: "Nhật ký đã được đồng bộ",
+            log: {
+              ...existing,
+              attachments: existingAttachments.rows.map((attachment) => ({
+                id: attachment.id,
+                task_log_id: existing.id,
+                file_name: attachment.file_name,
+                file_size: attachment.file_size,
+                mime_type: attachment.mime_type,
+                created_at: attachment.created_at,
+                url: formatAttachmentUrl(projectId, taskId, existing.id, attachment),
+              })),
+            },
+          });
+        }
+      }
+
       // Insert log
       const logInsert = await client.query(
-        `INSERT INTO task_logs (task_id, user_id, content) 
-         VALUES ($1, $2, $3) RETURNING id, created_at`,
-        [taskId, userId, content]
+        `INSERT INTO task_logs (task_id, user_id, content, client_id)
+         VALUES ($1, $2, $3, $4) RETURNING id, created_at`,
+        [taskId, userId, content, clientId]
       );
       const logId = logInsert.rows[0].id;
 

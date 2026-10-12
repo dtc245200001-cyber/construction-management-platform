@@ -1,5 +1,6 @@
 "use strict";
 
+const multer = require("multer");
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
 const { checkProjectAccess, requirePermission, createProjectRouter } = require("../middleware/projectAccess");
@@ -9,6 +10,20 @@ const { validateCreateDiaryEntry, validateGetDiaryEntries } = require("../utils/
 const { logAudit } = require("../utils/auditLogger");
 
 const router = createProjectRouter();
+const diaryImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, callback) => {
+    const allowedMimeTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+    if (allowedMimeTypes.includes(file.mimetype)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed."));
+    }
+  },
+});
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
  * @swagger
@@ -171,7 +186,19 @@ router.get(
     const total = parseInt(countRes.rows[0].count, 10);
 
     const dataRes = await db.query(
-      `SELECT d.*, w.name AS work_item_name, w.code AS work_item_code, u.name AS created_by_name 
+      `SELECT d.*, w.name AS work_item_name, w.code AS work_item_code, u.name AS created_by_name,
+              COALESCE((
+                SELECT json_agg(json_build_object(
+                  'id', a.id,
+                  'file_name', a.file_name,
+                  'file_size', a.file_size,
+                  'mime_type', a.mime_type,
+                  'created_at', a.created_at,
+                  'url', '/api/projects/' || d.project_id || '/diary-entries/' || d.id || '/attachments/' || a.id
+                ) ORDER BY a.id)
+                FROM diary_entry_attachments a
+                WHERE a.diary_entry_id = d.id
+              ), '[]'::json) AS attachments
        FROM diary_entries d
        JOIN work_items w ON w.id = d.work_item_id
        JOIN users u ON u.id = d.created_by
@@ -189,6 +216,104 @@ router.get(
       offset,
       data: dataRes.rows
     });
+  })
+);
+
+router.post(
+  "/:projectId/diary-entries/:entryId/attachments",
+  requireAuth,
+  checkProjectAccess,
+  requirePermission("site_log.create"),
+  (req, res, next) => {
+    diaryImageUpload.single("image")(req, res, (error) => {
+      if (error) return res.status(400).json({ message: error.message });
+      next();
+    });
+  },
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+    const entryId = parsePositiveInt(req.params.entryId);
+    const clientId = req.body.client_id;
+
+    if (!projectId || !entryId) {
+      return res.status(400).json({ message: "ID nhật ký không hợp lệ" });
+    }
+    if (!req.file) {
+      return res.status(400).json({ message: "Thiếu ảnh đính kèm" });
+    }
+    if (!UUID_PATTERN.test(clientId || "")) {
+      return res.status(400).json({ message: "client_id không hợp lệ" });
+    }
+
+    const entry = await db.query(
+      "SELECT id FROM diary_entries WHERE id = $1 AND project_id = $2",
+      [entryId, projectId]
+    );
+    if (entry.rows.length === 0) {
+      return res.status(404).json({ message: "Không tìm thấy nhật ký trong dự án" });
+    }
+
+    const result = await db.query(
+      `INSERT INTO diary_entry_attachments
+         (diary_entry_id, client_id, file_name, file_size, mime_type, file_data)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (diary_entry_id, client_id) DO NOTHING
+       RETURNING id, file_name, file_size, mime_type, created_at`,
+      [
+        entryId,
+        clientId,
+        req.file.originalname,
+        req.file.size,
+        req.file.mimetype,
+        req.file.buffer,
+      ]
+    );
+
+    const attachment =
+      result.rows[0] ||
+      (
+        await db.query(
+          `SELECT id, file_name, file_size, mime_type, created_at
+           FROM diary_entry_attachments
+           WHERE diary_entry_id = $1 AND client_id = $2`,
+          [entryId, clientId]
+        )
+      ).rows[0];
+
+    return res.status(result.rows.length ? 201 : 200).json({
+      ...attachment,
+      url: `/api/projects/${projectId}/diary-entries/${entryId}/attachments/${attachment.id}`,
+    });
+  })
+);
+
+router.get(
+  "/:projectId/diary-entries/:entryId/attachments/:attachmentId",
+  requireAuth,
+  checkProjectAccess,
+  requirePermission("site_log.view"),
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+    const entryId = parsePositiveInt(req.params.entryId);
+    const attachmentId = parsePositiveInt(req.params.attachmentId);
+    if (!projectId || !entryId || !attachmentId) {
+      return res.status(400).json({ message: "ID tệp đính kèm không hợp lệ" });
+    }
+
+    const result = await db.query(
+      `SELECT a.file_data, a.mime_type
+       FROM diary_entry_attachments a
+       JOIN diary_entries d ON d.id = a.diary_entry_id
+       WHERE a.id = $1 AND d.id = $2 AND d.project_id = $3`,
+      [attachmentId, entryId, projectId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Không tìm thấy ảnh đính kèm" });
+    }
+
+    res.setHeader("Content-Type", result.rows[0].mime_type);
+    res.setHeader("Cache-Control", "private, max-age=86400");
+    return res.send(result.rows[0].file_data);
   })
 );
 
