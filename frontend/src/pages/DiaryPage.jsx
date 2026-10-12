@@ -41,6 +41,7 @@ export default function DiaryPage({ user }) {
 
   // Quản lý các Object URL ảnh offline để thu hồi khi unmount
   const pageCreatedUrlsRef = useRef(new Set());
+  const fetchRequestIdRef = useRef(0);
 
   useEffect(() => {
     const urls = pageCreatedUrlsRef.current;
@@ -80,6 +81,7 @@ export default function DiaryPage({ user }) {
   }, [projectId]);
 
   const fetchEntries = async () => {
+    const requestId = ++fetchRequestIdRef.current;
     setLoading(true);
     setError(null);
     let serverEntries = [];
@@ -193,19 +195,23 @@ export default function DiaryPage({ user }) {
       });
 
       const mergedEntries = [...uniquePending, ...mergedServerEntries];
-      setEntries(mergedEntries);
-      setTotal(serverTotal + uniquePending.length);
+      if (requestId === fetchRequestIdRef.current) {
+        setEntries(mergedEntries);
+        setTotal(serverTotal + uniquePending.length);
 
-      if (fetchError && uniquePending.length === 0) {
-        setError(fetchError);
+        if (fetchError && uniquePending.length === 0) {
+          setError(fetchError);
+        }
       }
     } catch (dbErr) {
       console.error("Lỗi khi đọc nhật ký offline:", dbErr);
-      setEntries(serverEntries);
-      setTotal(serverTotal);
-      if (fetchError) setError(fetchError);
+      if (requestId === fetchRequestIdRef.current) {
+        setEntries(serverEntries);
+        setTotal(serverTotal);
+        if (fetchError) setError(fetchError);
+      }
     } finally {
-      setLoading(false);
+      if (requestId === fetchRequestIdRef.current) setLoading(false);
     }
   };
 
@@ -263,6 +269,8 @@ export default function DiaryPage({ user }) {
     }
 
     if (matchesDate && matchesWorkItem) {
+      fetchRequestIdRef.current += 1;
+      setLoading(false);
       setEntries(prev => {
         const exists = prev.some(e => (e.client_id && e.client_id === newEntry.client_id) || (e.id && e.id === newEntry.id));
         if (exists) return prev;

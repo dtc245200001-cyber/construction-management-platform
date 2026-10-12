@@ -105,6 +105,7 @@ export default function DiaryEntryForm({
 
   const [submitMessage, setSubmitMessage] = useState(null);
   const [draftLoaded, setDraftLoaded] = useState(false);
+  const savedClientIdsRef = useRef(new Set());
 
   const [selectedImages, setSelectedImages] = useState([]);
   const [imageError, setImageError] = useState("");
@@ -276,26 +277,37 @@ export default function DiaryEntryForm({
   }, [workItemId, entryAt, content, clientId, draftKey, canWrite, draftLoaded]);
 
   useEffect(() => {
-    if (!clientId) return undefined;
     const handleSyncUpdate = async () => {
-      const entry = await getDiaryEntryById(clientId);
-      if (!entry) return;
-      if (entry.syncStatus === "synced") {
-        removeDraftIfMatchesEntry(draftKey, entry);
+      const savedIds = [...savedClientIdsRef.current];
+      if (savedIds.length === 0) return;
+      let entries;
+      try {
+        entries = (await Promise.all(savedIds.map(getDiaryEntryById))).filter(Boolean);
+      } catch (error) {
+        console.error("Không thể xác nhận trạng thái nhật ký đã lưu:", error);
+        return;
+      }
+      if (entries.some((entry) => entry.syncStatus === "failed")) {
+        const failedEntry = entries.find((entry) => entry.syncStatus === "failed");
+        setSubmitMessage({
+          type: "warning",
+          text: `Đồng bộ chưa hoàn tất; hệ thống sẽ tự thử lại. ${failedEntry.syncError || ""}`.trim(),
+        });
+      } else if (entries.length > 0 && entries.every((entry) => entry.syncStatus === "synced")) {
         setSubmitMessage({
           type: "success",
           text: "Nhật ký đã được đồng bộ thành công.",
         });
-      } else if (entry.syncStatus === "failed") {
+      } else {
         setSubmitMessage({
           type: "warning",
-          text: `Đồng bộ chưa hoàn tất; hệ thống sẽ tự thử lại. ${entry.syncError || ""}`.trim(),
+          text: "Đã lưu trên thiết bị — chờ đồng bộ. Dữ liệu vẫn được giữ để thử lại.",
         });
       }
     };
     window.addEventListener("diary-sync-updated", handleSyncUpdate);
     return () => window.removeEventListener("diary-sync-updated", handleSyncUpdate);
-  }, [clientId, draftKey]);
+  }, [draftKey]);
 
   const validate = (field, value) => {
     let err = "";
@@ -362,6 +374,7 @@ export default function DiaryEntryForm({
 
     setIsSubmitting(true);
     setSubmitMessage(null);
+    let serverRequestCompleted = false;
 
     const clientUuid = clientId || crypto.randomUUID();
     if (!clientId) setClientId(clientUuid);
@@ -390,7 +403,7 @@ export default function DiaryEntryForm({
           )
         : selectedCategory;
 
-    const handleOfflineStorage = async () => {
+    const handleOfflineStorage = async ({ startNextEntry = false } = {}) => {
       try {
         const imagesToStore = selectedImages.map((img) => ({
           id: img.id,
@@ -422,6 +435,7 @@ export default function DiaryEntryForm({
           syncStatus: "pending",
           isOffline: true,
         }, imagesToStore);
+        savedClientIdsRef.current.add(clientUuid);
         removeDraftIfMatchesEntry(draftKey, {
           client_id: clientUuid,
           work_item_id: resolvedWorkItemId,
@@ -429,27 +443,56 @@ export default function DiaryEntryForm({
           entry_at: payload.entry_at,
         });
 
-        await requestDiarySync();
-        const storedEntry = await getDiaryEntryById(clientUuid);
+        try {
+          await requestDiarySync();
+        } catch (syncError) {
+          console.error("Nhật ký đã lưu cục bộ nhưng chưa thể bắt đầu đồng bộ:", syncError);
+        }
+        let storedEntry = null;
+        let syncStatusVerified = true;
+        try {
+          storedEntry = await getDiaryEntryById(clientUuid);
+          if (!storedEntry) {
+            throw new Error("Không tìm thấy nhật ký vừa lưu trong IndexedDB.");
+          }
+        } catch (readError) {
+          syncStatusVerified = false;
+          console.error("Không thể đọc lại trạng thái nhật ký vừa lưu:", readError);
+        }
         setSubmitMessage({
           type: storedEntry?.syncStatus === "synced" ? "success" : "warning",
           text:
             storedEntry?.syncStatus === "synced"
               ? "Nhật ký đã được đồng bộ thành công."
-              : "Đã lưu trên thiết bị — chờ đồng bộ. Chưa gửi được, nội dung vẫn được giữ.",
+              : syncStatusVerified
+                ? "Đã lưu trên thiết bị — chờ đồng bộ. Chưa gửi được, nội dung vẫn được giữ."
+                : "Đã lưu trên thiết bị nhưng chưa xác nhận được trạng thái đồng bộ. Dữ liệu vẫn được giữ.",
         });
+        if (startNextEntry) {
+          selectedImages.forEach((img) => {
+            if (img.previewUrl?.startsWith("blob:")) {
+              URL.revokeObjectURL(img.previewUrl);
+            }
+          });
+          setSelectedImages([]);
+          setWorkItemId("");
+          setContent("");
+          setEntryAt(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
+          setClientId(crypto.randomUUID());
+          setErrors({});
+        }
       } catch (storageError) {
         console.error("Không thể lưu nhật ký ngoại tuyến:", storageError);
         setSubmitMessage({
           type: "error",
-          text: "Không thể lưu cục bộ trên thiết bị. Vui lòng thử lại.",
+          text: `${storageError.message || "Không thể lưu cục bộ trên thiết bị."} Nhật ký và ảnh chưa được lưu; dữ liệu vẫn còn trong biểu mẫu để bạn thử lại.`,
         });
       }
     };
 
     // Nếu trình duyệt đang offline, lưu trực tiếp IndexedDB, không gọi API
     if (typeof navigator !== "undefined" && !navigator.onLine) {
-      await handleOfflineStorage();
+      await handleOfflineStorage({ startNextEntry: true });
       setIsSubmitting(false);
       return;
     }
@@ -459,6 +502,7 @@ export default function DiaryEntryForm({
         `/projects/${projectId}/diary-entries`,
         payload,
       );
+      serverRequestCompleted = true;
 
       const serverEntry = res.data.entry || res.data;
       let successEntry = serverEntry;
@@ -472,7 +516,7 @@ export default function DiaryEntryForm({
           size: img.file.size,
           syncStatus: "pending",
         }));
-        await createDiaryEntry(
+        const persistedEntry = await createDiaryEntry(
           {
             id: clientUuid,
             clientId: clientUuid,
@@ -497,9 +541,33 @@ export default function DiaryEntryForm({
           },
           imagesToStore,
         );
-        await requestDiarySync();
+        try {
+          await requestDiarySync();
+        } catch (syncError) {
+          console.error("Ảnh đã lưu cục bộ nhưng chưa thể xác nhận đồng bộ:", syncError);
+        }
 
-        const localEntry = await getDiaryEntryWithImages(clientUuid);
+        let localEntry = {
+          ...persistedEntry,
+          attachments: persistedEntry.attachments,
+        };
+        let syncStatusVerified = true;
+        try {
+          const reloadedEntry = await getDiaryEntryWithImages(clientUuid);
+          if (!reloadedEntry) {
+            throw new Error("Không tìm thấy nhật ký vừa lưu trong IndexedDB.");
+          }
+          localEntry = reloadedEntry;
+        } catch (readError) {
+          syncStatusVerified = false;
+          console.error("Không thể xác nhận trạng thái nhật ký và ảnh vừa lưu:", readError);
+        }
+        if (!syncStatusVerified) {
+          setSubmitMessage({
+            type: "warning",
+            text: "Nhật ký và ảnh đã được lưu trên thiết bị nhưng chưa xác nhận được trạng thái đồng bộ. Dữ liệu vẫn được giữ.",
+          });
+        }
         successEntry = {
           ...serverEntry,
           syncStatus: localEntry.syncStatus,
@@ -534,14 +602,20 @@ export default function DiaryEntryForm({
       onSuccess(successEntry);
     } catch (err) {
       const isNetworkError =
-        (typeof navigator !== "undefined" && !navigator.onLine) ||
-        err.message === "Network Error" ||
-        err.message === "Network error" ||
-        err.code === "ERR_NETWORK" ||
-        (!err.response && !err.status);
+        !serverRequestCompleted &&
+        !err.response &&
+        ((typeof navigator !== "undefined" && !navigator.onLine) ||
+          err.isAxiosError === true ||
+          ["ERR_NETWORK", "ECONNABORTED", "ETIMEDOUT"].includes(err.code) ||
+          ["Network Error", "Network error"].includes(err.message));
 
       if (isNetworkError) {
         await handleOfflineStorage();
+      } else if (serverRequestCompleted) {
+        setSubmitMessage({
+          type: "error",
+          text: `Máy chủ đã xác nhận nhật ký nhưng không thể lưu đầy đủ dữ liệu cục bộ: ${err.message || "Lỗi IndexedDB."} Ảnh vẫn còn trong biểu mẫu; hãy xử lý lỗi lưu trữ rồi thử lại.`,
+        });
       } else {
         const status = err.response?.status;
         const code = err.response?.data?.code;
@@ -618,7 +692,7 @@ export default function DiaryEntryForm({
         >
           {submitMessage && (
             <div
-              className={`p-4 rounded-xl flex items-start gap-3 text-sm font-medium ${submitMessage.type === "warning" ? "bg-orange-50 text-orange-700 border border-orange-200" : "bg-red-50 text-red-700 border border-red-200"}`}
+              className={`p-4 rounded-xl flex items-start gap-3 text-sm font-medium ${submitMessage.type === "warning" ? "bg-orange-50 text-orange-700 border border-orange-200" : submitMessage.type === "success" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}
             >
               <AlertCircle className="size-5 shrink-0 mt-0.5" />
 
