@@ -22,6 +22,7 @@ import {
   cleanOrphanAttachments,
   getDiaryEntryWithImages,
   getPendingSyncEntries,
+  getDiarySyncStats,
   claimDiaryEntryForSync,
   updateDiaryEntry,
   updateDiaryAttachment,

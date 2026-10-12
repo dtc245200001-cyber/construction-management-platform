@@ -89,7 +89,7 @@ function watchTransaction(transaction, getResult, fallback) {
   transaction.onabort = () =>
     reject(
       transaction.error ||
-        new Error(`${fallback} Transaction đã rollback.`),
+      new Error(`${fallback} Transaction đã rollback.`),
     );
 
   return { promise, reject, isSettled: () => settled };
@@ -331,20 +331,20 @@ export async function createDiaryEntry(entryData, images = []) {
       sanitized.projectId !== undefined && sanitized.projectId !== null
         ? Number(sanitized.projectId)
         : sanitized.project_id !== undefined && sanitized.project_id !== null
-        ? Number(sanitized.project_id)
-        : null,
+          ? Number(sanitized.project_id)
+          : null,
     taskId:
       sanitized.taskId !== undefined && sanitized.taskId !== null
         ? Number(sanitized.taskId)
         : sanitized.task_id !== undefined && sanitized.task_id !== null
-        ? Number(sanitized.task_id)
-        : null,
+          ? Number(sanitized.task_id)
+          : null,
     workItemId:
       sanitized.workItemId !== undefined
         ? sanitized.workItemId
         : sanitized.work_item_id !== undefined
-        ? sanitized.work_item_id
-        : null,
+          ? sanitized.work_item_id
+          : null,
     categoryId: sanitized.categoryId || sanitized.category_id || null,
     content: (sanitized.content || "").trim(),
     entryAt: sanitized.entryAt || sanitized.entry_at || sanitized.createdAt || now,
@@ -400,8 +400,8 @@ export async function createDiaryEntry(entryData, images = []) {
           imgSanitized.size !== undefined
             ? imgSanitized.size
             : imgSanitized.file_size !== undefined
-            ? imgSanitized.file_size
-            : blob?.size || 0;
+              ? imgSanitized.file_size
+              : blob?.size || 0;
 
         const attachRecord = {
           ...imgSanitized,
@@ -495,8 +495,8 @@ export async function saveDiaryAttachment(attachment) {
     sanitized.size !== undefined
       ? sanitized.size
       : sanitized.file_size !== undefined
-      ? sanitized.file_size
-      : blob?.size || 0;
+        ? sanitized.file_size
+        : blob?.size || 0;
   const logId =
     sanitized.diaryClientId ||
     sanitized.diary_client_id ||
@@ -574,48 +574,48 @@ export async function saveDiaryAttachments(diaryClientId, images) {
 
   try {
     for (const img of images) {
-        const sanitized = sanitizeData(img);
-        const id = sanitized.id || generateUUID();
-        const blob = sanitized.blob || sanitized.file || (isBlob(sanitized) ? sanitized : null);
-        const fileName =
-          sanitized.fileName ||
-          sanitized.file_name ||
-          sanitized.name ||
-          "anh-nhat-ky.jpg";
-        const mimeType =
-          sanitized.mimeType ||
-          sanitized.mime_type ||
-          blob?.type ||
-          "image/jpeg";
-        const size =
-          sanitized.size !== undefined
-            ? sanitized.size
-            : sanitized.file_size !== undefined
+      const sanitized = sanitizeData(img);
+      const id = sanitized.id || generateUUID();
+      const blob = sanitized.blob || sanitized.file || (isBlob(sanitized) ? sanitized : null);
+      const fileName =
+        sanitized.fileName ||
+        sanitized.file_name ||
+        sanitized.name ||
+        "anh-nhat-ky.jpg";
+      const mimeType =
+        sanitized.mimeType ||
+        sanitized.mime_type ||
+        blob?.type ||
+        "image/jpeg";
+      const size =
+        sanitized.size !== undefined
+          ? sanitized.size
+          : sanitized.file_size !== undefined
             ? sanitized.file_size
             : blob?.size || 0;
 
-        const record = {
-          ...sanitized,
-          id,
-          diaryClientId,
-          diary_client_id: diaryClientId,
-          logId: diaryClientId,
-          blob,
-          fileName,
-          file_name: fileName,
-          name: fileName,
-          mimeType,
-          mime_type: mimeType,
-          size,
-          file_size: size,
-          syncStatus: sanitized.syncStatus || SYNC_STATUS.PENDING,
-          createdAt: sanitized.createdAt || now,
-        };
+      const record = {
+        ...sanitized,
+        id,
+        diaryClientId,
+        diary_client_id: diaryClientId,
+        logId: diaryClientId,
+        blob,
+        fileName,
+        file_name: fileName,
+        name: fileName,
+        mimeType,
+        mime_type: mimeType,
+        size,
+        file_size: size,
+        syncStatus: sanitized.syncStatus || SYNC_STATUS.PENDING,
+        createdAt: sanitized.createdAt || now,
+      };
 
-        delete record.previewUrl;
-        if (typeof record.url === "string" && record.url.startsWith("blob:")) {
-          delete record.url;
-        }
+      delete record.previewUrl;
+      if (typeof record.url === "string" && record.url.startsWith("blob:")) {
+        delete record.url;
+      }
 
       const request = store.put(record);
       request.onerror = () => completion.reject(request.error);
@@ -1162,4 +1162,91 @@ export async function cleanOrphanAttachments() {
   };
   logKeysReq.onerror = () => completion.reject(logKeysReq.error);
   return completion.promise;
+}
+
+/**
+ * Thống kê nhật ký và ảnh chưa đồng bộ.
+ * Có thể chạy khi offline vì chỉ đọc dữ liệu trong IndexedDB.
+ */
+export async function getDiarySyncStats() {
+  const db = await openDiaryDB();
+
+  const transaction = db.transaction(
+    [STORES.DIARY_LOGS, STORES.DIARY_ATTACHMENTS],
+    "readonly",
+  );
+
+  const logStore = transaction.objectStore(STORES.DIARY_LOGS);
+  const attachmentStore = transaction.objectStore(
+    STORES.DIARY_ATTACHMENTS,
+  );
+
+  const logsRequest = logStore.getAll();
+  const attachmentsRequest = attachmentStore.getAll();
+
+  return new Promise((resolve, reject) => {
+    let logs;
+    let attachments;
+
+    logsRequest.onsuccess = () => {
+      logs = logsRequest.result || [];
+    };
+
+    attachmentsRequest.onsuccess = () => {
+      attachments = attachmentsRequest.result || [];
+    };
+
+    logsRequest.onerror = () => reject(logsRequest.error);
+    attachmentsRequest.onerror = () =>
+      reject(attachmentsRequest.error);
+
+    transaction.oncomplete = () => {
+      const unsentStatuses = new Set([
+        SYNC_STATUS.PENDING,
+        SYNC_STATUS.SYNCING,
+        SYNC_STATUS.FAILED,
+      ]);
+
+      const unsentLogs = (logs || []).filter((log) =>
+        unsentStatuses.has(log.syncStatus),
+      );
+
+      const unsentLogIds = new Set();
+
+      unsentLogs.forEach((log) => {
+        if (log.clientId) unsentLogIds.add(log.clientId);
+        if (log.id) unsentLogIds.add(log.id);
+      });
+
+      const pendingImages = (attachments || []).filter((image) => {
+        const parentId = image.logId || image.diaryClientId;
+
+        return (
+          parentId &&
+          unsentLogIds.has(parentId) &&
+          image.syncStatus !== SYNC_STATUS.SYNCED
+        );
+      }).length;
+
+      resolve({
+        pendingEntries: unsentLogs.length,
+        pendingImages,
+        totalPending: unsentLogs.length + pendingImages,
+      });
+    };
+
+    transaction.onerror = () => {
+      reject(
+        transaction.error ||
+        new Error("Không thể thống kê hàng đợi đồng bộ nhật ký."),
+      );
+    };
+
+    transaction.onabort = () => {
+      reject(
+        transaction.error ||
+        new Error("Giao dịch thống kê đồng bộ đã bị hủy."),
+      );
+    };
+  });
 }

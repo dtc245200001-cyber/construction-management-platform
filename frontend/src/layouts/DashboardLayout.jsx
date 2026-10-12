@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation, Outlet } from "react-router-dom";
 import api from "../lib/api";
+import DiarySyncStatus from "../components/DiarySyncStatus";
 import {
   Home,
   Network,
@@ -57,7 +58,7 @@ export default function DashboardLayout({ user, setUser }) {
   }, [location.pathname]);
 
   // In a real app, this should come from context or API based on localStorage.getItem('currentProjectId')
-  const currentProjectId = localStorage.getItem('currentProjectId') || 1; 
+  const currentProjectId = localStorage.getItem('currentProjectId') || 1;
 
   const handleLogout = async () => {
     try {
@@ -131,7 +132,7 @@ export default function DashboardLayout({ user, setUser }) {
       setOpenSwitcher(false);
       return;
     }
-    
+
     if (!window.confirm("Chuyển sang dự án khác sẽ tải lại trang. Các thay đổi chưa lưu có thể bị mất. Tiếp tục?")) {
       return;
     }
@@ -152,14 +153,14 @@ export default function DashboardLayout({ user, setUser }) {
     <div className="flex h-screen bg-background overflow-hidden">
       {/* Mobile Overlay */}
       {isMobileMenuOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-40 bg-black/50 lg:hidden"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
 
       {/* Sidebar */}
-      <aside 
+      <aside
         className={`fixed inset-y-0 left-0 z-50 flex-col bg-sidebar py-6 text-sidebar-foreground transition-all duration-300 h-screen overflow-hidden lg:static lg:flex shrink-0
           ${isMobileMenuOpen ? 'translate-x-0 w-[280px] px-5 flex' : '-translate-x-full lg:translate-x-0'}
           ${isSidebarCollapsed ? 'lg:w-[80px] lg:items-center lg:px-2' : 'lg:w-[280px] lg:px-5'}
@@ -228,7 +229,7 @@ export default function DashboardLayout({ user, setUser }) {
                     </CommandGroup>
                   </CommandList>
                   <div className="border-t p-2">
-                    <button 
+                    <button
                       onClick={() => { setOpenSwitcher(false); navigate('/projects'); }}
                       className="w-full text-center text-xs font-medium text-muted-foreground hover:text-primary transition-colors py-1.5 rounded hover:bg-accent"
                     >
@@ -283,12 +284,12 @@ export default function DashboardLayout({ user, setUser }) {
           </nav>
         </div>
 
-        <button 
+        <button
           title="Đăng xuất"
-          onClick={handleLogout} 
+          onClick={handleLogout}
           className={`mt-5 shrink-0 flex items-center gap-3 py-2 text-sm text-sidebar-foreground/85 hover:text-red-500 outline-none cursor-pointer relative z-10 pointer-events-auto w-full ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'}`}
         >
-          <Settings className="size-5 shrink-0" /> 
+          <Settings className="size-5 shrink-0" />
           {!isSidebarCollapsed && "Đăng xuất"}
         </button>
       </aside>
@@ -326,7 +327,7 @@ export default function DashboardLayout({ user, setUser }) {
             <Plus className="size-4" /> <span className="hidden min-[420px]:inline">Ghi nhật ký nhanh</span><span className="min-[420px]:hidden">Ghi nhật ký</span>
           </button>
 
-          <button 
+          <button
             className="relative flex min-h-11 min-w-11 items-center justify-center text-muted-foreground outline-none cursor-pointer hover:bg-accent/50 p-2 rounded-xl transition-colors"
             onClick={() => navigate('/warnings')}
           >
@@ -337,12 +338,12 @@ export default function DashboardLayout({ user, setUser }) {
           </button>
 
           <div className="relative">
-            <button 
+            <button
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
               className="flex items-center gap-2 outline-none hover:bg-accent/50 p-1.5 rounded-xl transition-colors cursor-pointer"
             >
               <div className="flex size-9 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
-                {user?.name?.substring(0,2).toUpperCase() || 'HL'}
+                {user?.name?.substring(0, 2).toUpperCase() || 'HL'}
               </div>
               <div className="hidden sm:block text-left">
                 <p className="text-sm font-semibold">{user?.name || 'Hương Lan'}</p>
@@ -353,7 +354,7 @@ export default function DashboardLayout({ user, setUser }) {
 
             {isUserMenuOpen && (
               <div className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-border bg-card p-1 shadow-lg z-50">
-                <button 
+                <button
                   onClick={handleLogout}
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-danger hover:bg-danger-soft transition-colors text-left font-medium outline-none"
                 >
@@ -363,6 +364,9 @@ export default function DashboardLayout({ user, setUser }) {
             )}
           </div>
         </header>
+        <DiarySyncStatus />
+
+        {/* Dynamic Page Content */}
 
         {/* Dynamic Page Content */}
         <main className="flex-1 overflow-y-auto bg-background">
