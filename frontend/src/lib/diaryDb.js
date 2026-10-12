@@ -41,6 +41,52 @@ export const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
 let dbPromise = null;
 
+function getWriteError(error, fallback) {
+  if (error?.name === "QuotaExceededError") {
+    return new Error(
+      "Không đủ dung lượng lưu trữ cục bộ. Dữ liệu chưa được lưu đầy đủ; hãy giải phóng dung lượng rồi thử lại."
+    );
+  }
+  if (error instanceof Error && error.message) return error;
+  return new Error(fallback);
+}
+
+function watchTransaction(transaction, getResult, fallback) {
+  let settled = false;
+  let resolvePromise;
+  let rejectPromise;
+  const promise = new Promise((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+  const resolve = (result) => {
+    if (settled) return;
+    settled = true;
+    resolvePromise(result);
+  };
+  const reject = (error) => {
+    if (settled) return;
+    settled = true;
+    rejectPromise(getWriteError(error, fallback));
+  };
+
+  transaction.oncomplete = () => {
+    try {
+      resolve(getResult());
+    } catch (error) {
+      reject(error);
+    }
+  };
+  transaction.onerror = () => reject(transaction.error);
+  transaction.onabort = () =>
+    reject(
+      transaction.error ||
+        new Error(`${fallback} Transaction đã rollback.`),
+    );
+
+  return { promise, reject, isSettled: () => settled };
+}
+
 /**
  * Sinh UUID v4 ổn định phía client
  */
@@ -233,15 +279,11 @@ export function openDiaryDB() {
  * Đóng kết nối IndexedDB và giải phóng tài nguyên
  */
 export async function closeDiaryDB() {
-  if (dbPromise) {
-    try {
-      const db = await dbPromise;
-      db.close();
-    } catch {
-      /* ignore */
-    }
-    dbPromise = null;
-  }
+  if (!dbPromise) return;
+  const pendingDb = dbPromise;
+  dbPromise = null;
+  const db = await pendingDb;
+  db.close();
 }
 
 /**
@@ -261,8 +303,13 @@ export async function createDiaryEntry(entryData, images = []) {
 
   // Validate toàn bộ ảnh trước khi thực hiện ghi để đảm bảo tính nguyên tử
   if (Array.isArray(images) && images.length > 0) {
+    const imageIds = new Set();
     for (const img of images) {
       validateImage(img);
+      if (img.id && imageIds.has(img.id)) {
+        throw new Error(`Ảnh đính kèm bị trùng id '${img.id}'.`);
+      }
+      if (img.id) imageIds.add(img.id);
     }
   }
 
@@ -303,115 +350,109 @@ export async function createDiaryEntry(entryData, images = []) {
     createdBy: sanitized.createdBy || sanitized.created_by || sanitized.user_name || null,
   };
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(
-      [STORES.DIARY_LOGS, STORES.DIARY_ATTACHMENTS],
-      "readwrite"
-    );
-    const logStore = transaction.objectStore(STORES.DIARY_LOGS);
-    const attachStore = transaction.objectStore(STORES.DIARY_ATTACHMENTS);
+  const transaction = db.transaction(
+    [STORES.DIARY_LOGS, STORES.DIARY_ATTACHMENTS],
+    "readwrite",
+  );
+  const logStore = transaction.objectStore(STORES.DIARY_LOGS);
+  const attachStore = transaction.objectStore(STORES.DIARY_ATTACHMENTS);
+  const savedAttachments = [];
+  const fallback =
+    "Lỗi khi lưu nhật ký và ảnh vào IndexedDB. Transaction đã rollback.";
+  const completion = watchTransaction(
+    transaction,
+    () => ({
+      ...record,
+      entry: record,
+      attachments: savedAttachments,
+    }),
+    fallback,
+  );
 
-    const savedAttachments = [];
+  try {
+    const logPutRequest = logStore.put(record);
+    logPutRequest.onerror = () => completion.reject(logPutRequest.error);
 
-    transaction.onabort = () => {
-      const err = transaction.error;
-      if (err?.name === "QuotaExceededError") {
-        reject(new Error("Không đủ dung lượng lưu trữ cục bộ trên thiết bị (QuotaExceededError)."));
-      } else {
-        reject(err || new Error("Transaction bị hủy. Dữ liệu đã được rollback."));
-      }
-    };
-    transaction.onerror = () => {
-      const err = transaction.error;
-      if (err?.name === "QuotaExceededError") {
-        reject(new Error("Không đủ dung lượng lưu trữ cục bộ trên thiết bị (QuotaExceededError)."));
-      } else {
-        reject(err || new Error("Lỗi khi lưu nhật ký vào IndexedDB."));
-      }
-    };
-    transaction.oncomplete = () => {
-      resolve({
-        ...record,
-        entry: record,
-        attachments: savedAttachments,
-      });
-    };
+    if (Array.isArray(images) && images.length > 0) {
+      for (const img of images) {
+        const imgSanitized = sanitizeData(img);
+        const imgId = imgSanitized.id || generateUUID();
+        const blob = imgSanitized.blob || imgSanitized.file || (isBlob(imgSanitized) ? imgSanitized : null);
+        const fileName =
+          imgSanitized.fileName ||
+          imgSanitized.file_name ||
+          imgSanitized.name ||
+          "anh-nhat-ky.jpg";
+        const mimeType =
+          imgSanitized.mimeType ||
+          imgSanitized.mime_type ||
+          blob?.type ||
+          "image/jpeg";
+        const size =
+          imgSanitized.size !== undefined
+            ? imgSanitized.size
+            : imgSanitized.file_size !== undefined
+            ? imgSanitized.file_size
+            : blob?.size || 0;
 
-    try {
-      logStore.put(record);
+        const attachRecord = {
+          ...imgSanitized,
+          id: imgId,
+          diaryClientId: clientId,
+          diary_client_id: clientId,
+          logId: clientId,
+          projectId: record.projectId,
+          taskId: record.taskId,
+          blob,
+          fileName,
+          file_name: fileName,
+          name: fileName,
+          mimeType,
+          mime_type: mimeType,
+          size,
+          file_size: size,
+          syncStatus: imgSanitized.syncStatus || SYNC_STATUS.PENDING,
+          createdAt: imgSanitized.createdAt || now,
+        };
 
-      if (Array.isArray(images) && images.length > 0) {
-        for (const img of images) {
-          const imgSanitized = sanitizeData(img);
-          const imgId = imgSanitized.id || generateUUID();
-          const blob = imgSanitized.blob || imgSanitized.file || (isBlob(imgSanitized) ? imgSanitized : null);
-          const fileName =
-            imgSanitized.fileName ||
-            imgSanitized.file_name ||
-            imgSanitized.name ||
-            "anh-nhat-ky.jpg";
-          const mimeType =
-            imgSanitized.mimeType ||
-            imgSanitized.mime_type ||
-            blob?.type ||
-            "image/jpeg";
-          const size =
-            imgSanitized.size !== undefined
-              ? imgSanitized.size
-              : imgSanitized.file_size !== undefined
-              ? imgSanitized.file_size
-              : blob?.size || 0;
+        delete attachRecord.previewUrl;
+        if (typeof attachRecord.url === "string" && attachRecord.url.startsWith("blob:")) {
+          delete attachRecord.url;
+        }
 
-          const attachRecord = {
-            ...imgSanitized,
-            id: imgId,
-            diaryClientId: clientId,
-            diary_client_id: clientId,
-            logId: clientId,
-            projectId: record.projectId,
-            taskId: record.taskId,
-            blob,
-            fileName,
-            file_name: fileName,
-            name: fileName,
-            mimeType,
-            mime_type: mimeType,
-            size,
-            file_size: size,
-            syncStatus: imgSanitized.syncStatus || SYNC_STATUS.PENDING,
-            createdAt: imgSanitized.createdAt || now,
-          };
-
-          // Không lưu chuỗi URL blob tạm thời vào cơ sở dữ liệu IndexedDB
-          delete attachRecord.previewUrl;
-          if (typeof attachRecord.url === "string" && attachRecord.url.startsWith("blob:")) {
-            delete attachRecord.url;
+        const existingRequest = attachStore.get(imgId);
+        existingRequest.onsuccess = () => {
+          if (completion.isSettled()) return;
+          const existing = existingRequest.result;
+          const existingLogId =
+            existing?.logId || existing?.diaryClientId || existing?.diary_client_id;
+          if (existing && existingLogId !== clientId) {
+            const error = new Error(
+              `Ảnh '${imgId}' đã thuộc về một nhật ký khác và không thể ghi đè.`,
+            );
+            completion.reject(error);
+            transaction.abort();
+            return;
           }
 
-          attachStore.put(attachRecord);
-          savedAttachments.push(attachRecord);
-        }
-
-        // Dọn dẹp ảnh cũ của clientId này nếu không nằm trong danh sách ảnh mới để tránh trùng lặp
-        if (attachStore.indexNames.contains("logId")) {
-          const logIndex = attachStore.index("logId");
-          const existingKeysReq = logIndex.getAllKeys(clientId);
-          existingKeysReq.onsuccess = () => {
-            const oldKeys = existingKeysReq.result || [];
-            const newKeys = new Set(savedAttachments.map((a) => a.id));
-            for (const oldKey of oldKeys) {
-              if (!newKeys.has(oldKey)) {
-                attachStore.delete(oldKey);
-              }
-            }
-          };
-        }
+          try {
+            const putRequest = attachStore.put(attachRecord);
+            putRequest.onsuccess = () => savedAttachments.push(attachRecord);
+            putRequest.onerror = () => completion.reject(putRequest.error);
+          } catch (error) {
+            completion.reject(error);
+            transaction.abort();
+          }
+        };
+        existingRequest.onerror = () => completion.reject(existingRequest.error);
       }
-    } catch (err) {
-      transaction.abort();
-      reject(err);
     }
-  });
+  } catch (err) {
+    completion.reject(err);
+    transaction.abort();
+  }
+
+  return completion.promise;
 }
 
 /**
@@ -477,30 +518,21 @@ export async function saveDiaryAttachment(attachment) {
     delete record.url;
   }
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORES.DIARY_ATTACHMENTS, "readwrite");
-    const store = transaction.objectStore(STORES.DIARY_ATTACHMENTS);
-
-    store.put(record);
-
-    transaction.oncomplete = () => resolve(record);
-    transaction.onerror = () => {
-      const err = transaction.error;
-      if (err?.name === "QuotaExceededError") {
-        reject(new Error("Không đủ dung lượng lưu trữ cục bộ trên thiết bị (QuotaExceededError)."));
-      } else {
-        reject(err || new Error("Lỗi khi lưu ảnh vào IndexedDB."));
-      }
-    };
-    transaction.onabort = () => {
-      const err = transaction.error;
-      if (err?.name === "QuotaExceededError") {
-        reject(new Error("Không đủ dung lượng lưu trữ cục bộ trên thiết bị (QuotaExceededError)."));
-      } else {
-        reject(err || new Error("Lỗi khi lưu ảnh vào IndexedDB."));
-      }
-    };
-  });
+  const transaction = db.transaction(STORES.DIARY_ATTACHMENTS, "readwrite");
+  const store = transaction.objectStore(STORES.DIARY_ATTACHMENTS);
+  const completion = watchTransaction(
+    transaction,
+    () => record,
+    "Lỗi khi lưu ảnh vào IndexedDB.",
+  );
+  try {
+    const request = store.put(record);
+    request.onerror = () => completion.reject(request.error);
+  } catch (error) {
+    completion.reject(error);
+    transaction.abort();
+  }
+  return completion.promise;
 }
 
 export const saveDiaryImage = saveDiaryAttachment;
@@ -524,30 +556,16 @@ export async function saveDiaryAttachments(diaryClientId, images) {
   const now = new Date().toISOString();
   const saved = [];
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORES.DIARY_ATTACHMENTS, "readwrite");
-    const store = transaction.objectStore(STORES.DIARY_ATTACHMENTS);
+  const transaction = db.transaction(STORES.DIARY_ATTACHMENTS, "readwrite");
+  const store = transaction.objectStore(STORES.DIARY_ATTACHMENTS);
+  const completion = watchTransaction(
+    transaction,
+    () => saved,
+    "Lỗi khi lưu ảnh vào IndexedDB.",
+  );
 
-    transaction.onabort = () => {
-      const err = transaction.error;
-      if (err?.name === "QuotaExceededError") {
-        reject(new Error("Không đủ dung lượng lưu trữ cục bộ trên thiết bị (QuotaExceededError)."));
-      } else {
-        reject(err || new Error("Lỗi khi lưu ảnh vào IndexedDB."));
-      }
-    };
-    transaction.onerror = () => {
-      const err = transaction.error;
-      if (err?.name === "QuotaExceededError") {
-        reject(new Error("Không đủ dung lượng lưu trữ cục bộ trên thiết bị (QuotaExceededError)."));
-      } else {
-        reject(err || new Error("Lỗi khi lưu ảnh vào IndexedDB."));
-      }
-    };
-    transaction.oncomplete = () => resolve(saved);
-
-    try {
-      for (const img of images) {
+  try {
+    for (const img of images) {
         const sanitized = sanitizeData(img);
         const id = sanitized.id || generateUUID();
         const blob = sanitized.blob || sanitized.file || (isBlob(sanitized) ? sanitized : null);
@@ -591,14 +609,15 @@ export async function saveDiaryAttachments(diaryClientId, images) {
           delete record.url;
         }
 
-        store.put(record);
-        saved.push(record);
-      }
-    } catch (err) {
-      transaction.abort();
-      reject(err);
+      const request = store.put(record);
+      request.onerror = () => completion.reject(request.error);
+      saved.push(record);
     }
-  });
+  } catch (err) {
+    completion.reject(err);
+    transaction.abort();
+  }
+  return completion.promise;
 }
 
 /**
@@ -608,27 +627,29 @@ export async function getDiaryEntryById(idOrClientId) {
   if (!idOrClientId) return null;
   const db = await openDiaryDB();
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORES.DIARY_LOGS, "readonly");
-    const store = transaction.objectStore(STORES.DIARY_LOGS);
-    const request = store.get(idOrClientId);
+  const transaction = db.transaction(STORES.DIARY_LOGS, "readonly");
+  const store = transaction.objectStore(STORES.DIARY_LOGS);
+  let result = null;
+  const completion = watchTransaction(
+    transaction,
+    () => result,
+    "Lỗi khi đọc nhật ký từ IndexedDB.",
+  );
+  const request = store.get(idOrClientId);
 
-    request.onsuccess = () => {
-      if (request.result) {
-        resolve(request.result);
-      } else {
-        // Thử tìm theo index clientId nếu keyPath id không khớp
-        if (store.indexNames.contains("clientId")) {
-          const clientReq = store.index("clientId").get(idOrClientId);
-          clientReq.onsuccess = () => resolve(clientReq.result || null);
-          clientReq.onerror = () => reject(clientReq.error);
-        } else {
-          resolve(null);
-        }
-      }
-    };
-    request.onerror = () => reject(request.error);
-  });
+  request.onsuccess = () => {
+    if (request.result) {
+      result = request.result;
+    } else if (store.indexNames.contains("clientId")) {
+      const clientReq = store.index("clientId").get(idOrClientId);
+      clientReq.onsuccess = () => {
+        result = clientReq.result || null;
+      };
+      clientReq.onerror = () => completion.reject(clientReq.error);
+    }
+  };
+  request.onerror = () => completion.reject(request.error);
+  return completion.promise;
 }
 
 export const getDiaryLogById = getDiaryEntryById;
@@ -639,15 +660,23 @@ export const getDiaryLogById = getDiaryEntryById;
 export async function getDiaryLogsByProject(projectId) {
   const db = await openDiaryDB();
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORES.DIARY_LOGS, "readonly");
-    const store = transaction.objectStore(STORES.DIARY_LOGS);
-    const numId = Number(projectId);
-    const request = store.index("projectId").getAll(numId);
+  const transaction = db.transaction(STORES.DIARY_LOGS, "readonly");
+  let result = [];
+  const completion = watchTransaction(
+    transaction,
+    () => result,
+    "Lỗi khi đọc nhật ký dự án từ IndexedDB.",
+  );
+  const request = transaction
+    .objectStore(STORES.DIARY_LOGS)
+    .index("projectId")
+    .getAll(Number(projectId));
 
-    request.onsuccess = () => resolve(request.result || []);
-    request.onerror = () => reject(request.error);
-  });
+  request.onsuccess = () => {
+    result = request.result || [];
+  };
+  request.onerror = () => completion.reject(request.error);
+  return completion.promise;
 }
 
 export const getDiaryEntriesByProject = getDiaryLogsByProject;
@@ -658,15 +687,23 @@ export const getDiaryEntriesByProject = getDiaryLogsByProject;
 export async function getDiaryLogsByTask(taskId) {
   const db = await openDiaryDB();
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORES.DIARY_LOGS, "readonly");
-    const store = transaction.objectStore(STORES.DIARY_LOGS);
-    const numId = Number(taskId);
-    const request = store.index("taskId").getAll(numId);
+  const transaction = db.transaction(STORES.DIARY_LOGS, "readonly");
+  let result = [];
+  const completion = watchTransaction(
+    transaction,
+    () => result,
+    "Lỗi khi đọc nhật ký công việc từ IndexedDB.",
+  );
+  const request = transaction
+    .objectStore(STORES.DIARY_LOGS)
+    .index("taskId")
+    .getAll(Number(taskId));
 
-    request.onsuccess = () => resolve(request.result || []);
-    request.onerror = () => reject(request.error);
-  });
+  request.onsuccess = () => {
+    result = request.result || [];
+  };
+  request.onerror = () => completion.reject(request.error);
+  return completion.promise;
 }
 
 export const getDiaryEntriesByTask = getDiaryLogsByTask;
@@ -678,28 +715,35 @@ export async function getDiaryAttachmentsByLog(logIdOrClientId) {
   if (!logIdOrClientId) return [];
   const db = await openDiaryDB();
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORES.DIARY_ATTACHMENTS, "readonly");
-    const store = transaction.objectStore(STORES.DIARY_ATTACHMENTS);
-    const request = store.index("logId").getAll(logIdOrClientId);
+  const transaction = db.transaction(STORES.DIARY_ATTACHMENTS, "readonly");
+  const store = transaction.objectStore(STORES.DIARY_ATTACHMENTS);
+  let results = [];
+  const completion = watchTransaction(
+    transaction,
+    () => results,
+    "Lỗi khi đọc ảnh nhật ký từ IndexedDB.",
+  );
+  const request = store.index("logId").getAll(logIdOrClientId);
 
-    request.onsuccess = () => {
-      const results = request.result || [];
-      if (results.length > 0) {
-        resolve(results);
-      } else {
-        // Fallback kiểm tra index diaryClientId nếu query bằng clientId khác logId
-        try {
-          const req2 = store.index("diaryClientId").getAll(logIdOrClientId);
-          req2.onsuccess = () => resolve(req2.result || []);
-          req2.onerror = () => resolve(results);
-        } catch {
-          resolve(results);
-        }
-      }
-    };
-    request.onerror = () => reject(request.error);
-  });
+  request.onsuccess = () => {
+    results = request.result || [];
+    if (results.length > 0) return;
+
+    try {
+      const fallbackRequest = store
+        .index("diaryClientId")
+        .getAll(logIdOrClientId);
+      fallbackRequest.onsuccess = () => {
+        results = fallbackRequest.result || [];
+      };
+      fallbackRequest.onerror = () =>
+        completion.reject(fallbackRequest.error);
+    } catch (error) {
+      completion.reject(error);
+    }
+  };
+  request.onerror = () => completion.reject(request.error);
+  return completion.promise;
 }
 
 export const getDiaryImages = getDiaryAttachmentsByLog;
@@ -723,31 +767,33 @@ export async function getDiaryEntryWithImages(clientId) {
 export async function getPendingSyncEntries() {
   const db = await openDiaryDB();
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORES.DIARY_LOGS, "readonly");
-    const store = transaction.objectStore(STORES.DIARY_LOGS);
-    const results = [];
-
-    const request = store.openCursor();
-    request.onsuccess = (e) => {
-      const cursor = e.target.result;
-      if (cursor) {
-        const val = cursor.value;
-        if (
-          val.syncStatus === SYNC_STATUS.PENDING ||
-          val.syncStatus === SYNC_STATUS.FAILED ||
-          (val.syncStatus === SYNC_STATUS.SYNCING &&
-            Date.now() - Date.parse(val.syncStartedAt || 0) > 2 * 60 * 1000)
-        ) {
-          results.push(val);
-        }
-        cursor.continue();
-      } else {
-        resolve(results);
-      }
-    };
-    request.onerror = () => reject(request.error);
-  });
+  const transaction = db.transaction(STORES.DIARY_LOGS, "readonly");
+  const store = transaction.objectStore(STORES.DIARY_LOGS);
+  const results = [];
+  const completion = watchTransaction(
+    transaction,
+    () => results,
+    "Lỗi khi đọc hàng đợi đồng bộ từ IndexedDB.",
+  );
+  const request = store.openCursor();
+  request.onsuccess = (e) => {
+    const cursor = e.target.result;
+    if (!cursor) return;
+    const val = cursor.value;
+    if (
+      val &&
+      typeof val === "object" &&
+      (val.syncStatus === SYNC_STATUS.PENDING ||
+        val.syncStatus === SYNC_STATUS.FAILED ||
+        (val.syncStatus === SYNC_STATUS.SYNCING &&
+          Date.now() - Date.parse(val.syncStartedAt || 0) > 2 * 60 * 1000))
+    ) {
+      results.push(val);
+    }
+    cursor.continue();
+  };
+  request.onerror = () => completion.reject(request.error);
+  return completion.promise;
 }
 
 export const getPendingDiaryLogs = getPendingSyncEntries;
@@ -756,40 +802,48 @@ export async function claimDiaryEntryForSync(clientId) {
   if (!clientId) return null;
   const db = await openDiaryDB();
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORES.DIARY_LOGS, "readwrite");
-    const store = transaction.objectStore(STORES.DIARY_LOGS);
-    let claimed = null;
-    const request = store.get(clientId);
+  const transaction = db.transaction(STORES.DIARY_LOGS, "readwrite");
+  const store = transaction.objectStore(STORES.DIARY_LOGS);
+  let claimed = null;
+  const completion = watchTransaction(
+    transaction,
+    () => claimed,
+    "Lỗi khi cập nhật trạng thái đồng bộ.",
+  );
+  const request = store.get(clientId);
 
-    request.onsuccess = () => {
-      const entry = request.result;
-      if (!entry || entry.syncStatus === SYNC_STATUS.SYNCED) return;
+  request.onsuccess = () => {
+    const entry = request.result;
+    if (!entry || entry.syncStatus === SYNC_STATUS.SYNCED) return;
 
-      const staleSync =
-        entry.syncStatus === SYNC_STATUS.SYNCING &&
-        Date.now() - Date.parse(entry.syncStartedAt || 0) > 2 * 60 * 1000;
-      if (
-        entry.syncStatus !== SYNC_STATUS.PENDING &&
-        entry.syncStatus !== SYNC_STATUS.FAILED &&
-        !staleSync
-      ) {
-        return;
-      }
+    const staleSync =
+      entry.syncStatus === SYNC_STATUS.SYNCING &&
+      Date.now() - Date.parse(entry.syncStartedAt || 0) > 2 * 60 * 1000;
+    if (
+      entry.syncStatus !== SYNC_STATUS.PENDING &&
+      entry.syncStatus !== SYNC_STATUS.FAILED &&
+      !staleSync
+    ) {
+      return;
+    }
 
-      claimed = {
-        ...entry,
-        syncStatus: SYNC_STATUS.SYNCING,
-        syncStartedAt: new Date().toISOString(),
-        syncError: null,
-      };
-      store.put(claimed);
+    claimed = {
+      ...entry,
+      syncStatus: SYNC_STATUS.SYNCING,
+      syncStartedAt: new Date().toISOString(),
+      syncError: null,
     };
-    request.onerror = () => reject(request.error);
-    transaction.oncomplete = () => resolve(claimed);
-    transaction.onerror = () => reject(transaction.error);
-    transaction.onabort = () => reject(transaction.error);
-  });
+    try {
+      const putRequest = store.put(claimed);
+      putRequest.onerror = () => completion.reject(putRequest.error);
+    } catch (error) {
+      completion.reject(error);
+      transaction.abort();
+    }
+  };
+  request.onerror = () => completion.reject(request.error);
+
+  return completion.promise;
 }
 
 export async function updateDiaryAttachment(attachmentId, updates) {
@@ -797,23 +851,38 @@ export async function updateDiaryAttachment(attachmentId, updates) {
   const db = await openDiaryDB();
   const sanitized = sanitizeData(updates);
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORES.DIARY_ATTACHMENTS, "readwrite");
-    const store = transaction.objectStore(STORES.DIARY_ATTACHMENTS);
-    const request = store.get(attachmentId);
+  const transaction = db.transaction(STORES.DIARY_ATTACHMENTS, "readwrite");
+  const store = transaction.objectStore(STORES.DIARY_ATTACHMENTS);
+  const completion = watchTransaction(
+    transaction,
+    () => true,
+    "Lỗi khi cập nhật ảnh trong IndexedDB.",
+  );
+  const request = store.get(attachmentId);
 
-    request.onsuccess = () => {
-      if (!request.result) {
-        reject(new Error(`Không tìm thấy ảnh với id '${attachmentId}' để cập nhật.`));
-        return;
-      }
-      store.put({ ...request.result, ...sanitized, id: request.result.id });
-    };
-    request.onerror = () => reject(request.error);
-    transaction.oncomplete = () => resolve(true);
-    transaction.onerror = () => reject(transaction.error);
-    transaction.onabort = () => reject(transaction.error);
-  });
+  request.onsuccess = () => {
+    if (!request.result) {
+      completion.reject(
+        new Error(`Không tìm thấy ảnh với id '${attachmentId}' để cập nhật.`),
+      );
+      transaction.abort();
+      return;
+    }
+    try {
+      const putRequest = store.put({
+        ...request.result,
+        ...sanitized,
+        id: request.result.id,
+      });
+      putRequest.onerror = () => completion.reject(putRequest.error);
+    } catch (error) {
+      completion.reject(error);
+      transaction.abort();
+    }
+  };
+  request.onerror = () => completion.reject(request.error);
+
+  return completion.promise;
 }
 
 /**
@@ -824,34 +893,45 @@ export async function updateDiaryEntry(clientId, updates) {
   const db = await openDiaryDB();
   const sanitized = sanitizeData(updates);
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORES.DIARY_LOGS, "readwrite");
-    const store = transaction.objectStore(STORES.DIARY_LOGS);
-    const getReq = store.get(clientId);
+  const transaction = db.transaction(STORES.DIARY_LOGS, "readwrite");
+  const store = transaction.objectStore(STORES.DIARY_LOGS);
+  const completion = watchTransaction(
+    transaction,
+    () => true,
+    "Lỗi khi cập nhật nhật ký trong IndexedDB.",
+  );
+  const getReq = store.get(clientId);
 
-    getReq.onsuccess = () => {
-      const existing = getReq.result;
-      if (!existing) {
-        reject(new Error(`Không tìm thấy nhật ký với id '${clientId}' để cập nhật.`));
-        return;
-      }
+  getReq.onsuccess = () => {
+    const existing = getReq.result;
+    if (!existing) {
+      completion.reject(
+        new Error(`Không tìm thấy nhật ký với id '${clientId}' để cập nhật.`),
+      );
+      transaction.abort();
+      return;
+    }
 
-      const updated = {
-        ...existing,
-        ...sanitized,
-        id: existing.id,
-        clientId: existing.clientId || existing.id,
-        localUpdatedAt: new Date().toISOString(),
-      };
-
-      store.put(updated);
+    const updated = {
+      ...existing,
+      ...sanitized,
+      id: existing.id,
+      clientId: existing.clientId || existing.id,
+      localUpdatedAt: new Date().toISOString(),
     };
 
-    getReq.onerror = () => reject(getReq.error);
-    transaction.oncomplete = () => resolve(true);
-    transaction.onerror = () => reject(transaction.error);
-    transaction.onabort = () => reject(transaction.error);
-  });
+    try {
+      const putRequest = store.put(updated);
+      putRequest.onerror = () => completion.reject(putRequest.error);
+    } catch (error) {
+      completion.reject(error);
+      transaction.abort();
+    }
+  };
+
+  getReq.onerror = () => completion.reject(getReq.error);
+
+  return completion.promise;
 }
 
 export const updateDiaryLog = updateDiaryEntry;
@@ -863,39 +943,42 @@ export async function deleteDiaryEntry(clientId) {
   if (!clientId) return false;
   const db = await openDiaryDB();
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(
-      [STORES.DIARY_LOGS, STORES.DIARY_ATTACHMENTS],
-      "readwrite"
-    );
-    const logStore = transaction.objectStore(STORES.DIARY_LOGS);
-    const attachStore = transaction.objectStore(STORES.DIARY_ATTACHMENTS);
+  const transaction = db.transaction(
+    [STORES.DIARY_LOGS, STORES.DIARY_ATTACHMENTS],
+    "readwrite",
+  );
+  const logStore = transaction.objectStore(STORES.DIARY_LOGS);
+  const attachStore = transaction.objectStore(STORES.DIARY_ATTACHMENTS);
+  const completion = watchTransaction(
+    transaction,
+    () => true,
+    "Lỗi khi xóa nhật ký và ảnh khỏi IndexedDB.",
+  );
 
-    transaction.onabort = () => reject(transaction.error);
-    transaction.onerror = () => reject(transaction.error);
-    transaction.oncomplete = () => resolve(true);
-
-    try {
-      // 1. Xóa bản ghi nhật ký
-      logStore.delete(clientId);
-
-      // 2. Tìm và xóa toàn bộ ảnh liên quan qua index logId
-      const attachIndex = attachStore.index("logId");
-      const cursorReq = attachIndex.openCursor(clientId);
-
-      cursorReq.onsuccess = (e) => {
+  try {
+    const logDeleteRequest = logStore.delete(clientId);
+    logDeleteRequest.onerror = () =>
+      completion.reject(logDeleteRequest.error);
+    const cursorReq = attachStore.index("logId").openCursor(clientId);
+    cursorReq.onsuccess = (e) => {
+      try {
         const cursor = e.target.result;
-        if (cursor) {
-          cursor.delete();
-          cursor.continue();
-        }
-      };
-      cursorReq.onerror = () => reject(cursorReq.error);
-    } catch (err) {
-      transaction.abort();
-      reject(err);
-    }
-  });
+        if (!cursor) return;
+        const deleteRequest = cursor.delete();
+        deleteRequest.onerror = () => completion.reject(deleteRequest.error);
+        cursor.continue();
+      } catch (error) {
+        completion.reject(error);
+        transaction.abort();
+      }
+    };
+    cursorReq.onerror = () => completion.reject(cursorReq.error);
+  } catch (error) {
+    completion.reject(error);
+    transaction.abort();
+  }
+
+  return completion.promise;
 }
 
 export const deleteDiaryLog = deleteDiaryEntry;
@@ -906,21 +989,28 @@ export const deleteDiaryLog = deleteDiaryEntry;
 export async function clearDiaryDB() {
   const db = await openDiaryDB();
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(
-      [STORES.DIARY_LOGS, STORES.DIARY_ATTACHMENTS],
-      "readwrite"
-    );
-    const logStore = transaction.objectStore(STORES.DIARY_LOGS);
-    const attachStore = transaction.objectStore(STORES.DIARY_ATTACHMENTS);
-
-    logStore.clear();
-    attachStore.clear();
-
-    transaction.oncomplete = () => resolve(true);
-    transaction.onerror = () => reject(transaction.error);
-    transaction.onabort = () => reject(transaction.error);
-  });
+  const transaction = db.transaction(
+    [STORES.DIARY_LOGS, STORES.DIARY_ATTACHMENTS],
+    "readwrite",
+  );
+  const logStore = transaction.objectStore(STORES.DIARY_LOGS);
+  const attachStore = transaction.objectStore(STORES.DIARY_ATTACHMENTS);
+  const completion = watchTransaction(
+    transaction,
+    () => true,
+    "Lỗi khi xóa dữ liệu nhật ký trong IndexedDB.",
+  );
+  try {
+    const logRequest = logStore.clear();
+    const attachmentRequest = attachStore.clear();
+    logRequest.onerror = () => completion.reject(logRequest.error);
+    attachmentRequest.onerror = () =>
+      completion.reject(attachmentRequest.error);
+  } catch (error) {
+    completion.reject(error);
+    transaction.abort();
+  }
+  return completion.promise;
 }
 
 /**
@@ -930,15 +1020,21 @@ export async function deleteDiaryAttachment(attachmentId) {
   if (!attachmentId) return false;
   const db = await openDiaryDB();
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORES.DIARY_ATTACHMENTS, "readwrite");
-    const store = transaction.objectStore(STORES.DIARY_ATTACHMENTS);
-    store.delete(attachmentId);
-
-    transaction.oncomplete = () => resolve(true);
-    transaction.onerror = () => reject(transaction.error);
-    transaction.onabort = () => reject(transaction.error);
-  });
+  const transaction = db.transaction(STORES.DIARY_ATTACHMENTS, "readwrite");
+  const store = transaction.objectStore(STORES.DIARY_ATTACHMENTS);
+  const completion = watchTransaction(
+    transaction,
+    () => true,
+    "Lỗi khi xóa ảnh khỏi IndexedDB.",
+  );
+  try {
+    const request = store.delete(attachmentId);
+    request.onerror = () => completion.reject(request.error);
+  } catch (error) {
+    completion.reject(error);
+    transaction.abort();
+  }
+  return completion.promise;
 }
 
 export const deleteDiaryImage = deleteDiaryAttachment;
@@ -948,34 +1044,48 @@ export const deleteDiaryImage = deleteDiaryAttachment;
  */
 export async function cleanOrphanAttachments() {
   const db = await openDiaryDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(
-      [STORES.DIARY_LOGS, STORES.DIARY_ATTACHMENTS],
-      "readwrite"
-    );
-    const logStore = transaction.objectStore(STORES.DIARY_LOGS);
-    const attachStore = transaction.objectStore(STORES.DIARY_ATTACHMENTS);
-
-    const logKeysReq = logStore.getAllKeys();
-    logKeysReq.onsuccess = () => {
+  const transaction = db.transaction(
+    [STORES.DIARY_LOGS, STORES.DIARY_ATTACHMENTS],
+    "readwrite",
+  );
+  const logStore = transaction.objectStore(STORES.DIARY_LOGS);
+  const attachStore = transaction.objectStore(STORES.DIARY_ATTACHMENTS);
+  const completion = watchTransaction(
+    transaction,
+    () => true,
+    "Lỗi khi dọn ảnh mồ côi trong IndexedDB.",
+  );
+  const logKeysReq = logStore.getAllKeys();
+  logKeysReq.onsuccess = () => {
+    try {
       const validLogIds = new Set(logKeysReq.result || []);
       const cursorReq = attachStore.openCursor();
       cursorReq.onsuccess = (e) => {
-        const cursor = e.target.result;
-        if (cursor) {
+        try {
+          const cursor = e.target.result;
+          if (!cursor) return;
           const logId = cursor.value.logId || cursor.value.diaryClientId;
-          if (logId && !validLogIds.has(logId)) {
-            cursor.delete();
+          if (
+            cursor.value.syncStatus === SYNC_STATUS.SYNCED &&
+            logId &&
+            !validLogIds.has(logId)
+          ) {
+            const deleteRequest = cursor.delete();
+            deleteRequest.onerror = () =>
+              completion.reject(deleteRequest.error);
           }
           cursor.continue();
+        } catch (error) {
+          completion.reject(error);
+          transaction.abort();
         }
       };
-      cursorReq.onerror = () => reject(cursorReq.error);
-    };
-    logKeysReq.onerror = () => reject(logKeysReq.error);
-
-    transaction.oncomplete = () => resolve(true);
-    transaction.onerror = () => reject(transaction.error);
-    transaction.onabort = () => reject(transaction.error);
-  });
+      cursorReq.onerror = () => completion.reject(cursorReq.error);
+    } catch (error) {
+      completion.reject(error);
+      transaction.abort();
+    }
+  };
+  logKeysReq.onerror = () => completion.reject(logKeysReq.error);
+  return completion.promise;
 }

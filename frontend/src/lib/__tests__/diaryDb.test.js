@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   DB_NAME,
   DB_VERSION,
@@ -19,11 +19,44 @@ import {
   getDiaryLogsByProject,
   getDiaryLogsByTask,
   getDiaryAttachmentsByLog,
+  cleanOrphanAttachments,
   getDiaryEntryWithImages,
   getPendingSyncEntries,
+  claimDiaryEntryForSync,
   updateDiaryEntry,
+  updateDiaryAttachment,
   deleteDiaryEntry,
 } from "../diaryDb";
+
+function failStorePutOnce(db, storeName, error) {
+  const originalTransaction = db.transaction.bind(db);
+  vi.spyOn(db, "transaction").mockImplementationOnce((stores, mode, options) => {
+    const transaction = originalTransaction(stores, mode, options);
+    return new Proxy(transaction, {
+      get(target, property) {
+        if (property === "objectStore") {
+          return (name) => {
+            const store = target.objectStore(name);
+            if (name !== storeName) return store;
+            return new Proxy(store, {
+              get(targetStore, storeProperty) {
+                if (storeProperty === "put") {
+                  return () => {
+                    throw error;
+                  };
+                }
+                const value = Reflect.get(targetStore, storeProperty, targetStore);
+                return typeof value === "function" ? value.bind(targetStore) : value;
+              },
+            });
+          };
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  });
+}
 
 describe("T65 — IndexedDB Service cho Nhật ký và Ảnh ngoại tuyến", () => {
   beforeEach(async () => {
@@ -347,6 +380,359 @@ describe("T65 — IndexedDB Service cho Nhật ký và Ảnh ngoại tuyến", (
       expect(reopenedEntry.content).toBe("Dữ liệu bền vững");
       expect(reopenedEntry.attachments.length).toBe(1);
       expect(reopenedEntry.attachments[0].fileName).toBe("persist.jpg");
+    });
+  });
+
+  describe("9. T68 — Độ bền dữ liệu và lỗi lưu trữ", () => {
+    it("lưu nhiều nhật ký offline độc lập và khôi phục đủ nội dung, trạng thái cùng Blob sau khi mở lại DB", async () => {
+      const records = [
+        { id: "t68-log-1", content: "Nhật ký offline thứ nhất", fileName: "first.jpg" },
+        { id: "t68-log-2", content: "Nhật ký offline thứ hai", fileName: "second.jpg" },
+        { id: "t68-log-3", content: "Nhật ký offline thứ ba", fileName: "third.jpg" },
+      ];
+
+      for (const [index, item] of records.entries()) {
+        await createDiaryEntry(
+          {
+            id: item.id,
+            projectId: 13,
+            work_item_id: 101 + index,
+            content: item.content,
+            entry_at: `2026-05-0${index + 1}T08:30:00.000Z`,
+            syncStatus: SYNC_STATUS.PENDING,
+          },
+          [
+            {
+              id: `t68-image-${index + 1}`,
+              blob: new Blob([`image-${index + 1}`], { type: "image/jpeg" }),
+              fileName: item.fileName,
+            },
+          ]
+        );
+      }
+
+      const saved = await getDiaryLogsByProject(13);
+      expect(saved).toHaveLength(3);
+      expect(new Set(saved.map((entry) => entry.clientId)).size).toBe(3);
+      expect(saved.every((entry) => entry.syncStatus === SYNC_STATUS.PENDING)).toBe(true);
+
+      await closeDiaryDB();
+      const restored = await Promise.all(
+        records.map((item) => getDiaryEntryWithImages(item.id))
+      );
+      expect(restored.map((entry) => entry.content)).toEqual(records.map((item) => item.content));
+      expect(restored.map((entry) => entry.entry_at)).toEqual(
+        records.map((_, index) => `2026-05-0${index + 1}T08:30:00.000Z`)
+      );
+      expect(restored.every((entry) => entry.attachments[0].blob instanceof Blob)).toBe(true);
+      expect(restored.map((entry) => entry.attachments[0].fileName)).toEqual(
+        records.map((item) => item.fileName)
+      );
+    });
+
+    it("không xóa ảnh cục bộ hiện có khi cùng client ID được cập nhật với ảnh mới", async () => {
+      const originalBlob = new Blob(["original-image"], { type: "image/jpeg" });
+      const addedBlob = new Blob(["added-image"], { type: "image/jpeg" });
+      await createDiaryEntry(
+        { id: "t68-preserve-image", projectId: 13, content: "Có hai ảnh" },
+        [
+          { id: "t68-image-original", blob: originalBlob, fileName: "original.jpg" },
+          { id: "t68-image-added", blob: addedBlob, fileName: "added.jpg" },
+        ]
+      );
+
+      await createDiaryEntry(
+        { id: "t68-preserve-image", projectId: 13, content: "Retry lưu metadata" },
+        [{ id: "t68-image-added", blob: addedBlob, fileName: "added.jpg" }]
+      );
+
+      const saved = await getDiaryEntryWithImages("t68-preserve-image");
+      expect(saved.attachments).toHaveLength(2);
+      expect(saved.attachments.map((attachment) => attachment.id)).toEqual(
+        expect.arrayContaining(["t68-image-original", "t68-image-added"])
+      );
+      expect(await saved.attachments.find((attachment) => attachment.id === "t68-image-original").blob.text())
+        .toBe("original-image");
+    });
+
+    it("không ghi đè ảnh thuộc nhật ký khác hoặc nhận hai ảnh trùng ID trong cùng transaction", async () => {
+      const originalBlob = new Blob(["keep-owner"], { type: "image/jpeg" });
+      await createDiaryEntry(
+        { id: "t68-image-owner", projectId: 13, content: "Chủ ảnh" },
+        [{ id: "t68-shared-image-id", blob: originalBlob, fileName: "owner.jpg" }]
+      );
+
+      await expect(
+        createDiaryEntry(
+          { id: "t68-other-owner", projectId: 13, content: "Không được chiếm ảnh" },
+          [
+            {
+              id: "t68-shared-image-id",
+              blob: new Blob(["overwrite-attempt"], { type: "image/jpeg" }),
+              fileName: "other.jpg",
+            },
+          ]
+        )
+      ).rejects.toThrow(/thuộc về một nhật ký khác/i);
+      expect(await getDiaryEntryById("t68-other-owner")).toBeNull();
+      const [retained] = await getDiaryAttachmentsByLog("t68-image-owner");
+      expect(await retained.blob.text()).toBe("keep-owner");
+
+      await expect(
+        createDiaryEntry(
+          { id: "t68-duplicate-ids", projectId: 13, content: "Trùng ID ảnh" },
+          [
+            {
+              id: "t68-duplicate-image",
+              blob: new Blob(["first"], { type: "image/jpeg" }),
+              fileName: "first.jpg",
+            },
+            {
+              id: "t68-duplicate-image",
+              blob: new Blob(["second"], { type: "image/jpeg" }),
+              fileName: "second.jpg",
+            },
+          ]
+        )
+      ).rejects.toThrow(/trùng id/i);
+      expect(await getDiaryEntryById("t68-duplicate-ids")).toBeNull();
+    });
+
+    it("cleanOrphanAttachments chỉ xóa attachment đã xác nhận synced; giữ pending và trạng thái không xác định", async () => {
+      const blob = new Blob(["orphan-safety"], { type: "image/jpeg" });
+      await saveDiaryAttachment({
+        id: "t68-orphan-pending",
+        logId: "missing-pending-log",
+        blob,
+        fileName: "pending.jpg",
+        syncStatus: SYNC_STATUS.PENDING,
+      });
+      await saveDiaryAttachment({
+        id: "t68-orphan-unknown",
+        logId: "missing-unknown-log",
+        blob,
+        fileName: "unknown.jpg",
+      });
+      await saveDiaryAttachment({
+        id: "t68-orphan-synced",
+        logId: "missing-synced-log",
+        blob,
+        fileName: "synced.jpg",
+        syncStatus: SYNC_STATUS.SYNCED,
+      });
+
+      await cleanOrphanAttachments();
+
+      expect(await getDiaryAttachmentsByLog("missing-pending-log")).toHaveLength(1);
+      expect(await getDiaryAttachmentsByLog("missing-unknown-log")).toHaveLength(1);
+      expect(await getDiaryAttachmentsByLog("missing-synced-log")).toHaveLength(0);
+    });
+
+    it("bỏ qua bản ghi cũ thiếu trạng thái sync mà vẫn trả về các nhật ký hợp lệ đang chờ", async () => {
+      await createDiaryEntry({
+        id: "t68-valid-pending",
+        projectId: 13,
+        content: "Bản ghi hợp lệ",
+      });
+      const db = await openDiaryDB();
+      const tx = db.transaction(STORES.DIARY_LOGS, "readwrite");
+      tx.objectStore(STORES.DIARY_LOGS).put({
+        id: "t68-legacy-malformed",
+        projectId: 13,
+        content: "Bản ghi cũ thiếu syncStatus",
+      });
+      await new Promise((resolve, reject) => {
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+
+      const pending = await getPendingSyncEntries();
+      expect(pending.map((entry) => entry.id)).toEqual(["t68-valid-pending"]);
+      expect(await getDiaryEntryById("t68-legacy-malformed")).toMatchObject({
+        content: "Bản ghi cũ thiếu syncStatus",
+      });
+    });
+
+    it("rollback khi lưu ảnh lỗi quota, không để metadata mồ côi hoặc làm mất dữ liệu trước đó", async () => {
+      const retainedBlob = new Blob(["saved-before"], { type: "image/jpeg" });
+      await createDiaryEntry(
+        { id: "t68-retained", projectId: 13, content: "Bản ghi đã lưu trước" },
+        [{ id: "t68-retained-image", blob: retainedBlob, fileName: "retained.jpg" }]
+      );
+
+      const db = await openDiaryDB();
+      failStorePutOnce(
+        db,
+        STORES.DIARY_ATTACHMENTS,
+        new DOMException("Storage quota exceeded", "QuotaExceededError")
+      );
+
+      await expect(
+        createDiaryEntry(
+          { id: "t68-atomic-failure", projectId: 13, content: "Không được lưu một phần" },
+          [{ blob: new Blob(["new-image"], { type: "image/jpeg" }), fileName: "new.jpg" }]
+        )
+      ).rejects.toThrow(/không đủ dung lượng/i);
+
+      expect(await getDiaryEntryById("t68-atomic-failure")).toBeNull();
+      expect(await getDiaryAttachmentsByLog("t68-atomic-failure")).toHaveLength(0);
+      const retained = await getDiaryEntryWithImages("t68-retained");
+      expect(retained.content).toBe("Bản ghi đã lưu trước");
+      expect(retained.attachments).toHaveLength(1);
+      expect(await retained.attachments[0].blob.text()).toBe("saved-before");
+    });
+
+    it("lỗi lưu ảnh riêng lẻ hoặc theo lô giữ nguyên các ảnh đã lưu trước đó", async () => {
+      const entry = await createDiaryEntry(
+        { id: "t68-existing-attachments", projectId: 13, content: "Ảnh cũ phải còn" },
+        [
+          {
+            id: "t68-existing-attachment",
+            blob: new Blob(["previous-photo"], { type: "image/jpeg" }),
+            fileName: "previous.jpg",
+          },
+        ]
+      );
+      const db = await openDiaryDB();
+      failStorePutOnce(
+        db,
+        STORES.DIARY_ATTACHMENTS,
+        new DOMException("Storage quota exceeded", "QuotaExceededError")
+      );
+      await expect(
+        saveDiaryAttachment({
+          id: "t68-single-attachment-failure",
+          diaryClientId: entry.clientId,
+          blob: new Blob(["single-failed"], { type: "image/jpeg" }),
+          fileName: "single-failed.jpg",
+        })
+      ).rejects.toThrow(/không đủ dung lượng/i);
+
+      failStorePutOnce(
+        db,
+        STORES.DIARY_ATTACHMENTS,
+        new DOMException("Storage quota exceeded", "QuotaExceededError")
+      );
+      await expect(
+        saveDiaryAttachments(entry.clientId, [
+          {
+            id: "t68-batch-attachment-1",
+            blob: new Blob(["batch-one"], { type: "image/jpeg" }),
+            fileName: "batch-one.jpg",
+          },
+          {
+            id: "t68-batch-attachment-2",
+            blob: new Blob(["batch-two"], { type: "image/jpeg" }),
+            fileName: "batch-two.jpg",
+          },
+        ])
+      ).rejects.toThrow(/không đủ dung lượng/i);
+
+      const retainedAttachments = await getDiaryAttachmentsByLog(entry.clientId);
+      expect(retainedAttachments).toHaveLength(1);
+      expect(retainedAttachments[0].id).toBe("t68-existing-attachment");
+      expect(await retainedAttachments[0].blob.text()).toBe("previous-photo");
+    });
+
+    it("khi cập nhật trạng thái sync thất bại, giữ nguyên nhật ký pending và không báo cập nhật thành công", async () => {
+      const entry = await createDiaryEntry({
+        id: "t68-status-update-failure",
+        projectId: 13,
+        content: "Giữ trạng thái đã commit",
+      });
+      const db = await openDiaryDB();
+      failStorePutOnce(
+        db,
+        STORES.DIARY_LOGS,
+        new DOMException("Storage quota exceeded", "QuotaExceededError")
+      );
+
+      await expect(
+        updateDiaryEntry(entry.clientId, { syncStatus: SYNC_STATUS.SYNCED, serverId: 42 })
+      ).rejects.toThrow(/không đủ dung lượng/i);
+
+      const unchanged = await getDiaryEntryById(entry.clientId);
+      expect(unchanged.syncStatus).toBe(SYNC_STATUS.PENDING);
+      expect(unchanged.serverId).toBeNull();
+    });
+
+    it("khi ghi metadata lỗi thì không lưu Blob và chỉ reject thao tác một lần", async () => {
+      const db = await openDiaryDB();
+      failStorePutOnce(
+        db,
+        STORES.DIARY_LOGS,
+        new DOMException("Storage quota exceeded", "QuotaExceededError")
+      );
+      const onRejected = vi.fn();
+
+      await createDiaryEntry(
+        { id: "t68-metadata-fail", projectId: 13, content: "Rollback cả hai store" },
+        [
+          {
+            id: "t68-image-never-written",
+            blob: new Blob(["not-saved"], { type: "image/jpeg" }),
+            fileName: "not-saved.jpg",
+          },
+        ]
+      ).catch(onRejected);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(onRejected).toHaveBeenCalledTimes(1);
+      expect(await getDiaryEntryById("t68-metadata-fail")).toBeNull();
+      expect(await getDiaryAttachmentsByLog("t68-metadata-fail")).toHaveLength(0);
+    });
+
+    it("khi cập nhật trạng thái ảnh thất bại thì giữ Blob và trạng thái pending", async () => {
+      const entry = await createDiaryEntry(
+        { id: "t68-attachment-status", projectId: 13, content: "Giữ ảnh chờ sync" },
+        [
+          {
+            id: "t68-attachment-status-image",
+            blob: new Blob(["still-pending"], { type: "image/jpeg" }),
+            fileName: "pending.jpg",
+          },
+        ]
+      );
+      const db = await openDiaryDB();
+      failStorePutOnce(
+        db,
+        STORES.DIARY_ATTACHMENTS,
+        new DOMException("Storage quota exceeded", "QuotaExceededError")
+      );
+
+      await expect(
+        updateDiaryAttachment("t68-attachment-status-image", {
+          syncStatus: SYNC_STATUS.SYNCED,
+          serverId: 44,
+        })
+      ).rejects.toThrow(/không đủ dung lượng/i);
+
+      const attachment = (await getDiaryAttachmentsByLog(entry.clientId))[0];
+      expect(attachment.syncStatus).toBe(SYNC_STATUS.PENDING);
+      expect(attachment.serverId).toBeUndefined();
+      expect(await attachment.blob.text()).toBe("still-pending");
+    });
+
+    it("khi claim sync thất bại thì nhật ký vẫn pending", async () => {
+      const entry = await createDiaryEntry({
+        id: "t68-claim-failure",
+        projectId: 13,
+        content: "Không claim được",
+      });
+      const db = await openDiaryDB();
+      failStorePutOnce(
+        db,
+        STORES.DIARY_LOGS,
+        new DOMException("Storage quota exceeded", "QuotaExceededError")
+      );
+
+      await expect(claimDiaryEntryForSync(entry.clientId)).rejects.toThrow(
+        /không đủ dung lượng/i
+      );
+      expect((await getDiaryEntryById(entry.clientId)).syncStatus).toBe(
+        SYNC_STATUS.PENDING
+      );
     });
   });
 

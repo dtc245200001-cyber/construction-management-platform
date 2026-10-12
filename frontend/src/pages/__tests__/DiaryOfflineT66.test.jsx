@@ -13,8 +13,11 @@ import {
   createDiaryEntry,
   saveDiaryLog,
   getDiaryLogsByProject,
+  getDiaryAttachmentsByLog,
   updateDiaryEntry,
 } from '../../lib/diaryDb';
+import * as diaryDbModule from '../../lib/diaryDb';
+import * as diarySyncModule from '../../services/diarySync';
 
 vi.mock('../../lib/api');
 
@@ -23,6 +26,47 @@ const mockCategories = [
   { id: 101, name: 'Móng', code: 'W-01' },
   { id: 102, name: 'Thân', code: 'W-02' },
 ];
+const originalCreateObjectURL = URL.createObjectURL;
+
+function failStorePutOnce(db, storeName, error) {
+  const originalTransaction = db.transaction.bind(db);
+  let shouldFail = true;
+  vi.spyOn(db, 'transaction').mockImplementation((stores, mode, options) => {
+    const transaction = originalTransaction(stores, mode, options);
+    const requestedStores = Array.isArray(stores) ? stores : [stores];
+    if (
+      !shouldFail ||
+      mode !== 'readwrite' ||
+      !requestedStores.includes(storeName)
+    ) {
+      return transaction;
+    }
+    shouldFail = false;
+    return new Proxy(transaction, {
+      get(target, property) {
+        if (property === 'objectStore') {
+          return (name) => {
+            const store = target.objectStore(name);
+            if (name !== storeName) return store;
+            return new Proxy(store, {
+              get(targetStore, storeProperty) {
+                if (storeProperty === 'put') {
+                  return () => {
+                    throw error;
+                  };
+                }
+                const value = Reflect.get(targetStore, storeProperty, targetStore);
+                return typeof value === 'function' ? value.bind(targetStore) : value;
+              },
+            });
+          };
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+  });
+}
 
 describe('T66 — Form ghi nhật ký khi mất mạng & Khôi phục dữ liệu', () => {
   const originalOnLine = navigator.onLine;
@@ -69,6 +113,11 @@ describe('T66 — Form ghi nhật ký khi mất mạng & Khôi phục dữ liệ
       configurable: true,
       writable: true,
     });
+    if (originalCreateObjectURL) {
+      URL.createObjectURL = originalCreateObjectURL;
+    } else {
+      delete URL.createObjectURL;
+    }
     await closeDiaryDB();
   });
 
@@ -155,6 +204,274 @@ describe('T66 — Form ghi nhật ký khi mất mạng & Khôi phục dữ liệ
     expect(offlineLogs[0].content).toBe('Kiểm tra cốt thép offline');
     expect(offlineLogs[0].syncStatus).toBe('pending');
     expect(offlineLogs[0].client_id).toBe('uuid-t66-stable-001');
+  });
+
+  it('T68.1. Tạo liên tiếp nhiều nhật ký offline không ghi đè bản ghi trước', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    let nextId = 0;
+    vi.stubGlobal('crypto', { randomUUID: () => `uuid-t68-${++nextId}` });
+
+    render(
+      <DiaryEntryForm
+        projectId="13"
+        user={mockUser}
+        onClose={vi.fn()}
+        onSuccess={vi.fn()}
+      />
+    );
+    await waitFor(() => expect(screen.getByTestId('category-option-101')).toBeInTheDocument());
+
+    for (const [index, content] of [
+      'Nhật ký offline thứ nhất',
+      'Nhật ký offline thứ hai',
+    ].entries()) {
+      fireEvent.change(screen.getByTestId('category-dropdown'), {
+        target: { value: index === 0 ? '101' : '102' },
+      });
+      fireEvent.change(screen.getByPlaceholderText(/Nhập nội dung/i), {
+        target: { value: content },
+      });
+      fireEvent.submit(screen.getByTestId('submit-diary-btn').closest('form'));
+      await waitFor(() => expect(screen.getByPlaceholderText(/Nhập nội dung/i)).toHaveValue(''));
+    }
+
+    const saved = await getDiaryLogsByProject(13);
+    expect(saved).toHaveLength(2);
+    expect(new Set(saved.map((entry) => entry.clientId)).size).toBe(2);
+    expect(saved.map((entry) => entry.content)).toEqual(
+      expect.arrayContaining([
+        'Nhật ký offline thứ nhất',
+        'Nhật ký offline thứ hai',
+      ])
+    );
+    expect(saved.every((entry) => entry.syncStatus === 'pending')).toBe(true);
+    expect(api.post).not.toHaveBeenCalled();
+    expect(screen.getByText(/Đã lưu trên thiết bị — chờ đồng bộ/i)).toBeInTheDocument();
+
+    const unrelatedId = 'uuid-t68-unrelated';
+    await createDiaryEntry({
+      id: unrelatedId,
+      projectId: 13,
+      work_item_id: 101,
+      content: 'Nhật ký của một form khác',
+      syncStatus: 'failed',
+    });
+    await updateDiaryEntry(saved[0].clientId, {
+      syncStatus: 'synced',
+      serverId: 801,
+    });
+    window.dispatchEvent(new Event('diary-sync-updated'));
+    await waitFor(() => {
+      expect(screen.getByText(/Đã lưu trên thiết bị — chờ đồng bộ/i)).toBeInTheDocument();
+    });
+    await updateDiaryEntry(saved[1].clientId, {
+      syncStatus: 'synced',
+      serverId: 802,
+    });
+    window.dispatchEvent(new Event('diary-sync-updated'));
+    await waitFor(() => {
+      expect(screen.getByText(/đã được đồng bộ thành công/i)).toBeInTheDocument();
+    });
+
+    await closeDiaryDB();
+    const reloaded = await getDiaryLogsByProject(13);
+    expect(reloaded.map((entry) => entry.content)).toEqual(
+      expect.arrayContaining([
+        'Nhật ký offline thứ nhất',
+        'Nhật ký offline thứ hai',
+      ])
+    );
+  });
+
+  it('T68.6. Nếu đọc lại trạng thái thất bại sau khi lưu, không khẳng định pending hoặc synced', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    const originalGetEntry = diaryDbModule.getDiaryEntryById;
+    const readSpy = vi.spyOn(diaryDbModule, 'getDiaryEntryById').mockImplementation(async (id) => {
+      if (id === 'uuid-t66-stable-001') {
+        throw new Error('IndexedDB read failed');
+      }
+      return originalGetEntry(id);
+    });
+
+    const { unmount } = render(
+      <DiaryEntryForm
+        projectId="13"
+        user={mockUser}
+        onClose={vi.fn()}
+        onSuccess={vi.fn()}
+      />
+    );
+    await waitFor(() => expect(screen.getByTestId('category-option-101')).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId('category-dropdown'), {
+      target: { value: '101' },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/Nhập nội dung/i), {
+      target: { value: 'Lưu thành công nhưng không đọc lại được' },
+    });
+    fireEvent.submit(screen.getByTestId('submit-diary-btn').closest('form'));
+
+    await waitFor(() => {
+      expect(screen.getByText(/chưa xác nhận được trạng thái đồng bộ/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/đã được đồng bộ thành công/i)).not.toBeInTheDocument();
+    expect(await getDiaryLogsByProject(13)).toHaveLength(1);
+    readSpy.mockRestore();
+    unmount();
+    await updateDiaryEntry('uuid-t66-stable-001', {
+      syncStatus: 'synced',
+      serverId: 899,
+    });
+    expect(() => window.dispatchEvent(new Event('diary-sync-updated'))).not.toThrow();
+  });
+
+  it('T68.3/6. Lỗi đọc lại sau khi lưu nhật ký và ảnh không báo đồng bộ thành công', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
+    URL.createObjectURL = vi.fn(() => 'blob:http://localhost/t68-readback-image');
+    api.post.mockResolvedValueOnce({
+      data: {
+        entry: {
+          id: 711,
+          work_item_id: 101,
+          content: 'Nhật ký đã lưu cùng ảnh',
+          client_id: 'uuid-t66-stable-001',
+          entry_at: new Date().toISOString(),
+        },
+      },
+    });
+    const syncSpy = vi.spyOn(diarySyncModule, 'requestDiarySync').mockResolvedValueOnce(0);
+    const readSpy = vi
+      .spyOn(diaryDbModule, 'getDiaryEntryWithImages')
+      .mockRejectedValueOnce(new Error('IndexedDB read failed'));
+    const onSuccess = vi.fn();
+
+    render(
+      <DiaryEntryForm
+        projectId="13"
+        user={mockUser}
+        onClose={vi.fn()}
+        onSuccess={onSuccess}
+      />
+    );
+    await waitFor(() => expect(screen.getByTestId('category-option-101')).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId('category-dropdown'), {
+      target: { value: '101' },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/Nhập nội dung/i), {
+      target: { value: 'Nhật ký đã lưu cùng ảnh' },
+    });
+    fireEvent.change(screen.getByTestId('diary-image-input'), {
+      target: {
+        files: [new File(['saved-photo'], 'saved-photo.jpg', { type: 'image/jpeg' })],
+      },
+    });
+    fireEvent.submit(screen.getByTestId('submit-diary-btn').closest('form'));
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    expect(onSuccess.mock.calls[0][0]).toMatchObject({
+      id: 711,
+      syncStatus: 'pending',
+      isOffline: true,
+    });
+    expect(screen.getByText(/chưa xác nhận được trạng thái đồng bộ/i)).toBeInTheDocument();
+    expect(screen.queryByText(/đã được đồng bộ thành công/i)).not.toBeInTheDocument();
+    const attachments = await getDiaryAttachmentsByLog('uuid-t66-stable-001');
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0].blob).toBeInstanceOf(Blob);
+    syncSpy.mockRestore();
+    readSpy.mockRestore();
+  });
+
+  it('T68.4. Lỗi IndexedDB sau phản hồi API không bị nhầm thành lỗi mạng/lưu offline', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
+    URL.createObjectURL = vi.fn(() => 'blob:http://localhost/t68-image');
+    api.post.mockResolvedValueOnce({
+      data: {
+        entry: {
+          id: 701,
+          work_item_id: 101,
+          content: 'Nhật ký online có ảnh',
+          client_id: 'uuid-t66-stable-001',
+          entry_at: new Date().toISOString(),
+        },
+      },
+    });
+    const db = await openDiaryDB();
+    failStorePutOnce(
+      db,
+      'diaryLogs',
+      new DOMException('Storage quota exceeded', 'QuotaExceededError')
+    );
+
+    render(
+      <DiaryEntryForm
+        projectId="13"
+        user={mockUser}
+        onClose={vi.fn()}
+        onSuccess={vi.fn()}
+      />
+    );
+    await waitFor(() => expect(screen.getByTestId('category-option-101')).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId('category-dropdown'), {
+      target: { value: '101' },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/Nhập nội dung/i), {
+      target: { value: 'Nhật ký online có ảnh' },
+    });
+    fireEvent.change(screen.getByTestId('diary-image-input'), {
+      target: {
+        files: [new File(['image-data'], 'photo.jpg', { type: 'image/jpeg' })],
+      },
+    });
+
+    fireEvent.submit(screen.getByTestId('submit-diary-btn').closest('form'));
+
+    await waitFor(() => {
+      expect(screen.getByText(/không đủ dung lượng lưu trữ cục bộ/i)).toBeInTheDocument();
+    });
+    expect(screen.getByDisplayValue('Nhật ký online có ảnh')).toBeInTheDocument();
+    expect(api.post).toHaveBeenCalledTimes(1);
+    expect(await getDiaryLogsByProject(13)).toHaveLength(0);
+  });
+
+  it('T68.4. Transaction metadata hết quota thì giữ form và hiển thị rõ rằng dữ liệu chưa lưu', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    URL.createObjectURL = vi.fn(() => 'blob:http://localhost/t68-quota-image');
+    const db = await openDiaryDB();
+    failStorePutOnce(
+      db,
+      'diaryLogs',
+      new DOMException('Storage quota exceeded', 'QuotaExceededError')
+    );
+
+    render(
+      <DiaryEntryForm
+        projectId="13"
+        user={mockUser}
+        onClose={vi.fn()}
+        onSuccess={vi.fn()}
+      />
+    );
+    await waitFor(() => expect(screen.getByTestId('category-option-101')).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId('category-dropdown'), { target: { value: '101' } });
+    fireEvent.change(screen.getByPlaceholderText(/Nhập nội dung/i), {
+      target: { value: 'Nhật ký cần giữ trong biểu mẫu' },
+    });
+    fireEvent.change(screen.getByTestId('diary-image-input'), {
+      target: {
+        files: [new File(['image-data'], 'quota-photo.jpg', { type: 'image/jpeg' })],
+      },
+    });
+    fireEvent.submit(screen.getByTestId('submit-diary-btn').closest('form'));
+
+    expect(await screen.findByText(/không đủ dung lượng/i)).toBeInTheDocument();
+    expect(screen.getByText(/Nhật ký và ảnh chưa được lưu/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Nhập nội dung/i)).toHaveValue(
+      'Nhật ký cần giữ trong biểu mẫu'
+    );
+    expect(screen.getByAltText('quota-photo.jpg')).toBeInTheDocument();
+    expect(await getDiaryLogsByProject(13)).toHaveLength(0);
+    expect(await getDiaryAttachmentsByLog('uuid-t66-stable-001')).toHaveLength(0);
+    expect(api.post).not.toHaveBeenCalled();
   });
 
   it('4 & 5. Khôi phục nhật ký sau khi reload / mở lại ứng dụng: hiển thị badge chờ đồng bộ', async () => {

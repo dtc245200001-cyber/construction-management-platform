@@ -241,15 +241,29 @@ describe("T67 — Lưu ảnh offline và phục hồi khi mở lại (S-29)", ()
     vi.spyOn(db, "transaction").mockImplementationOnce((stores, mode) => {
       const tx = origTx(stores, mode);
       const quotaError = new DOMException("Quota exceeded", "QuotaExceededError");
-      Object.defineProperty(tx, "error", { value: quotaError });
-      setTimeout(() => {
-        try {
-          tx.abort();
-        } catch {
-          /* ignore */
-        }
-      }, 0);
-      return tx;
+      return new Proxy(tx, {
+        get(target, property) {
+          if (property === "objectStore") {
+            return (storeName) => {
+              const store = target.objectStore(storeName);
+              if (storeName !== "diaryAttachments") return store;
+              return new Proxy(store, {
+                get(targetStore, storeProperty) {
+                  if (storeProperty === "put") {
+                    return () => {
+                      throw quotaError;
+                    };
+                  }
+                  const value = Reflect.get(targetStore, storeProperty, targetStore);
+                  return typeof value === "function" ? value.bind(targetStore) : value;
+                },
+              });
+            };
+          }
+          const value = Reflect.get(target, property, target);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
     });
 
     const testBlob = new Blob(["data"], { type: "image/jpeg" });
@@ -258,7 +272,8 @@ describe("T67 — Lưu ảnh offline và phục hồi khi mở lại (S-29)", ()
         { id: "quota-test", projectId: 13, content: "Test quota" },
         [{ blob: testBlob, fileName: "quota.jpg" }]
       )
-    ).rejects.toThrow(/QuotaExceededError|dung lượng lưu trữ/i);
+      ).rejects.toThrow(/không đủ dung lượng lưu trữ/i);
+      expect(await getDiaryAttachmentsByLog("quota-test")).toHaveLength(0);
 
     await closeDiaryDB();
   });
@@ -472,6 +487,7 @@ describe("T67 — Lưu ảnh offline và phục hồi khi mở lại (S-29)", ()
       logId: "non-existent-log-id",
       blob,
       fileName: "lonely.jpg",
+      syncStatus: "synced",
     });
 
     // Chạy dọn dẹp ảnh mồ côi
