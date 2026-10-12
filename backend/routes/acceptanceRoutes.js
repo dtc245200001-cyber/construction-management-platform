@@ -331,6 +331,65 @@ router.get(
   })
 );
 
+// ─── GET /api/projects/:projectId/acceptance-vouchers/items-summary ───────────
+/**
+ * @swagger
+ * /api/projects/{projectId}/acceptance-vouchers/items-summary:
+ *   get:
+ *     summary: Danh sách hạng mục lá kèm luỹ kế đã duyệt gần nhất và số đội báo
+ *     tags: [Acceptance]
+ */
+router.get(
+  "/:projectId/acceptance-vouchers/items-summary",
+  requireAuth,
+  checkProjectAccess,
+  requirePermission("project.member"),
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+    if (!projectId) {
+      return res.status(400).json({ message: "projectId không hợp lệ" });
+    }
+
+    res.setHeader("Cache-Control", "no-store");
+
+    const query = `
+      SELECT
+        wi.id,
+        wi.parent_id,
+        wi.code,
+        wi.name,
+        wi.unit,
+        wi.quantity::text AS contract_quantity,
+        COALESCE((
+          SELECT avi.cumulative_quantity::text
+          FROM acceptance_voucher_items avi
+          JOIN acceptance_vouchers av ON av.id = avi.voucher_id
+          WHERE avi.work_item_id = wi.id
+            AND av.project_id = $1
+            AND av.status = 'approved'
+          ORDER BY av.created_at DESC, av.id DESC
+          LIMIT 1
+        ), '0.000') AS prev_approved_cumulative,
+        COALESCE((
+          SELECT SUM(tqr.quantity)::text
+          FROM task_quantity_reports tqr
+          JOIN tasks t ON t.id = tqr.task_id
+          WHERE t.work_item_id = wi.id
+            AND tqr.project_id = $1
+        ), '0') AS team_reported_quantity
+      FROM work_items wi
+      WHERE wi.project_id = $1
+        AND NOT EXISTS (
+          SELECT 1 FROM work_items child WHERE child.parent_id = wi.id
+        )
+      ORDER BY wi.code, wi.id
+    `;
+
+    const { rows } = await db.query(query, [projectId]);
+    return res.json({ project_id: projectId, items: rows });
+  })
+);
+
 // ─── GET /api/projects/:projectId/acceptance-vouchers/:voucherId ───────────────
 /**
  * @swagger
