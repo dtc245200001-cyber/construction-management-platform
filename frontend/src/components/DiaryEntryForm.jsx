@@ -23,6 +23,51 @@ const ALLOWED_ROLES = [
   "system_admin",
 ];
 
+function draftMatchesDiaryEntry(draft, entry) {
+  if (
+    !draft?.client_id ||
+    String(draft.client_id) !== String(entry?.client_id || entry?.id)
+  ) {
+    return false;
+  }
+  const draftContent =
+    typeof draft.content === "string" ? draft.content.trim() : "";
+  const entryContent =
+    typeof entry?.content === "string" ? entry.content.trim() : "";
+  if (draftContent !== entryContent) {
+    return false;
+  }
+
+  const draftWorkItemId = Number(draft.work_item_id);
+  const entryWorkItemId = Number(entry.work_item_id ?? entry.workItemId);
+  if (
+    Number.isInteger(draftWorkItemId) &&
+    Number.isInteger(entryWorkItemId) &&
+    draftWorkItemId !== entryWorkItemId
+  ) {
+    return false;
+  }
+
+  const draftEntryAt = Date.parse(draft.entry_at || "");
+  const entryAt = Date.parse(entry.entry_at || entry.entryAt || "");
+  return (
+    !Number.isFinite(draftEntryAt) ||
+    !Number.isFinite(entryAt) ||
+    draftEntryAt === entryAt
+  );
+}
+
+function removeDraftIfMatchesEntry(draftKey, entry) {
+  try {
+    const savedDraft = JSON.parse(localStorage.getItem(draftKey) || "null");
+    if (draftMatchesDiaryEntry(savedDraft, entry)) {
+      localStorage.removeItem(draftKey);
+    }
+  } catch {
+    // Ignore unavailable local storage.
+  }
+}
+
 export default function DiaryEntryForm({
   projectId,
 
@@ -59,6 +104,7 @@ export default function DiaryEntryForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [submitMessage, setSubmitMessage] = useState(null);
+  const [draftLoaded, setDraftLoaded] = useState(false);
 
   const [selectedImages, setSelectedImages] = useState([]);
   const [imageError, setImageError] = useState("");
@@ -143,35 +189,53 @@ export default function DiaryEntryForm({
         setCategoriesLoading(false);
       });
 
-    try {
-      const draftStr = localStorage.getItem(draftKey);
+    let cancelled = false;
+    setDraftLoaded(false);
+    const initializeDraft = async () => {
+      let draft = null;
+      try {
+        draft = JSON.parse(localStorage.getItem(draftKey) || "null");
+      } catch {
+        draft = null;
+      }
 
-      if (draftStr) {
-        const draft = JSON.parse(draftStr);
+      const hasDraftContent = Boolean(
+        draft?.work_item_id || draft?.content?.trim(),
+      );
+      let savedEntry = null;
+      if (hasDraftContent && draft?.client_id) {
+        try {
+          savedEntry = await getDiaryEntryById(draft.client_id);
+        } catch (error) {
+          console.warn("Không thể đối chiếu bản nháp với nhật ký cục bộ:", error);
+        }
+      }
 
+      if (cancelled) return;
+      const isAlreadySaved =
+        savedEntry && draftMatchesDiaryEntry(draft, savedEntry);
+      if (hasDraftContent && !isAlreadySaved) {
         setWorkItemId(draft.work_item_id || "");
-
         setEntryAt(draft.entry_at || format(new Date(), "yyyy-MM-dd'T'HH:mm"));
-
         setContent(draft.content || "");
-
         setClientId(draft.client_id || crypto.randomUUID());
-
         setSubmitMessage({
           type: "warning",
-
           text: "Đang có bản nháp chưa gửi.",
         });
       } else {
+        if (isAlreadySaved) {
+          removeDraftIfMatchesEntry(draftKey, savedEntry);
+        }
+        setWorkItemId("");
         setEntryAt(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
-
+        setContent("");
         setClientId(crypto.randomUUID());
+        setSubmitMessage(null);
       }
-    } catch (e) {
-      setEntryAt(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
-
-      setClientId(crypto.randomUUID());
-    }
+      setDraftLoaded(true);
+    };
+    initializeDraft();
 
     const handleClickOutside = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
@@ -181,11 +245,14 @@ export default function DiaryEntryForm({
 
     document.addEventListener("mousedown", handleClickOutside);
 
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, [projectId, canWrite, draftKey]);
 
   useEffect(() => {
-    if (!canWrite) return;
+    if (!canWrite || !draftLoaded) return;
 
     const draft = {
       work_item_id: workItemId,
@@ -206,7 +273,7 @@ export default function DiaryEntryForm({
     } catch (e) {
       // ignore
     }
-  }, [workItemId, entryAt, content, clientId, draftKey, canWrite]);
+  }, [workItemId, entryAt, content, clientId, draftKey, canWrite, draftLoaded]);
 
   useEffect(() => {
     if (!clientId) return undefined;
@@ -214,6 +281,7 @@ export default function DiaryEntryForm({
       const entry = await getDiaryEntryById(clientId);
       if (!entry) return;
       if (entry.syncStatus === "synced") {
+        removeDraftIfMatchesEntry(draftKey, entry);
         setSubmitMessage({
           type: "success",
           text: "Nhật ký đã được đồng bộ thành công.",
@@ -227,7 +295,7 @@ export default function DiaryEntryForm({
     };
     window.addEventListener("diary-sync-updated", handleSyncUpdate);
     return () => window.removeEventListener("diary-sync-updated", handleSyncUpdate);
-  }, [clientId]);
+  }, [clientId, draftKey]);
 
   const validate = (field, value) => {
     let err = "";
@@ -354,6 +422,12 @@ export default function DiaryEntryForm({
           syncStatus: "pending",
           isOffline: true,
         }, imagesToStore);
+        removeDraftIfMatchesEntry(draftKey, {
+          client_id: clientUuid,
+          work_item_id: resolvedWorkItemId,
+          content: content.trim(),
+          entry_at: payload.entry_at,
+        });
 
         await requestDiarySync();
         const storedEntry = await getDiaryEntryById(clientUuid);
