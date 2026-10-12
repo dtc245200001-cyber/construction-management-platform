@@ -10,8 +10,10 @@ import DiaryEntryForm from '../../components/DiaryEntryForm';
 import {
   openDiaryDB,
   closeDiaryDB,
+  createDiaryEntry,
   saveDiaryLog,
   getDiaryLogsByProject,
+  updateDiaryEntry,
 } from '../../lib/diaryDb';
 
 vi.mock('../../lib/api');
@@ -185,6 +187,149 @@ describe('T66 — Form ghi nhật ký khi mất mạng & Khôi phục dữ liệ
 
     // Có badge thể hiện rõ trạng thái cục bộ
     expect(screen.getByText(/Đã lưu trên thiết bị — chờ đồng bộ/i)).toBeInTheDocument();
+  });
+
+  it('chỉ cảnh báo khi có bản nháp chưa được lưu thành nhật ký', async () => {
+    const { unmount } = render(
+      <DiaryEntryForm
+        projectId="13"
+        user={mockUser}
+        onClose={vi.fn()}
+        onSuccess={vi.fn()}
+      />
+    );
+    await waitFor(() => expect(screen.getByTestId('category-option-101')).toBeInTheDocument());
+    expect(screen.queryByText('Đang có bản nháp chưa gửi.')).not.toBeInTheDocument();
+
+    unmount();
+    localStorage.setItem('diary_draft_13', JSON.stringify({
+      work_item_id: '101',
+      entry_at: '2026-10-12T08:00',
+      content: 'Bản nháp cần khôi phục',
+      client_id: 'actual-unsent-draft',
+    }));
+
+    render(
+      <DiaryEntryForm
+        projectId="13"
+        user={mockUser}
+        onClose={vi.fn()}
+        onSuccess={vi.fn()}
+      />
+    );
+    expect(await screen.findByText('Đang có bản nháp chưa gửi.')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Bản nháp cần khôi phục')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['pending', 'nhật ký offline đang chờ đồng bộ'],
+    ['synced', 'nhật ký đã đồng bộ'],
+  ])('không nhận diện %s là bản nháp chưa gửi (%s)', async (syncStatus) => {
+    const clientId = `stored-diary-${syncStatus}`;
+    const entryAt = '2026-10-12T01:00:00.000Z';
+    await createDiaryEntry({
+      id: clientId,
+      client_id: clientId,
+      projectId: 13,
+      work_item_id: 101,
+      content: 'Nội dung đã lưu thành nhật ký',
+      entry_at: entryAt,
+      syncStatus,
+      ...(syncStatus === 'synced' ? { serverId: 301 } : {}),
+    });
+    localStorage.setItem('diary_draft_13', JSON.stringify({
+      work_item_id: '101',
+      entry_at: entryAt,
+      content: 'Nội dung đã lưu thành nhật ký',
+      client_id: clientId,
+    }));
+
+    render(
+      <DiaryEntryForm
+        projectId="13"
+        user={mockUser}
+        onClose={vi.fn()}
+        onSuccess={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByTestId('category-option-101')).toBeInTheDocument());
+    await waitFor(() => expect(localStorage.getItem('diary_draft_13')).toBeNull());
+    expect(screen.queryByText('Đang có bản nháp chưa gửi.')).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Nhập nội dung/i)).toHaveValue('');
+    expect((await getDiaryLogsByProject(13))[0].syncStatus).toBe(syncStatus);
+  });
+
+  it('sau reload khi đồng bộ xong, bản nháp cũ không xuất hiện lại', async () => {
+    const clientId = 'synced-before-reload';
+    await createDiaryEntry({
+      id: clientId,
+      client_id: clientId,
+      projectId: 13,
+      work_item_id: 101,
+      content: 'Đã đồng bộ trước reload',
+      entry_at: '2026-10-12T01:00:00.000Z',
+      syncStatus: 'pending',
+    });
+    await updateDiaryEntry(clientId, {
+      serverId: 401,
+      syncStatus: 'synced',
+      syncedAt: new Date().toISOString(),
+    });
+    localStorage.setItem('diary_draft_13', JSON.stringify({
+      work_item_id: '101',
+      entry_at: '2026-10-12T01:00:00.000Z',
+      content: 'Đã đồng bộ trước reload',
+      client_id: clientId,
+    }));
+
+    const firstRender = render(
+      <DiaryEntryForm
+        projectId="13"
+        user={mockUser}
+        onClose={vi.fn()}
+        onSuccess={vi.fn()}
+      />
+    );
+    await waitFor(() => expect(screen.getByTestId('category-option-101')).toBeInTheDocument());
+    firstRender.unmount();
+
+    render(
+      <DiaryEntryForm
+        projectId="13"
+        user={mockUser}
+        onClose={vi.fn()}
+        onSuccess={vi.fn()}
+      />
+    );
+    await waitFor(() => expect(localStorage.getItem('diary_draft_13')).toBeNull());
+    expect(screen.queryByText('Đang có bản nháp chưa gửi.')).not.toBeInTheDocument();
+    expect((await getDiaryLogsByProject(13))[0].syncStatus).toBe('synced');
+  });
+
+  it('mở form tạo mới nhiều lần không tạo cảnh báo khi không có bản nháp', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
+    render(
+      <MemoryRouter initialEntries={['/diary']}>
+        <DiaryPage user={mockUser} />
+      </MemoryRouter>
+    );
+
+    const openForm = async () => {
+      await userEvent.click(screen.getByRole('button', { name: /Ghi nhật ký$/ }));
+      await screen.findByText('Ghi nhật ký thi công');
+      expect(screen.queryByText('Đang có bản nháp chưa gửi.')).not.toBeInTheDocument();
+    };
+    const closeForm = async () => {
+      const closeButton = screen.getByText('Ghi nhật ký thi công')
+        .parentElement.querySelector('button');
+      await userEvent.click(closeButton);
+      await waitFor(() => expect(screen.queryByText('Ghi nhật ký thi công')).not.toBeInTheDocument());
+    };
+
+    await openForm();
+    await closeForm();
+    await openForm();
   });
 
   it('6 & 7. Lỗi mạng khi API thất bại: lưu vào IndexedDB, giữ form và dùng lại cùng client_id khi thử lại', async () => {

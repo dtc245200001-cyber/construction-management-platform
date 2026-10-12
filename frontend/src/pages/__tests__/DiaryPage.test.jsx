@@ -232,8 +232,8 @@ describe('DiaryPage', () => {
       // Content still there
       expect(screen.getByDisplayValue('Loi mang test')).toBeInTheDocument();
       
-      // Draft should be saved
-      expect(localStorage.getItem('diary_draft_13')).toContain('Loi mang test');
+      // The queued diary is already stored in IndexedDB, not an unsent draft.
+      expect(localStorage.getItem('diary_draft_13')).toBeNull();
       
       await waitFor(() => {
         // The offline queue retries automatically with the same UUID.
@@ -244,6 +244,7 @@ describe('DiaryPage', () => {
       
       // The diary remains visible with an acknowledged synced state.
       await waitFor(() => expect(screen.getByText(/đã được đồng bộ thành công/i)).toBeInTheDocument());
+      expect(localStorage.getItem('diary_draft_13')).toBeNull();
     });
 
     it('Lỗi 422 INVALID_WORK_ITEM, 403 → hiện tiếng Việt, không tự thử lại', async () => {
