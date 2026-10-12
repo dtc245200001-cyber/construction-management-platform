@@ -208,7 +208,7 @@ export default function ProjectCalendarPage() {
     <div className="flex-1 min-h-screen bg-[#F3F6FB] text-[#0F1B3D] flex flex-col overflow-auto">
       <div className="flex-1 flex flex-col p-6 gap-6 max-w-[1200px] mx-auto w-full">
         {/* Header Hero Banner */}
-        <div className="relative h-[115px] rounded-2xl overflow-hidden shrink-0 flex items-center p-6 shadow-sm">
+        <div className="relative h-[115px] rounded-2xl overflow-hidden shrink-0 flex items-center p-4 sm:p-6 shadow-sm">
           <div
             className="absolute inset-0 bg-cover bg-center"
             style={{
@@ -218,16 +218,16 @@ export default function ProjectCalendarPage() {
           />
           <div className="absolute inset-0 bg-gradient-to-r from-[#0B3FA8] to-transparent opacity-95" />
 
-          <div className="relative z-10 flex items-center justify-between w-full">
-            <div className="flex items-center gap-5">
-              <div className="size-[60px] bg-[#1F63E0] rounded-xl flex items-center justify-center shadow-lg border border-white/20">
+          <div className="relative z-10 flex flex-wrap items-center gap-3 sm:gap-5">
+            <div className="flex items-center gap-3 sm:gap-5">
+              <div className="size-12 sm:size-[60px] bg-[#1F63E0] rounded-xl flex items-center justify-center shadow-lg border border-white/20">
                 <CalendarDays className="size-8 text-white" />
               </div>
               <div>
-                <h1 className="text-white text-[28px] font-bold leading-tight">
+                <h1 className="text-white text-xl sm:text-[28px] font-bold leading-tight">
                   Lịch làm việc & Ngày nghỉ
                 </h1>
-                <p className="text-white/90 text-[16px] font-medium mt-1">
+                <p className="text-white/90 text-sm sm:text-[16px] font-medium mt-1">
                   {currentProject
                     ? `Dự án: ${currentProject.name}`
                     : "Cấu hình lịch làm việc và ngày lễ theo dự án"}
