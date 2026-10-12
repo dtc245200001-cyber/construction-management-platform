@@ -221,7 +221,7 @@ export default function SchedulePage() {
     <div className="flex-1 min-h-0 bg-[#F3F6FB] text-[#0F1B3D] flex flex-col">
       <div className="flex flex-col p-6 gap-6 max-w-[1672px] mx-auto w-full">
         {/* Hero Banner */}
-        <div className="relative h-[115px] rounded-2xl overflow-hidden shrink-0 flex items-center p-6 shadow-sm">
+        <div className="relative h-[115px] rounded-2xl overflow-hidden shrink-0 flex items-center p-4 sm:p-6 shadow-sm">
           <div
             className="absolute inset-0 bg-cover bg-center"
             style={{
@@ -232,15 +232,15 @@ export default function SchedulePage() {
 
           <div className="absolute inset-0 bg-gradient-to-r from-[#0B3FA8] to-transparent opacity-95" />
 
-          <div className="relative z-10 flex items-center justify-between w-full">
-            <div className="flex items-center gap-5">
-              <div className="size-[60px] bg-[#1F63E0] rounded-xl flex items-center justify-center shadow-lg border border-white/20">
+          <div className="relative z-10 flex w-full flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-3 sm:gap-5">
+              <div className="size-12 sm:size-[60px] bg-[#1F63E0] rounded-xl flex items-center justify-center shadow-lg border border-white/20">
                 <TrendingUp className="size-8 text-white" />
               </div>
 
               <div>
-                <div className="flex items-center gap-3">
-                  <h1 className="text-white text-[30px] font-bold leading-tight">
+                <div className="flex items-center flex-wrap gap-2 sm:gap-3">
+                  <h1 className="text-white text-xl sm:text-[30px] font-bold leading-tight">
                     Bảng đường găng (CPM)
                   </h1>
                   {summary && (
@@ -256,7 +256,7 @@ export default function SchedulePage() {
                   )}
                 </div>
 
-                <p className="text-white/90 text-[18px] font-medium mt-1.5">
+                <p className="text-white/90 text-sm sm:text-[18px] font-medium mt-1.5">
                   {currentProject ? `Dự án: ${currentProject.name}` : 'Phương pháp đường găng (Critical Path Method)'}
                 </p>
               </div>
@@ -404,7 +404,7 @@ export default function SchedulePage() {
             <table className="w-full text-left border-collapse min-w-[960px]">
               <thead className="bg-white sticky top-0 z-10 shadow-sm">
                 <tr>
-                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] min-w-[220px] whitespace-nowrap">
+                  <th className="sticky left-0 z-20 bg-white px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] min-w-[220px] whitespace-nowrap">
                     Công việc
                   </th>
 
@@ -440,7 +440,7 @@ export default function SchedulePage() {
                     Tiến độ thực tế
                   </th>
 
-                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[110px] whitespace-nowrap">
+                  <th className="sticky right-0 z-20 bg-white px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[110px] whitespace-nowrap">
                     Thao tác
                   </th>
                 </tr>
@@ -488,8 +488,8 @@ export default function SchedulePage() {
                           : "hover:bg-slate-50"
                       }`}
                     >
-                      <td className={`px-4 py-2 font-medium text-[14px] ${row.newly_critical ? 'text-red-700 font-bold' : 'text-[#0F1B3D]'}`}>
-                        <div className="flex items-center gap-2">
+                      <td className={`sticky left-0 z-20 bg-white px-4 py-2 font-medium text-[14px] ${row.newly_critical ? 'text-red-700 font-bold' : 'text-[#0F1B3D]'}`}>
+                        <div className="min-w-[190px] max-w-[190px] sm:max-w-[220px] break-words">
                           <span>{row.name}</span>
                         </div>
                       </td>
@@ -594,7 +594,7 @@ export default function SchedulePage() {
                       </td>
 
                       {/* Thao tác mở form cập nhật tiến độ (T-35) */}
-                      <td className="px-4 py-2 text-center">
+                      <td className="sticky right-0 z-20 bg-white px-4 py-2 text-center">
                         <button
                           type="button"
                           aria-label={`Cập nhật tiến độ: ${row.name}`}

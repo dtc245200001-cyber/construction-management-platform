@@ -311,7 +311,7 @@ export default function DashboardLayout({ user, setUser }) {
           >
             <Menu className="size-5 shrink-0" />
           </button>
-          <p className="flex min-w-0 flex-1 items-center gap-2 text-sm font-medium text-muted-foreground sm:flex-none">
+          <p className="flex min-w-0 flex-1 basis-full items-center gap-2 text-sm font-medium text-muted-foreground min-[420px]:basis-auto sm:flex-none">
             <span className="truncate">{currentProject ? `Dự án ${currentProject.name}` : 'Đang tải...'}</span> <ChevronRight className="size-4 shrink-0" />
             <span className="shrink-0 font-semibold text-foreground">{currentNav.label}</span>
           </p>
@@ -323,7 +323,7 @@ export default function DashboardLayout({ user, setUser }) {
 
           <button
             onClick={() => navigate('/diary', { state: { openForm: true } })}
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 outline-none">
+            className="ml-auto inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 outline-none min-[420px]:ml-0">
             <Plus className="size-4" /> <span className="hidden min-[420px]:inline">Ghi nhật ký nhanh</span><span className="min-[420px]:hidden">Ghi nhật ký</span>
           </button>
 

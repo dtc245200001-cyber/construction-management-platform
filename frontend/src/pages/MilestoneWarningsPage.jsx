@@ -117,7 +117,7 @@ export default function MilestoneWarningsPage() {
               <p className="text-[#64748B] text-sm mt-1">Dự án hiện đang đáp ứng tất cả mốc bàn giao.</p>
             </div>
           ) : (
-            <div className="bg-white border border-[#E6EBF3] rounded-xl shadow-sm overflow-hidden">
+            <div className="bg-white border border-[#E6EBF3] rounded-xl shadow-sm overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-[#E6EBF3]">
