@@ -236,3 +236,39 @@ export function formatInputDisplayVN(str) {
   if (str === null || str === undefined) return "";
   return str.replace(".", ",");
 }
+
+/**
+ * Tính hiệu giữa hai số lượng thập phân (a - b) với độ chính xác tuyệt đối bằng BigInt.
+ * Phục vụ tính khối lượng phát sinh đợt: luỹ kế mới - luỹ kế đã duyệt trước.
+ *
+ * @param {string|number} aStr - Luỹ kế mới
+ * @param {string|number} bStr - Luỹ kế đã duyệt trước
+ * @returns {{ delta: string, isNegative: boolean, formatted: string }}
+ */
+export function subtractQuantities(aStr, bStr) {
+  if (aStr === undefined || aStr === null || String(aStr).trim() === "") {
+    return { delta: "0.000", isNegative: false, formatted: "0" };
+  }
+  const toMillis = (val) => {
+    const s = String(val ?? "0").trim();
+    if (!s) return 0n;
+    const isNeg = s.startsWith("-");
+    const abs = isNeg ? s.slice(1) : s;
+    const [intP = "0", fracP = ""] = abs.split(/[.,]/);
+    const frac3 = (fracP + "000").slice(0, 3);
+    const m = BigInt(intP || "0") * 1000n + BigInt(frac3);
+    return isNeg ? -m : m;
+  };
+
+  const diffMillis = toMillis(aStr) - toMillis(bStr);
+  const isNegative = diffMillis < 0n;
+  const absMillis = isNegative ? -diffMillis : diffMillis;
+  const intPart = absMillis / 1000n;
+  const fracPart = absMillis % 1000n;
+  const rawDelta = `${intPart}.${String(fracPart).padStart(3, "0")}`;
+  const delta = isNegative ? `-${rawDelta}` : rawDelta;
+  const formatted = (isNegative ? "-" : "") + formatQuantityVN(rawDelta);
+
+  return { delta, isNegative, formatted };
+}
+

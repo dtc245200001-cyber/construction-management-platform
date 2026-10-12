@@ -34,6 +34,10 @@ import { startDiarySync } from './services/diarySync';
 import FieldPage from './pages/FieldPage';
 import ContractQuantityPage from './pages/ContractQuantityPage';
 
+// S-36 / T-92
+import AcceptancePage from './pages/AcceptancePage';
+
+
 function App() {
   const [user, setUser] = useState(() => {
     try {
@@ -257,6 +261,11 @@ function App() {
           <Route
             path="/diary"
             element={<DiaryPage user={user} />}
+          />
+
+          <Route
+            path="/acceptance"
+            element={<AcceptancePage user={user} />}
           />
 
           <Route

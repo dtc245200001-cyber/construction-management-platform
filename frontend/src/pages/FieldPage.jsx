@@ -551,13 +551,16 @@ export default function FieldPage() {
 
       setHistoryLoading(true);
 
+      // S-39 / T-104: dùng endpoint history mới — mỗi dòng báo cáo
+      // kèm sẵn thông tin audit "ai đã lập, khi nào" (audit_user_name,
+      // audit_created_at), không cần gọi API thứ hai.
       const res =
         await api.get(
-          `/projects/${currentProjectId}/tasks/${task.task_id}/quantity-reports`
+          `/projects/${currentProjectId}/tasks/${task.task_id}/quantity-reports/history`
         );
 
       setHistoryRows(
-        res.data?.reports || []
+        res.data?.history || []
       );
     } catch (err) {
       setHistoryError(
@@ -1091,6 +1094,13 @@ export default function FieldPage() {
                         <th className="px-3 py-3">
                           Ghi nhận lúc
                         </th>
+
+                        {/* S-39: cột audit "ai đã lập"
+                            để truy trách nhiệm
+                            khi có tranh chấp. */}
+                        <th className="px-3 py-3">
+                          Nhật ký thao tác
+                        </th>
                       </tr>
                     </thead>
 
@@ -1133,6 +1143,34 @@ export default function FieldPage() {
                                     "vi-VN"
                                   )
                                 : "--"}
+                            </td>
+
+                            <td className="px-3 py-3 text-slate-600">
+                              {row.audit_action ? (
+                                <span title="Dòng nhật ký chỉ ghi thêm, không thể sửa/xóa">
+                                  <span className="font-semibold text-slate-700">
+                                    {row.audit_user_name ||
+                                      row.reported_by_name ||
+                                      "--"}
+                                  </span>{" "}
+                                  đã lập
+                                  <br />
+                                  <span className="text-xs text-slate-400">
+                                    {row.audit_created_at
+                                      ? new Date(
+                                          row.audit_created_at
+                                        ).toLocaleString(
+                                          "vi-VN"
+                                        )
+                                      : ""}
+                                  </span>
+                                </span>
+                              ) : (
+                                <span className="text-xs italic text-slate-400">
+                                  Báo cáo cũ (trước
+                                  S-39)
+                                </span>
+                              )}
                             </td>
                           </tr>
                         )
