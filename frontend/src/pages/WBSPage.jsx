@@ -12,7 +12,8 @@ import {
   Search, Plus, List, LayoutGrid,
   ChevronRight, ChevronDown, FolderOpen, FileText, 
   Lightbulb, X, FileSpreadsheet, Download, Network,
-  Maximize2, Minimize2, Pencil, Trash2, PlusCircle, FolderPlus, CalendarRange, Flag
+  Maximize2, Minimize2, Pencil, Trash2, PlusCircle, FolderPlus, CalendarRange, Flag,
+  MoreVertical
 } from "lucide-react";
 
 const COLORS = [
@@ -630,7 +631,7 @@ const closeTaskForm = () => {
                   {indexStr}
                 </div>
                 {isExpanded ? <FolderOpen className={`size-4 ${color.text}`} /> : <FolderOpen className={`size-4 ${color.text}`} />}
-                <span className="text-[14px]">{node.name}</span>
+                <span className="text-[14px] break-words">{node.name}</span>
                 {milestones[node.id] && (
                   <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-red-100 text-red-600" title="Mốc bàn giao bắt buộc">
                     <Flag className="size-3" />
@@ -646,7 +647,7 @@ const closeTaskForm = () => {
             <td className="px-4 text-sm text-[#475569]">{renderDate(node.start_date)}</td>
             <td className="px-4 text-sm text-[#475569]">{renderDate(node.end_date)}</td>
             <td className={`px-4 text-right sticky right-0 z-10 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] transition-colors ${color.bg}`}>
- <div className="flex items-center justify-end gap-1">
+ <div className="hidden items-center justify-end gap-1 lg:flex">
   {/* T-43: Đặt mốc */}
   <button
     type="button"
@@ -703,6 +704,67 @@ const closeTaskForm = () => {
   >
     <Trash2 className="size-4" />
   </button>
+</div>
+{/* Lỗi 2 responsive: kebab menu gom 5 thao tác hạng mục, chỉ hiện trên mobile */}
+<div className="relative flex items-center justify-end lg:hidden">
+  <button
+    type="button"
+    onClick={() => setOpenMenuNodeId(openMenuNodeId === node.id ? null : node.id)}
+    aria-label="Mở menu thao tác"
+    aria-expanded={openMenuNodeId === node.id}
+    className="flex min-h-11 min-w-11 items-center justify-center text-[#475569] hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
+  >
+    <MoreVertical className="size-5" />
+  </button>
+  {openMenuNodeId === node.id && (
+    <>
+      <button
+        type="button"
+        aria-label="Đóng menu thao tác"
+        onClick={() => setOpenMenuNodeId(null)}
+        className="fixed inset-0 z-20 cursor-default bg-transparent"
+      />
+      <div className="absolute right-0 top-full z-30 w-56 overflow-hidden rounded-xl border border-[#E2E8F0] bg-white py-1 shadow-xl">
+        <button
+          type="button"
+          onClick={() => { setOpenMenuNodeId(null); openMilestoneModal(node); }}
+          className="flex min-h-11 w-full items-center gap-2 px-4 text-left text-sm text-red-600 hover:bg-red-50"
+        >
+          <Flag className="size-4" /> Đặt mốc bàn giao
+        </button>
+        {isLeafCategory(node) && (
+          <button
+            type="button"
+            onClick={() => { setOpenMenuNodeId(null); openCreateTaskForm(node); }}
+            className="flex min-h-11 w-full items-center gap-2 px-4 text-left text-sm text-[#1F63E0] hover:bg-blue-50"
+          >
+            <Plus className="size-4" /> Thêm công việc
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => { setOpenMenuNodeId(null); openAddChildModal(node); }}
+          className="flex min-h-11 w-full items-center gap-2 px-4 text-left text-sm text-[#1F63E0] hover:bg-blue-50"
+        >
+          <PlusCircle className="size-4" /> Thêm mục con
+        </button>
+        <button
+          type="button"
+          onClick={() => { setOpenMenuNodeId(null); openEditCategoryModal(node); }}
+          className="flex min-h-11 w-full items-center gap-2 px-4 text-left text-sm text-[#475569] hover:bg-black/5"
+        >
+          <Pencil className="size-4" /> Sửa tên hạng mục
+        </button>
+        <button
+          type="button"
+          onClick={() => { setOpenMenuNodeId(null); handleDeleteCategory(node); }}
+          className="flex min-h-11 w-full items-center gap-2 px-4 text-left text-sm text-red-500 hover:bg-red-50"
+        >
+          <Trash2 className="size-4" /> Xóa hạng mục
+        </button>
+      </div>
+    </>
+  )}
 </div>
 </td>
           </tr>

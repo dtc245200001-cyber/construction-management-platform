@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useOutletContext } from "react-router-dom";
 import api from "../lib/api";
 import { mapScheduleToGantt, generateTimelineTicks } from "../utils/ganttUtils";
-import { AlertTriangle, RefreshCw, CalendarRange, Edit3 } from "lucide-react";
+import { AlertTriangle, RefreshCw, CalendarRange, Edit3, X } from "lucide-react";
 import { differenceInCalendarDays, parseISO, format } from "date-fns";
 import TaskProgressModal from "../components/TaskProgressModal";
 import { readSnapshot, writeSnapshot, isNetworkError, SNAPSHOT_TYPES } from "../services/offlineSnapshotCache";
@@ -206,6 +206,15 @@ export default function GanttPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProjectId]);
 
+  useEffect(() => {
+    if (!activeBar) return undefined;
+    const handleEscape = (event) => {
+      if (event.key === "Escape") setActiveBar(null);
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [activeBar]);
+
   if (error) {
     return (
       <div className="flex-1 p-6 text-red-600 flex flex-col items-center justify-center bg-gray-50">
@@ -306,7 +315,7 @@ export default function GanttPage() {
     <div className="flex-1 min-h-0 bg-[#F3F6FB] text-[#0F1B3D] flex flex-col">
       <div className="flex-1 min-h-0 flex flex-col p-4 sm:p-6 gap-6 max-w-[1672px] mx-auto w-full">
         {/* Hero Banner */}
-        <div className="relative h-[115px] rounded-2xl overflow-hidden shrink-0 flex items-center p-6 shadow-sm">
+        <div className="relative h-[115px] rounded-2xl overflow-hidden shrink-0 flex items-center p-4 sm:p-6 shadow-sm">
           <div
             className="absolute inset-0 bg-cover bg-center"
             style={{
@@ -315,16 +324,16 @@ export default function GanttPage() {
             }}
           ></div>
           <div className="absolute inset-0 bg-gradient-to-r from-[#0B3FA8] to-transparent opacity-95"></div>
-          <div className="relative z-10 flex items-center justify-between w-full">
-            <div className="flex items-center gap-5">
-            <div className="size-[60px] bg-[#1F63E0] rounded-xl flex items-center justify-center shadow-lg border border-white/20">
+          <div className="relative z-10 flex w-full flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-3 sm:gap-5">
+            <div className="size-12 sm:size-[60px] bg-[#1F63E0] rounded-xl flex items-center justify-center shadow-lg border border-white/20">
               <CalendarRange className="size-8 text-white" />
             </div>
             <div>
-              <h1 className="text-white text-[30px] font-bold leading-tight">
+              <h1 className="text-white text-xl sm:text-[30px] font-bold leading-tight">
                 Tiến độ thi công (Gantt)
               </h1>
-              <p className="text-white/90 text-[18px] font-medium mt-1.5 flex items-center gap-4">
+              <p className="text-white/90 text-sm sm:text-[18px] font-medium mt-1.5 flex flex-wrap items-center gap-2 sm:gap-4">
                 <span>
                   {currentProject
                     ? `Dự án: ${currentProject.name}`
@@ -826,14 +835,30 @@ export default function GanttPage() {
 
                 {/* T-33 + T-35: Tooltip chi tiết gọn nhẹ nằm TRÊN thanh công việc */}
                 {activeBar && (
-                  <div
-                    role="tooltip"
-                    className="pointer-events-auto absolute z-50 w-[280px] rounded-lg border border-slate-200 bg-white/95 backdrop-blur-sm p-3 shadow-xl"
-                    style={{
-                      left: Math.max(10, activeBar.x - 20),
-                      top: Math.max(0, 80 + activeBar.y - 120), // Đẩy lên trên thanh bar
-                    }}
-                  >
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Đóng chi tiết công việc"
+                      onClick={() => setActiveBar(null)}
+                      className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm sm:hidden"
+                    />
+                    <div
+                      role="tooltip"
+                      aria-label="Chi tiết công việc"
+                      className="pointer-events-auto absolute z-50 w-[280px] rounded-lg border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur-sm max-sm:fixed max-sm:left-1/2 max-sm:top-1/2 max-sm:z-[61] max-sm:w-[calc(100vw-2rem)] max-sm:max-w-[340px] max-sm:-translate-x-1/2 max-sm:-translate-y-1/2 sm:left-[var(--tooltip-left)] sm:top-[var(--tooltip-top)]"
+                      style={{
+                        "--tooltip-left": `${Math.max(10, activeBar.x - 20)}px`,
+                        "--tooltip-top": `${Math.max(0, 80 + activeBar.y - 120)}px`,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        aria-label="Đóng"
+                        onClick={() => setActiveBar(null)}
+                        className="absolute right-1 top-1 flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 sm:hidden"
+                      >
+                        <X className="size-4" />
+                      </button>
                     <div className="flex flex-col gap-1.5">
                       {/* Dòng 1: Tên và Label */}
                       <div className="flex items-start justify-between gap-2">
@@ -898,8 +923,9 @@ export default function GanttPage() {
                         <Edit3 className="size-3" />
                         Cập nhật tiến độ
                       </button>
+                      </div>
                     </div>
-                  </div>
+                  </>
                 )}
               </div>
             </div>
