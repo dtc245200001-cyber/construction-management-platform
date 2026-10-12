@@ -196,6 +196,8 @@ const baselineRoutes = require("./routes/baselineRoutes");
 app.use("/api/projects", baselineRoutes);
 const contractQuantityRoutes = require("./routes/contractQuantityRoutes");
 app.use("/api/projects", contractQuantityRoutes);
+const acceptanceRoutes = require("./routes/acceptanceRoutes");
+app.use("/api/projects", acceptanceRoutes);
 
 // â”€â”€â”€ ERROR HANDLERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(notFoundHandler);
