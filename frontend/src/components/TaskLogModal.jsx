@@ -544,45 +544,19 @@ export default function TaskLogModal({
   // Helper chuẩn hóa đường dẫn ảnh đính kèm
 
   const getAttachmentUrl = (url) => {
-
     if (!url) return "";
-
     if (
-
       url.startsWith("http://") ||
-
       url.startsWith("https://") ||
-
       url.startsWith("blob:") ||
-
       url.startsWith("data:")
-
     ) {
-
       return url;
-
     }
 
-    const baseUrl = api.defaults?.baseURL || "";
-
-    if (baseUrl && baseUrl.startsWith("http")) {
-
-      try {
-
-        const origin = new URL(baseUrl).origin;
-
-        return `${origin}${url.startsWith("/") ? "" : "/"}${url}`;
-
-      } catch {
-
-        return url;
-
-      }
-
-    }
-
+    // Giữ nguyên đường dẫn tương đối (/api/...) để gọi cùng origin
+    // qua Vite proxy (ở local) hoặc Render rewrite (ở production), đảm bảo session cookie luôn được gửi.
     return url;
-
   };
 
 
@@ -1925,11 +1899,9 @@ export function AttachmentThumbnail({
       ) : (
 
         <img
-
           src={imageUrl}
-
           alt={attachment.file_name}
-
+          crossOrigin="use-credentials"
           loading={isPriority ? "eager" : "lazy"}
 
           fetchPriority={isPriority ? "high" : "auto"}
@@ -2295,11 +2267,9 @@ export function ImageViewerModal({
           ) : (
 
             <img
-
               src={fullImageUrl}
-
               alt={currentImage.file_name}
-
+              crossOrigin="use-credentials"
               data-testid="full-size-image"
 
               onLoad={() => setLoading(false)}

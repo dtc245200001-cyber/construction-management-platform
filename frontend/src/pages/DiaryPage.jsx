@@ -3,9 +3,9 @@ import { useLocation } from 'react-router-dom';
 import api from '../lib/api';
 import { format, parseISO } from 'date-fns';
 
-import { FileText, Search, Plus, Filter, X, Clock, User, Hash, Lock, Unlock, History, AlertCircle, CloudOff, Image as ImageIcon } from 'lucide-react';
+import { FileText, Search, Plus, Filter, X, Clock, User, Hash, Lock, Unlock, History, AlertCircle, CloudOff, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { can } from '../lib/permissions';
-import { getDiaryLogsByProject, getDiaryAttachmentsByLog, isBlob } from '../lib/diaryDb';
+import { getDiaryLogsByProject, getDiaryAttachmentsByLog, isBlob, deleteDiaryEntry } from '../lib/diaryDb';
 import DiaryEntryForm from '../components/DiaryEntryForm';
 import { resolveWorkItemId } from '../utils/diaryUtils';
 import DiaryWeekStrip from '../components/DiaryWeekStrip';
@@ -38,6 +38,26 @@ export default function DiaryPage({ user }) {
   const [actionLoading, setActionLoading] = useState(false);
 
   const [projectRole, setProjectRole] = useState(null);
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator !== 'undefined' && 'onLine' in navigator ? navigator.onLine : true
+  );
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      fetchEntries();
+      fetchLockStatus();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // Quản lý các Object URL ảnh offline để thu hồi khi unmount
   const pageCreatedUrlsRef = useRef(new Set());
@@ -69,15 +89,61 @@ export default function DiaryPage({ user }) {
   }, [location.state]);
 
   useEffect(() => {
-    // Fetch project to get membership role
+    // Fetch project to get membership role (có cache)
+    try {
+      const cachedRole = localStorage.getItem(`project_role_${projectId}`);
+      if (cachedRole) setProjectRole(cachedRole);
+    } catch {
+      /* ignore */
+    }
+
     api.get(`/projects/${projectId}`)
-      .then(res => setProjectRole(res.data?.membership))
+      .then(res => {
+        const role = res.data?.membership;
+        setProjectRole(role);
+        try {
+          if (role) localStorage.setItem(`project_role_${projectId}`, role);
+        } catch {
+          /* ignore */
+        }
+      })
       .catch(console.error);
 
-    // Fetch categories for filter
+    // Fetch categories for filter (có cache cho ngoại tuyến)
+    try {
+      const cached = JSON.parse(
+        localStorage.getItem(`categories_${projectId}`) || "[]"
+      );
+      if (Array.isArray(cached) && cached.length > 0) {
+        setCategories(cached);
+      }
+    } catch {
+      /* ignore */
+    }
+
     api.get(`/categories/${projectId}/tree/all`)
-      .then(res => setCategories(res.data || []))
-      .catch(console.error);
+      .then(res => {
+        const data = res.data || [];
+        setCategories(data);
+        try {
+          localStorage.setItem(`categories_${projectId}`, JSON.stringify(data));
+        } catch {
+          /* ignore */
+        }
+      })
+      .catch((err) => {
+        console.warn('Không thể tải danh sách hạng mục (có thể đang ngoại tuyến):', err?.message || err);
+        try {
+          const cached = JSON.parse(
+            localStorage.getItem(`categories_${projectId}`) || "[]"
+          );
+          if (Array.isArray(cached) && cached.length > 0) {
+            setCategories(cached);
+          }
+        } catch {
+          /* ignore */
+        }
+      });
   }, [projectId]);
 
   const fetchEntries = async () => {
@@ -87,6 +153,19 @@ export default function DiaryPage({ user }) {
     let serverEntries = [];
     let serverTotal = 0;
     let fetchError = null;
+
+    const cacheKey = `diary_entries_cache_${projectId}_${dateFilter}_${workItemFilter}`;
+
+    // Đọc trước từ cache để hiển thị tức thời nếu có
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+      if (cached && Array.isArray(cached.data)) {
+        serverEntries = cached.data;
+        serverTotal = cached.total ?? cached.data.length;
+      }
+    } catch {
+      /* ignore */
+    }
 
     try {
       const params = new URLSearchParams();
@@ -102,8 +181,25 @@ export default function DiaryPage({ user }) {
       const res = await api.get(`/projects/${projectId}/diary-entries?${params.toString()}`);
       serverEntries = res.data.data || [];
       serverTotal = res.data.total || 0;
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify({ data: serverEntries, total: serverTotal }));
+      } catch {
+        /* ignore */
+      }
     } catch (err) {
       fetchError = err.response?.data?.message || err.message || 'Lỗi khi tải danh sách nhật ký';
+      // Nếu lỗi mạng, phục hồi từ cache nếu trước đó chưa có
+      if (serverEntries.length === 0) {
+        try {
+          const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+          if (cached && Array.isArray(cached.data)) {
+            serverEntries = cached.data;
+            serverTotal = cached.total ?? cached.data.length;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
     }
 
     try {
@@ -199,8 +295,18 @@ export default function DiaryPage({ user }) {
         setEntries(mergedEntries);
         setTotal(serverTotal + uniquePending.length);
 
-        if (fetchError && uniquePending.length === 0) {
+        const isNetworkErr = !navigator.onLine || 
+          (fetchError && (
+            fetchError.toLowerCase().includes('network') ||
+            fetchError.toLowerCase().includes('mạng') ||
+            fetchError.toLowerCase().includes('failed to fetch') ||
+            fetchError.toLowerCase().includes('econnaborted')
+          ));
+
+        if (fetchError && !isNetworkErr && mergedEntries.length === 0) {
           setError(fetchError);
+        } else {
+          setError(null);
         }
       }
     } catch (dbErr) {
@@ -208,7 +314,16 @@ export default function DiaryPage({ user }) {
       if (requestId === fetchRequestIdRef.current) {
         setEntries(serverEntries);
         setTotal(serverTotal);
-        if (fetchError) setError(fetchError);
+        const isNetworkErr = !navigator.onLine || 
+          (fetchError && (
+            fetchError.toLowerCase().includes('network') ||
+            fetchError.toLowerCase().includes('mạng')
+          ));
+        if (fetchError && !isNetworkErr && serverEntries.length === 0) {
+          setError(fetchError);
+        } else {
+          setError(null);
+        }
       }
     } finally {
       if (requestId === fetchRequestIdRef.current) setLoading(false);
@@ -217,11 +332,27 @@ export default function DiaryPage({ user }) {
 
   const fetchLockStatus = async () => {
     if (!dateFilter) return;
+    const lockKey = `diary_lock_${projectId}_${dateFilter}`;
     try {
       const res = await api.get(`/projects/${projectId}/diary-locks/${dateFilter}`);
       setLockInfo(res.data || { is_locked: false });
+      try {
+        localStorage.setItem(lockKey, JSON.stringify(res.data));
+      } catch {
+        /* ignore */
+      }
     } catch (err) {
-      console.error("Lỗi lấy trạng thái khóa:", err);
+      console.warn("Lỗi lấy trạng thái khóa (có thể đang ngoại tuyến):", err?.message || err);
+      try {
+        const cached = JSON.parse(localStorage.getItem(lockKey) || 'null');
+        if (cached) {
+          setLockInfo(cached);
+          return;
+        }
+      } catch {
+        /* ignore */
+      }
+      setLockInfo({ is_locked: false });
     }
   };
 
@@ -247,6 +378,21 @@ export default function DiaryPage({ user }) {
     return () => window.removeEventListener('diary-sync-updated', refreshAfterSync);
   }, []);
 
+  const getAttachmentUrl = (url) => {
+    if (!url) return '';
+    if (
+      url.startsWith('http://') ||
+      url.startsWith('https://') ||
+      url.startsWith('blob:') ||
+      url.startsWith('data:')
+    ) {
+      return url;
+    }
+    // Giữ nguyên đường dẫn tương đối (/api/...) để gọi cùng origin
+    // qua Vite proxy (ở local) hoặc Render rewrite (ở production), đảm bảo session cookie luôn được gửi.
+    return url;
+  };
+
   const clearFilters = () => {
     setDateFilter('');
     setWorkItemFilter('');
@@ -265,7 +411,11 @@ export default function DiaryPage({ user }) {
     let matchesWorkItem = true;
     if (workItemFilter && (newEntry.work_item_id !== undefined || newEntry.workItemId !== undefined)) {
       const wid = newEntry.work_item_id !== undefined ? newEntry.work_item_id : newEntry.workItemId;
-      matchesWorkItem = wid.toString() === workItemFilter.toString();
+      const resolvedFilterId = resolveWorkItemId(workItemFilter, categories);
+      const resolvedWid = resolveWorkItemId(wid, categories);
+      matchesWorkItem =
+        wid.toString() === workItemFilter.toString() ||
+        Boolean(resolvedFilterId && (String(wid) === String(resolvedFilterId) || String(resolvedWid) === String(resolvedFilterId)));
     }
 
     if (matchesDate && matchesWorkItem) {
@@ -293,6 +443,62 @@ export default function DiaryPage({ user }) {
       alert(err.response?.data?.message || 'Lỗi khi chốt sổ');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const [deletingId, setDeletingId] = useState(null);
+
+  const handleDeleteEntry = async (entry) => {
+    const entryId = entry.id;
+    const clientId = entry.client_id || entry.clientId;
+
+    if (!window.confirm("Bạn có chắc chắn muốn xóa nhật ký này không?")) {
+      return;
+    }
+
+    const currentKey = entryId || clientId;
+    setDeletingId(currentKey);
+
+    try {
+      // 1. Xóa trong IndexedDB nếu có lưu offline
+      if (clientId) {
+        try {
+          await deleteDiaryEntry(clientId);
+        } catch (dbErr) {
+          console.warn("Lỗi khi xóa khỏi IndexedDB:", dbErr);
+        }
+      }
+
+      // 2. Nếu đã đồng bộ lên máy chủ thì gọi API DELETE
+      if (entryId && typeof entryId === 'number') {
+        await api.delete(`/projects/${projectId}/diary-entries/${entryId}`);
+      }
+
+      // 3. Cập nhật state
+      setEntries(prev => prev.filter(e => (e.id !== entryId && (!clientId || e.client_id !== clientId))));
+      setTotal(prev => Math.max(0, prev - 1));
+
+      // 4. Cập nhật cache localStorage
+      const cacheKey = `diary_entries_cache_${projectId}_${dateFilter}_${workItemFilter}`;
+      try {
+        const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+        if (cached && Array.isArray(cached.data)) {
+          const updated = cached.data.filter(e => e.id !== entryId && (!clientId || e.client_id !== clientId));
+          localStorage.setItem(cacheKey, JSON.stringify({
+            data: updated,
+            total: Math.max(0, (cached.total || updated.length) - 1)
+          }));
+        }
+      } catch {
+        /* ignore */
+      }
+
+      // 5. Cập nhật dải tuần
+      setRefreshKey(k => k + 1);
+    } catch (err) {
+      alert(err.response?.data?.message || err.message || "Lỗi khi xóa nhật ký");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -384,6 +590,20 @@ export default function DiaryPage({ user }) {
           </div>
         )}
 
+        {!isOnline && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-2xl flex items-center gap-3 shadow-xs shrink-0">
+            <div className="size-9 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+              <CloudOff className="size-5 text-amber-700" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-bold">Chế độ ngoại tuyến (Không có mạng)</p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                Đang hiển thị dữ liệu lưu trên thiết bị. Bạn vẫn có thể ghi nhật ký bình thường, hệ thống sẽ tự động đồng bộ khi có kết nối mạng.
+              </p>
+            </div>
+          </div>
+        )}
+
         <DiaryWeekStrip 
           projectId={projectId} 
           selectedDate={dateFilter} 
@@ -458,7 +678,15 @@ export default function DiaryPage({ user }) {
                 </button>
               </div>
             ) : entries.length === 0 ? (
-              <div className="text-center text-gray-500 py-10">Chưa có nhật ký nào cho bộ lọc này.</div>
+              <div className="text-center text-gray-500 py-12 flex flex-col items-center justify-center">
+                <FileText className="size-10 text-gray-300 mb-2" />
+                <p className="font-medium text-gray-600">Chưa có nhật ký nào cho bộ lọc này.</p>
+                {!isOnline && (
+                  <p className="text-xs text-amber-600 mt-1 max-w-md">
+                    (Đang ở chế độ ngoại tuyến — bạn vẫn có thể bấm nút &quot;Ghi nhật ký&quot; để tạo nhật ký lưu vào thiết bị)
+                  </p>
+                )}
+              </div>
             ) : (
               entries.map(entry => (
                 <div key={entry.id} className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 shadow-sm hover:border-blue-200 transition-colors">
@@ -487,6 +715,26 @@ export default function DiaryPage({ user }) {
                         <User className="size-4" />
                         {entry.created_by_name}
                       </div>
+
+                      {(() => {
+                        const isCreator = entry.created_by && user && Number(entry.created_by) === Number(user.id);
+                        const isAdmin = Boolean(user?.is_system_admin);
+                        const isManager = ["chi_huy_truong", "ban_quan_ly"].includes(projectRole);
+                        const canDelete = !lockInfo?.is_locked && (isAdmin || isCreator || isManager);
+                        if (!canDelete) return null;
+
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteEntry(entry)}
+                            disabled={deletingId === (entry.id || entry.client_id)}
+                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                            title="Xóa nhật ký này"
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        );
+                      })()}
                     </div>
                   </div>
                   <div className="text-[15px] text-gray-800 leading-relaxed whitespace-pre-wrap pl-1">
@@ -501,30 +749,33 @@ export default function DiaryPage({ user }) {
                         <span>Hình ảnh đính kèm ({entry.attachments.length}):</span>
                       </div>
                       <div className="flex flex-wrap gap-2.5">
-                        {entry.attachments.map((att) => (
-                          <button
-                            type="button"
-                            key={att.id}
-                            onClick={() => {
-                              if (att.url) {
-                                window.open(att.url, '_blank');
-                              }
-                            }}
-                            className="relative group size-20 sm:size-24 rounded-xl overflow-hidden border border-gray-200 bg-gray-50 shadow-sm cursor-pointer hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            title={`Bấm để xem ảnh: ${att.file_name || att.fileName}`}
-                          >
-                            <img
-                              src={att.url}
-                              alt={att.file_name || att.fileName}
-                              className="size-full object-cover group-hover:scale-105 transition-transform"
-                              loading="lazy"
-                              onError={(e) => {
-                                e.target.style.display = 'none';
-                                if (e.target.nextSibling) {
-                                  e.target.nextSibling.style.display = 'flex';
+                        {entry.attachments.map((att) => {
+                          const displayUrl = getAttachmentUrl(att.url);
+                          return (
+                            <button
+                              type="button"
+                              key={att.id}
+                              onClick={() => {
+                                if (displayUrl) {
+                                  window.open(displayUrl, '_blank');
                                 }
                               }}
-                            />
+                              className="relative group size-20 sm:size-24 rounded-xl overflow-hidden border border-gray-200 bg-gray-50 shadow-sm cursor-pointer hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              title={`Bấm để xem ảnh: ${att.file_name || att.fileName}`}
+                            >
+                              <img
+                                src={displayUrl}
+                                alt={att.file_name || att.fileName}
+                                crossOrigin="use-credentials"
+                                className="size-full object-cover group-hover:scale-105 transition-transform"
+                                loading="lazy"
+                                onError={(e) => {
+                                  e.target.style.display = 'none';
+                                  if (e.target.nextSibling) {
+                                    e.target.nextSibling.style.display = 'flex';
+                                  }
+                                }}
+                              />
                             <div className="hidden size-full items-center justify-center bg-gray-100 text-gray-400 text-[10px] p-1 text-center font-medium">
                               Lỗi tải ảnh
                             </div>
@@ -533,8 +784,9 @@ export default function DiaryPage({ user }) {
                                 Offline
                               </span>
                             )}
-                          </button>
-                        ))}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -550,7 +802,11 @@ export default function DiaryPage({ user }) {
         <DiaryEntryForm 
           projectId={projectId} 
           user={user} 
-          onClose={() => setShowForm(false)} 
+          initialCategories={categories}
+          onClose={() => {
+            setShowForm(false);
+            fetchEntries();
+          }} 
           onSuccess={handleSuccess} 
         />
       )}

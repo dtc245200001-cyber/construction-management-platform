@@ -62,15 +62,34 @@ export default function DashboardLayout({ user, setUser }) {
   const handleLogout = async () => {
     try {
       await api.post('/auth/logout');
-      setUser(null);
-      navigate('/login');
     } catch (err) {
       console.error(err);
+    } finally {
+      try {
+        localStorage.removeItem('cached_auth_user');
+      } catch {
+        /* ignore */
+      }
+      setUser(null);
+      navigate('/login');
     }
   };
 
-  const [currentProject, setCurrentProject] = useState(null);
-  const [projects, setProjects] = useState([]);
+  const [currentProject, setCurrentProject] = useState(() => {
+    try {
+      const activeId = localStorage.getItem('currentProjectId') || 1;
+      return JSON.parse(localStorage.getItem(`cached_project_${activeId}`) || 'null');
+    } catch {
+      return null;
+    }
+  });
+  const [projects, setProjects] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('cached_projects') || '[]');
+    } catch {
+      return [];
+    }
+  });
   const [openSwitcher, setOpenSwitcher] = useState(false);
 
   React.useEffect(() => {
@@ -78,6 +97,11 @@ export default function DashboardLayout({ user, setUser }) {
     api.get('/projects').then(res => {
       const projs = res.data.projects || [];
       setProjects(projs);
+      try {
+        localStorage.setItem('cached_projects', JSON.stringify(projs));
+      } catch {
+        /* ignore */
+      }
       const stored = localStorage.getItem('currentProjectId');
       if (!stored && projs.length > 0) {
         localStorage.setItem('currentProjectId', projs[0].id);
@@ -88,7 +112,16 @@ export default function DashboardLayout({ user, setUser }) {
     const activeProjectId = localStorage.getItem('currentProjectId') || currentProjectId;
     if (activeProjectId) {
       api.get(`/projects/${activeProjectId}`)
-        .then(res => setCurrentProject(res.data.project))
+        .then(res => {
+          if (res.data?.project) {
+            setCurrentProject(res.data.project);
+            try {
+              localStorage.setItem(`cached_project_${activeProjectId}`, JSON.stringify(res.data.project));
+            } catch {
+              /* ignore */
+            }
+          }
+        })
         .catch(err => console.error(err));
     }
   }, [currentProjectId]);

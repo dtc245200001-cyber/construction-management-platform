@@ -175,20 +175,41 @@ export default function FieldPage() {
       return;
     }
 
+    try {
+      const cachedRole = localStorage.getItem(`project_role_${currentProjectId}`);
+      if (cachedRole) {
+        setProjectRole(cachedRole);
+      }
+    } catch {
+      /* ignore */
+    }
+
     let cancelled = false;
 
     api
       .get(`/projects/${currentProjectId}`)
       .then((res) => {
         if (!cancelled) {
-          setProjectRole(
-            res.data?.membership ||
-              null
-          );
+          const role = res.data?.membership || null;
+          setProjectRole(role);
+          try {
+            if (role) localStorage.setItem(`project_role_${currentProjectId}`, role);
+          } catch {
+            /* ignore */
+          }
         }
       })
       .catch(() => {
         if (!cancelled) {
+          try {
+            const cachedRole = localStorage.getItem(`project_role_${currentProjectId}`);
+            if (cachedRole) {
+              setProjectRole(cachedRole);
+              return;
+            }
+          } catch {
+            /* ignore */
+          }
           setProjectRole(null);
         }
       });
@@ -232,6 +253,20 @@ export default function FieldPage() {
         return;
       }
 
+      const cacheKey = `field_tasks_${currentProjectId}_${viewAllTeams ? 'all' : (selectedTeamId || 'my')}`;
+
+      // Nạp trước dữ liệu từ bộ nhớ đệm
+      try {
+        const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+        if (cached) {
+          setTeam(cached.team || null);
+          setTasks(cached.tasks || []);
+          setLoading(false);
+        }
+      } catch {
+        /* ignore */
+      }
+
       try {
         setLoading(true);
         setError("");
@@ -264,6 +299,11 @@ export default function FieldPage() {
           setTasks(
             res.data.tasks || []
           );
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify({ team: null, tasks: res.data.tasks || [] }));
+          } catch {
+            /* ignore */
+          }
           return;
         }
 
@@ -287,7 +327,24 @@ export default function FieldPage() {
         setTasks(
           res.data.tasks || []
         );
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify({ team: res.data.team || null, tasks: res.data.tasks || [] }));
+        } catch {
+          /* ignore */
+        }
       } catch (err) {
+        try {
+          const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+          if (cached && Array.isArray(cached.tasks)) {
+            setTeam(cached.team || null);
+            setTasks(cached.tasks);
+            setError("");
+            return;
+          }
+        } catch {
+          /* ignore */
+        }
+
         setTeam(null);
         setTasks([]);
 
@@ -325,6 +382,16 @@ export default function FieldPage() {
       return;
     }
 
+    const cacheKey = `field_teams_${currentProjectId}`;
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+      if (Array.isArray(cached) && cached.length > 0) {
+        setTeams(cached);
+      }
+    } catch {
+      /* ignore */
+    }
+
     let cancelled = false;
 
     async function loadTeams() {
@@ -343,13 +410,24 @@ export default function FieldPage() {
           res.data ||
           [];
 
-        setTeams(
-          Array.isArray(rows)
-            ? rows
-            : []
-        );
+        const teamList = Array.isArray(rows) ? rows : [];
+        setTeams(teamList);
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(teamList));
+        } catch {
+          /* ignore */
+        }
       } catch {
         if (!cancelled) {
+          try {
+            const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+            if (Array.isArray(cached) && cached.length > 0) {
+              setTeams(cached);
+              return;
+            }
+          } catch {
+            /* ignore */
+          }
           setTeams([]);
         }
       }

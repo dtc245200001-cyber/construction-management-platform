@@ -231,6 +231,97 @@ router.get(
   })
 );
 
+/**
+ * @swagger
+ * /api/projects/{projectId}/diary-entries/{entryId}:
+ *   delete:
+ *     summary: Xóa một mục nhật ký
+ *     tags: [Diary]
+ */
+router.delete(
+  "/:projectId/diary-entries/:entryId",
+  requireAuth,
+  checkProjectAccess,
+  requirePermission("site_log.create"),
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+    const entryId = parsePositiveInt(req.params.entryId);
+    if (!projectId || !entryId) {
+      return res.status(400).json({ message: "Tham số không hợp lệ" });
+    }
+
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Tìm bản ghi nhật ký
+      const entryRes = await client.query(
+        "SELECT * FROM diary_entries WHERE id = $1 AND project_id = $2",
+        [entryId, projectId]
+      );
+      if (entryRes.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Không tìm thấy mục nhật ký cần xóa" });
+      }
+      const entry = entryRes.rows[0];
+
+      // Kiểm tra trạng thái khóa của ngày
+      const entryDate = entry.entry_date || (entry.entry_at ? new Date(entry.entry_at).toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }) : null);
+      if (entryDate) {
+        const lockCheck = await client.query(
+          "SELECT is_locked FROM daily_log_locks WHERE project_id = $1 AND log_date = $2",
+          [projectId, entryDate]
+        );
+        if (lockCheck.rows.length > 0 && lockCheck.rows[0].is_locked) {
+          await client.query("ROLLBACK");
+          return res.status(403).json({ message: "Nhật ký của ngày này đã bị khóa, không thể xóa." });
+        }
+      }
+
+      // Quyền: Admin, người tạo, hoặc chỉ huy trưởng / ban quản lý
+      const isCreator = Number(entry.created_by) === Number(req.user.id);
+      const isAdmin = Boolean(req.user.is_system_admin);
+      const isManager = ["chi_huy_truong", "ban_quan_ly"].includes(req.projectRole);
+
+      if (!isCreator && !isAdmin && !isManager) {
+        await client.query("ROLLBACK");
+        return res.status(403).json({ message: "Bạn chỉ có thể xóa nhật ký do chính mình tạo ra hoặc có quyền quản trị dự án" });
+      }
+
+      // Xóa các attachments liên quan (hoặc để cascade)
+      await client.query("DELETE FROM diary_entry_attachments WHERE diary_entry_id = $1", [entryId]);
+
+      // Xóa diary entry
+      await client.query("DELETE FROM diary_entries WHERE id = $1", [entryId]);
+
+      await client.query("COMMIT");
+
+      try {
+        await logAudit({
+          userId: req.user.id,
+          action: "DELETE_DIARY_ENTRY",
+          entity: "diary_entries",
+          entityId: entryId,
+          details: {
+            content: entry.content?.slice(0, 100),
+            work_item_id: entry.work_item_id,
+            date: entryDate,
+          },
+        });
+      } catch (auditErr) {
+        console.error("Audit error:", auditErr);
+      }
+
+      return res.json({ success: true, message: "Đã xóa mục nhật ký thành công" });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  })
+);
+
 router.post(
   "/:projectId/diary-entries/:entryId/attachments",
   requireAuth,

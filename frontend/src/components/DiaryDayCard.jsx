@@ -13,17 +13,50 @@ export default function DiaryDayCard({ projectId, date, onUpdated }) {
   const [data, setData] = useState(null);
   const [showForm, setShowForm] = useState(false);
 
+  const cacheKey = `diary_day_${projectId}_${date}`;
+
+  // Nạp trước từ cache nếu có để hiển thị ngay lập tức
+  useEffect(() => {
+    if (!date || !projectId) return;
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+      if (cached) {
+        setData(cached);
+        setState(cached.exists ? 'loaded' : 'empty');
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [projectId, date, cacheKey]);
+
   const load = useCallback(async () => {
     if (!date || !projectId) return;
-    setState('loading');
+    setState(prev => (prev === 'loaded' || prev === 'empty') ? prev : 'loading');
     try {
       const res = await api.get(`/projects/${projectId}/diary-days/${date}`);
       setData(res.data);
       setState(res.data.exists ? 'loaded' : 'empty');
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(res.data));
+      } catch {
+        /* ignore */
+      }
     } catch (_) {
-      setState('error');
+      // Khi mất mạng hoặc API lỗi, kiểm tra bộ nhớ đệm
+      try {
+        const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+        if (cached) {
+          setData(cached);
+          setState(cached.exists ? 'loaded' : 'empty');
+          return;
+        }
+      } catch {
+        /* ignore */
+      }
+      // Nếu chưa có cache và đang mất mạng, chuyển sang trạng thái trống (empty) thay vì báo lỗi
+      setState('empty');
     }
-  }, [projectId, date]);
+  }, [projectId, date, cacheKey]);
 
   useEffect(() => {
     load();
@@ -33,6 +66,11 @@ export default function DiaryDayCard({ projectId, date, onUpdated }) {
     // Form trả cả wrapper { can_edit, day, entries_count } của PUT /diary-days/:date
     setData(responseData);
     setState(responseData?.exists === false ? 'empty' : 'loaded');
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(responseData));
+    } catch {
+      /* ignore */
+    }
     setShowForm(false);
     if (onUpdated) onUpdated();
   };
@@ -65,6 +103,7 @@ export default function DiaryDayCard({ projectId, date, onUpdated }) {
   }
 
   const { can_edit, day, entries_count } = data || {};
+  const canEdit = can_edit !== false;
 
   // ── Trạng thái: chưa có bản ghi ────────────────────────────────────────
   if (state === 'empty') {
@@ -79,7 +118,7 @@ export default function DiaryDayCard({ projectId, date, onUpdated }) {
             </p>
           </div>
         </div>
-        {can_edit && (
+        {canEdit && (
           <button
             onClick={() => setShowForm(true)}
             className="mt-4 w-full min-h-[48px] rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
@@ -111,7 +150,7 @@ export default function DiaryDayCard({ projectId, date, onUpdated }) {
           <CloudSun size={16} className="text-blue-500" />
           Mục đầu ngày
         </h3>
-        {can_edit && (
+        {canEdit && (
           <button
             onClick={() => setShowForm(true)}
             className="min-h-[44px] min-w-[44px] flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 px-3 py-1 rounded-lg hover:bg-blue-50 transition-colors"

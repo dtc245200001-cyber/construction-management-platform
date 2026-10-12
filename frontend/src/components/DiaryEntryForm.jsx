@@ -7,6 +7,7 @@ import {
   getDiaryEntryById,
   getDiaryEntryWithImages,
   validateImage,
+  isBlob,
 } from "../lib/diaryDb";
 import { requestDiarySync } from "../services/diarySync";
 
@@ -70,20 +71,33 @@ function removeDraftIfMatchesEntry(draftKey, entry) {
 
 export default function DiaryEntryForm({
   projectId,
-
   user,
-
+  initialCategories = [],
   onClose,
-
   onSuccess,
 }) {
   const canWrite = ALLOWED_ROLES.includes(user?.role);
 
   const draftKey = `diary_draft_${projectId}`;
 
-  const [categories, setCategories] = useState([]);
+  const [categories, setCategories] = useState(
+    Array.isArray(initialCategories) && initialCategories.length > 0
+      ? initialCategories
+      : () => {
+          try {
+            const cached = JSON.parse(
+              localStorage.getItem(`categories_${projectId}`) || "[]"
+            );
+            return Array.isArray(cached) ? cached : [];
+          } catch {
+            return [];
+          }
+        }
+  );
 
-  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [categoriesLoading, setCategoriesLoading] = useState(
+    categories.length === 0
+  );
 
   const [clientId, setClientId] = useState("");
 
@@ -175,19 +189,31 @@ export default function DiaryEntryForm({
     if (!canWrite) return;
 
     api
-
       .get(`/categories/${projectId}/tree/all`)
-
       .then((res) => {
-        setCategories(res.data || []);
-
+        const data = res.data || [];
+        setCategories(data);
         setCategoriesLoading(false);
+        try {
+          localStorage.setItem(`categories_${projectId}`, JSON.stringify(data));
+        } catch {
+          /* ignore */
+        }
       })
-
       .catch((err) => {
-        console.error(err);
-
+        console.warn("Không thể tải cây hạng mục (có thể đang ngoại tuyến):", err?.message || err);
         setCategoriesLoading(false);
+        // Fallback đọc từ cache nếu hiện tại chưa có
+        try {
+          const cached = JSON.parse(
+            localStorage.getItem(`categories_${projectId}`) || "[]"
+          );
+          if (Array.isArray(cached) && cached.length > 0) {
+            setCategories(cached);
+          }
+        } catch {
+          /* ignore */
+        }
       });
 
     let cancelled = false;
@@ -468,6 +494,47 @@ export default function DiaryEntryForm({
                 ? "Đã lưu trên thiết bị — chờ đồng bộ. Chưa gửi được, nội dung vẫn được giữ."
                 : "Đã lưu trên thiết bị nhưng chưa xác nhận được trạng thái đồng bộ. Dữ liệu vẫn được giữ.",
         });
+        const offlineEntryWithImages = {
+          id: clientUuid,
+          client_id: clientUuid,
+          clientId: clientUuid,
+          projectId: Number(projectId),
+          project_id: Number(projectId),
+          entryType: "diaryEntry",
+          work_item_id: resolvedWorkItemId,
+          workItemId: resolvedWorkItemId,
+          work_item_name:
+            parentCategory?.name ||
+            selectedCategory?.name ||
+            `Hạng mục #${resolvedWorkItemId}`,
+          work_item_code: parentCategory?.code || selectedCategory?.code || "",
+          content: content.trim(),
+          entry_at: new Date(entryAt).toISOString(),
+          entry_date: format(parseISO(entryAt), "yyyy-MM-dd"),
+          created_by_name: user?.name || user?.full_name || user?.email || "Tôi",
+          syncStatus: storedEntry?.syncStatus || "pending",
+          isOffline: true,
+          attachments: imagesToStore.map((img) => {
+            let previewUrl = "";
+            try {
+              if (isBlob(img.blob)) {
+                previewUrl = URL.createObjectURL(img.blob);
+              }
+            } catch {
+              /* ignore */
+            }
+            return {
+              id: img.id,
+              url: previewUrl,
+              fileName: img.fileName,
+              file_name: img.fileName,
+              fileSize: img.size,
+              file_size: img.size,
+              isOffline: true,
+            };
+          }),
+        };
+
         if (startNextEntry) {
           selectedImages.forEach((img) => {
             if (img.previewUrl?.startsWith("blob:")) {
@@ -480,6 +547,9 @@ export default function DiaryEntryForm({
           setEntryAt(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
           setClientId(crypto.randomUUID());
           setErrors({});
+          if (onSuccess) {
+            onSuccess(offlineEntryWithImages);
+          }
         }
       } catch (storageError) {
         console.error("Không thể lưu nhật ký ngoại tuyến:", storageError);
@@ -885,7 +955,7 @@ export default function DiaryEntryForm({
             >
               {isSubmitting ? (
                 <>Đang lưu...</>
-              ) : submitMessage?.type === "warning" ? (
+              ) : submitMessage?.type === "warning" && content.trim() ? (
                 <>
                   <RotateCcw className="size-5" /> Gửi lại
                 </>
