@@ -15,6 +15,8 @@ import {
   Edit3,
 } from "lucide-react";
 import TaskProgressModal from "../components/TaskProgressModal";
+import { readSnapshot, writeSnapshot, isNetworkError, SNAPSHOT_TYPES } from "../services/offlineSnapshotCache";
+import OfflineSnapshotBanner from "../components/OfflineSnapshotBanner";
 
 // Server đã dựng sẵn câu "A chờ B, B chờ C, C chờ A" trong message,
 // nên frontend dùng luôn, không tự ghép lại.
@@ -35,6 +37,12 @@ export default function SchedulePage() {
   const [hoveredRowId, setHoveredRowId] = useState(null);
   const [selectedTaskForProgress, setSelectedTaskForProgress] = useState(null);
   const [summary, setSummary] = useState(null);
+  const [isFromCache, setIsFromCache] = useState(false);
+  const [cachedAt, setCachedAt] = useState(null);
+  const [cacheMiss, setCacheMiss] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine !== false);
+  const isReadOnly = isFromCache || !isOnline;
+  const offlineMutationMessage = "Cần có mạng để thực hiện thao tác này";
 
   const currentProjectId = localStorage.getItem("currentProjectId") || 1;
 
@@ -51,12 +59,18 @@ export default function SchedulePage() {
       setScheduleData(rows);
       setSummary(res.data.summary || null);
 
+      await writeSnapshot(currentProjectId, SNAPSHOT_TYPES.CPM, { rows, summary: res.data.summary || null });
+      setIsFromCache(false);
+      setCachedAt(null);
+      setCacheMiss(false);
+      setIsOnline(true);
+
       // Có việc nhưng chưa có mốc nào => chưa từng tính
       // hoặc chưa tính được. Thử tính một lần để phát hiện vòng.
       const neverCalculated =
         rows.length > 0 && rows.every((r) => !r.early_start);
 
-      if (neverCalculated) {
+      if (neverCalculated && isOnline) {
         try {
           const calcRes = await api.post(
             `/projects/${currentProjectId}/schedule/recalculate`
@@ -93,6 +107,11 @@ export default function SchedulePage() {
           );
 
           setScheduleData(again.data.data || []);
+          setSummary(again.data.summary || null);
+          await writeSnapshot(currentProjectId, SNAPSHOT_TYPES.CPM, {
+            rows: again.data.data || [],
+            summary: again.data.summary || null,
+          });
         } catch (calcErr) {
           setRecalculating(false);
           if (calcErr.response?.data?.code === "DEPENDENCY_CYCLE" || calcErr.response?.data?.message) {
@@ -102,6 +121,19 @@ export default function SchedulePage() {
       }
     } catch (err) {
       console.error("Lỗi tải tiến độ CPM:", err);
+      if (isNetworkError(err)) {
+        setIsOnline(false);
+        const snapshot = await readSnapshot(currentProjectId, SNAPSHOT_TYPES.CPM);
+        if (snapshot?.payload?.rows) {
+          setScheduleData(snapshot.payload.rows);
+          setSummary(snapshot.payload.summary || null);
+          setIsFromCache(true);
+          setCachedAt(snapshot.cachedAt);
+        } else {
+          setCacheMiss(true);
+        }
+        return;
+      }
 
       setErrorMessage(
         getErrorText(
@@ -115,11 +147,22 @@ export default function SchedulePage() {
   };
 
   useEffect(() => {
+    const updateOnline = () => setIsOnline(navigator.onLine !== false);
+    window.addEventListener("online", updateOnline);
+    window.addEventListener("offline", updateOnline);
+    return () => {
+      window.removeEventListener("online", updateOnline);
+      window.removeEventListener("offline", updateOnline);
+    };
+  }, []);
+
+  useEffect(() => {
     fetchSchedule();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProjectId]);
 
   const handleRecalculate = async () => {
+    if (isReadOnly) { setErrorMessage(offlineMutationMessage); return; }
     try {
       setRecalculating(true);
       setErrorMessage("");
@@ -264,7 +307,7 @@ export default function SchedulePage() {
 
             <button
               onClick={handleRecalculate}
-              disabled={recalculating}
+              disabled={recalculating || isReadOnly}
               className="h-11 px-5 flex items-center gap-2 bg-white text-[#0B3FA8] hover:bg-white/90 font-semibold rounded-[10px] text-[14px] shadow transition-all cursor-pointer disabled:opacity-60"
             >
               <RefreshCw
@@ -279,6 +322,8 @@ export default function SchedulePage() {
             </button>
           </div>
         </div>
+
+        <OfflineSnapshotBanner isFromCache={isFromCache} cachedAt={cachedAt} cacheMiss={cacheMiss} pageName="CPM" />
 
         {/* Thông báo lỗi */}
         {errorMessage && (
@@ -598,7 +643,9 @@ export default function SchedulePage() {
                         <button
                           type="button"
                           aria-label={`Cập nhật tiến độ: ${row.name}`}
-                          onClick={() => setSelectedTaskForProgress(row)}
+                          onClick={() => { if (isReadOnly) { setErrorMessage(offlineMutationMessage); return; } setSelectedTaskForProgress(row); }}
+                          disabled={isReadOnly}
+                          title={isReadOnly ? offlineMutationMessage : "Cập nhật tiến độ"}
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-colors cursor-pointer"
                         >
                           <Edit3 className="size-3.5" />
@@ -614,7 +661,7 @@ export default function SchedulePage() {
         </div>
 
         {/* Modal cập nhật tiến độ thực tế (T-35 / S-15) */}
-        {selectedTaskForProgress && (
+        {selectedTaskForProgress && !isReadOnly && (
           <TaskProgressModal
             projectId={currentProjectId}
             task={selectedTaskForProgress}
