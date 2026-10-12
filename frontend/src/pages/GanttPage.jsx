@@ -5,6 +5,8 @@ import { mapScheduleToGantt, generateTimelineTicks } from "../utils/ganttUtils";
 import { AlertTriangle, RefreshCw, CalendarRange, Edit3, X } from "lucide-react";
 import { differenceInCalendarDays, parseISO, format } from "date-fns";
 import TaskProgressModal from "../components/TaskProgressModal";
+import { readSnapshot, writeSnapshot, isNetworkError, SNAPSHOT_TYPES } from "../services/offlineSnapshotCache";
+import OfflineSnapshotBanner from "../components/OfflineSnapshotBanner";
 
 function formatDate(dateStr) {
   if (!dateStr) return "--";
@@ -31,6 +33,12 @@ export default function GanttPage() {
   const currentProject = context?.currentProject;
   const [baselineBusy, setBaselineBusy] = useState(false);
   const [baselineMsg, setBaselineMsg] = useState(null);
+  const [isFromCache, setIsFromCache] = useState(false);
+  const [cachedAt, setCachedAt] = useState(null);
+  const [cacheMiss, setCacheMiss] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine !== false);
+  const isReadOnly = isFromCache || !isOnline;
+  const offlineMutationMessage = "Cần có mạng để thực hiện thao tác này";
 
   // T-33: thanh đang được hover / focus / click
   const [activeBar, setActiveBar] = useState(null);
@@ -46,6 +54,25 @@ export default function GanttPage() {
   const fetchData = async () => {
     try {
       if (tasks.length === 0) setLoading(true);
+      if (!navigator.onLine) {
+        const snapshot = await readSnapshot(currentProjectId, SNAPSHOT_TYPES.GANTT);
+        if (snapshot?.payload?.tasks) {
+          const payload = snapshot.payload;
+          setTasks(payload.tasks || []);
+          setDependencies(payload.dependencies || []);
+          setSummary(payload.summary || null);
+          setScheduleSummary(payload.scheduleSummary || null);
+          setCalendar(payload.calendar || null);
+          setHolidays(payload.holidays || []);
+          setIsFromCache(true);
+          setCachedAt(snapshot.cachedAt);
+          setIsOnline(false);
+        } else {
+          setCacheMiss(true);
+          setIsOnline(false);
+        }
+        return;
+      }
       setError(null);
 
       let calcErrObj = null;
@@ -116,15 +143,46 @@ export default function GanttPage() {
         if (holRes.data?.holidays) {
           setHolidays(holRes.data.holidays);
         }
+        await writeSnapshot(currentProjectId, SNAPSHOT_TYPES.GANTT, {
+          tasks: res.data.data || [],
+          dependencies: res.data.dependencies || [],
+          summary: res.data.summary || null,
+          scheduleSummary: summaryRes.data || null,
+          calendar: calRes.data?.calendar || null,
+          holidays: holRes.data?.holidays || [],
+        });
+        setIsFromCache(false);
+        setCachedAt(null);
+        setCacheMiss(false);
+        setIsOnline(true);
       }
     } catch (err) {
-      setError(err.response?.data?.message || "Lỗi tải tiến độ dự án");
+      if (isNetworkError(err)) {
+        setIsOnline(false);
+        const snapshot = await readSnapshot(currentProjectId, SNAPSHOT_TYPES.GANTT);
+        if (snapshot?.payload?.tasks) {
+          const payload = snapshot.payload;
+          setTasks(payload.tasks || []);
+          setDependencies(payload.dependencies || []);
+          setSummary(payload.summary || null);
+          setScheduleSummary(payload.scheduleSummary || null);
+          setCalendar(payload.calendar || null);
+          setHolidays(payload.holidays || []);
+          setIsFromCache(true);
+          setCachedAt(snapshot.cachedAt);
+        } else {
+          setCacheMiss(true);
+        }
+      } else {
+        setError(err.response?.data?.message || "Lỗi tải tiến độ dự án");
+      }
     } finally {
       setLoading(false);
       setIsPolling(false);
     }
   };
   const handleCreateBaseline = async () => {
+    if (isReadOnly) { setBaselineMsg(offlineMutationMessage); return; }
     try {
       setBaselineBusy(true);
       setBaselineMsg(null);
@@ -329,6 +387,8 @@ export default function GanttPage() {
         </div>
       </div>
 
+        <OfflineSnapshotBanner isFromCache={isFromCache} cachedAt={cachedAt} cacheMiss={cacheMiss} pageName="Gantt" />
+
         <div className="flex-1 flex flex-col bg-white overflow-hidden rounded-2xl border border-[#E6EBF3] shadow-sm">
           {/* Toolbar */}
           <div className="min-h-[56px] h-auto py-2 border-b border-[#E6EBF3] bg-slate-50/50 flex flex-wrap items-center justify-between px-4 shrink-0 gap-3">
@@ -406,7 +466,7 @@ export default function GanttPage() {
               <button
                 type="button"
                 onClick={handleCreateBaseline}
-                disabled={baselineBusy}
+                disabled={baselineBusy || isReadOnly}
                 className={`px-3 min-h-11 rounded-lg text-white text-xs font-semibold disabled:opacity-60 ${
                   summary.hasBaseline ? "bg-slate-600 hover:bg-slate-700" : "bg-amber-600 hover:bg-amber-700"
                 }`}
@@ -476,9 +536,11 @@ export default function GanttPage() {
                       <button
                         type="button"
                         aria-label={`Cập nhật tiến độ: ${bar.name}`}
-                        title="Cập nhật tiến độ thực tế"
+                        title={isReadOnly ? offlineMutationMessage : "Cập nhật tiến độ thực tế"}
+                        disabled={isReadOnly}
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (isReadOnly) return;
                           setSelectedTaskForProgress(bar);
                           setActiveBar(null);
                         }}
@@ -606,7 +668,7 @@ export default function GanttPage() {
                           onMouseEnter={() => setActiveBar(bar)}
                           onDoubleClick={(e) => {
                             e.stopPropagation();
-                            setSelectedTaskForProgress(bar);
+                            if (!isReadOnly) setSelectedTaskForProgress(bar);
                           }}
                           onTouchStart={(e) => {
                             e.stopPropagation();
@@ -848,8 +910,11 @@ export default function GanttPage() {
                       {/* Dòng 3: Nút cập nhật (nhỏ gọn) */}
                       <button
                         type="button"
+                        disabled={isReadOnly}
+                        title={isReadOnly ? offlineMutationMessage : "Cập nhật tiến độ"}
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (isReadOnly) return;
                           setSelectedTaskForProgress(activeBar);
                           setActiveBar(null);
                         }}

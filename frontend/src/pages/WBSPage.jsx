@@ -5,6 +5,8 @@ import api from "../lib/api";
 import TaskForm from "../components/TaskForm";
 import CategoryModal, { saveCategory } from "../components/CategoryModal";
 import { buildTree, rollupCategoryDates, isLeafCategory, flattenTasks } from "../utils/buildTree";
+import { readSnapshot, writeSnapshot, isNetworkError, SNAPSHOT_TYPES } from "../services/offlineSnapshotCache";
+import OfflineSnapshotBanner from "../components/OfflineSnapshotBanner";
 import { format, parseISO } from "date-fns";
 import { 
   Search, Plus, List, LayoutGrid,
@@ -61,6 +63,13 @@ function WBSPage() {
   // Lỗi 2 responsive: id node đang mở kebab menu hành động trên mobile
   // (null = không mở menu nào). Chỉ dùng ở màn hẹp (nút kebab lg:hidden).
   const [openMenuNodeId, setOpenMenuNodeId] = useState(null);
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine !== false);
+  const [isFromCache, setIsFromCache] = useState(false);
+  const [cachedAt, setCachedAt] = useState(null);
+  const [cacheMiss, setCacheMiss] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+  const isReadOnly = isFromCache || !isOnline;
+  const offlineMutationMessage = "Cần có mạng để thực hiện thao tác này";
   const context = useOutletContext();
   const currentProject = context?.currentProject;
 
@@ -124,31 +133,54 @@ const closeTaskForm = () => {
   const fetchWBS = async () => {
     try {
       setLoading(true);
-      const res = await api.get(`/categories/${projectId}/tree/all`);
-      const roots = buildTree(res.data);
-      setItems(roots);
-      
-      try {
-        const msRes = await api.get(`/projects/${projectId}/milestones`);
-        const msMap = {};
-        msRes.data.forEach(m => msMap[m.work_item_id] = m);
-        setMilestones(msMap);
-      } catch (err) {
-        console.error("Failed to load milestones:", err);
-      }
-      
-      const initExpanded = new Set();
-      const traverse = (node, level) => {
-        // T-09: Mặc định mở rộng tầng 1 và tầng 2, thu gọn từ tầng 3 trở xuống
-        if (level < 3) {
-          initExpanded.add(node.id);
-          node.children.forEach(c => traverse(c, level + 1));
+      if (!navigator.onLine) {
+        setIsOnline(false);
+        const snapshot = await readSnapshot(projectId, SNAPSHOT_TYPES.WBS);
+        if (snapshot?.payload?.tree) {
+          setItems(buildTree(snapshot.payload.tree));
+          const msMap = {};
+          (snapshot.payload.milestones || []).forEach(m => msMap[m.work_item_id] = m);
+          setMilestones(msMap);
+          setIsFromCache(true);
+          setCachedAt(snapshot.cachedAt);
+        } else {
+          setCacheMiss(true);
         }
-      };
+        return;
+      }
+      setCacheMiss(false);
+      setLoadError(null);
+      setIsOnline(true);
+      const res = await api.get(`/categories/${projectId}/tree/all`);
+      const msRes = await api.get(`/projects/${projectId}/milestones`);
+      const payload = { tree: res.data, milestones: msRes.data };
+      await writeSnapshot(projectId, SNAPSHOT_TYPES.WBS, payload);
+      setItems(buildTree(payload.tree));
+      const msMap = {};
+      (payload.milestones || []).forEach(m => msMap[m.work_item_id] = m);
+      setMilestones(msMap);
+      setIsFromCache(false);
+      setCachedAt(null);
+      const initExpanded = new Set();
+      const traverse = (node, level) => { if (level < 3) { initExpanded.add(node.id); node.children.forEach(c => traverse(c, level + 1)); } };
+      const roots = buildTree(payload.tree);
       roots.forEach(r => traverse(r, 1));
       setExpanded(initExpanded);
     } catch (err) {
-      console.error(err);
+      if (!isNetworkError(err)) {
+        setLoadError(err.response?.data?.message || err.message || "Không thể tải WBS");
+        return;
+      }
+      setIsOnline(false);
+      const snapshot = await readSnapshot(projectId, SNAPSHOT_TYPES.WBS);
+      if (!snapshot?.payload?.tree) { setCacheMiss(true); return; }
+      setItems(buildTree(snapshot.payload.tree));
+      const msMap = {};
+      (snapshot.payload.milestones || []).forEach(m => msMap[m.work_item_id] = m);
+      setMilestones(msMap);
+      setIsFromCache(true);
+      setCachedAt(snapshot.cachedAt);
+      setIsOnline(false);
     } finally {
       setLoading(false);
     }
@@ -167,6 +199,7 @@ const closeTaskForm = () => {
   };
 
   const openAddRootModal = () => {
+    if (isReadOnly) { alert(offlineMutationMessage); return; }
     setModalConfig({
       isOpen: true,
       mode: "add_root",
@@ -178,6 +211,7 @@ const closeTaskForm = () => {
   };
 
   const openAddChildModal = (node) => {
+    if (isReadOnly) { alert(offlineMutationMessage); return; }
     setModalConfig({
       isOpen: true,
       mode: "add_child",
@@ -189,6 +223,7 @@ const closeTaskForm = () => {
   };
 
   const openEditCategoryModal = (node) => {
+    if (isReadOnly) { alert(offlineMutationMessage); return; }
     setModalConfig({
       isOpen: true,
       mode: "edit_category",
@@ -200,6 +235,7 @@ const closeTaskForm = () => {
   };
 
   const openMilestoneModal = (node) => {
+    if (isReadOnly) { alert(offlineMutationMessage); return; }
     setMilestoneModalConfig({
       isOpen: true,
       workItem: node,
@@ -209,6 +245,7 @@ const closeTaskForm = () => {
   };
 
   const handleMilestoneSubmit = async (e) => {
+    if (isReadOnly) { alert(offlineMutationMessage); return; }
     e.preventDefault();
     if (!milestoneModalConfig.date) {
       setMilestoneModalConfig(prev => ({ ...prev, error: "Vui lòng chọn ngày bắt buộc" }));
@@ -243,6 +280,7 @@ const closeTaskForm = () => {
   };
 
   const handleModalSubmit = async (e) => {
+    if (isReadOnly) { alert(offlineMutationMessage); return; }
     e.preventDefault();
 
     try {
@@ -274,6 +312,7 @@ const closeTaskForm = () => {
   };
 
   const handleDeleteCategory = async (node) => {
+    if (isReadOnly) { alert(offlineMutationMessage); return; }
     if (!window.confirm(`Bạn có chắc chắn muốn xóa hạng mục "${node.name}"?`)) {
       return;
     }
@@ -286,6 +325,7 @@ const closeTaskForm = () => {
   };
 
   const handleDeleteTask = async (node) => {
+    if (isReadOnly) { alert(offlineMutationMessage); return; }
     if (
       !window.confirm(
         `Bạn có chắc chắn muốn xóa công việc "${node.name}"? Lịch tiến độ dự án sẽ tự động được đánh dấu để tính toán lại.`
@@ -361,6 +401,7 @@ const closeTaskForm = () => {
   };
 
   const handleImportFileChange = async (e) => {
+    if (isReadOnly) { alert(offlineMutationMessage); return; }
     const file = e.target.files?.[0];
     e.target.value = ""; // cho phép chọn lại cùng file lần sau
     if (!file) return;
@@ -489,6 +530,7 @@ const closeTaskForm = () => {
   };
 
   const handleImportConfirm = async () => {
+    if (isReadOnly) { alert(offlineMutationMessage); return; }
     if (!importPreview?.rows?.length) return;
     setImportLoading(true);
 
@@ -613,6 +655,7 @@ const closeTaskForm = () => {
   <button
     type="button"
     onClick={() => openMilestoneModal(node)}
+    disabled={isReadOnly}
     title="Đặt mốc bàn giao"
     className="flex min-h-11 min-w-11 items-center justify-center text-red-600 hover:bg-red-100 rounded-lg transition-colors cursor-pointer"
   >
@@ -624,6 +667,7 @@ const closeTaskForm = () => {
   <button
     type="button"
     onClick={() => openCreateTaskForm(node)}
+    disabled={isReadOnly}
     title="Thêm công việc"
     className="flex min-h-11 min-w-11 items-center justify-center text-[#1F63E0] hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
   >
@@ -635,6 +679,7 @@ const closeTaskForm = () => {
   <button
     type="button"
     onClick={() => openAddChildModal(node)}
+    disabled={isReadOnly}
     title="Thêm mục con"
     className="flex min-h-11 min-w-11 items-center justify-center text-[#1F63E0] hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
   >
@@ -645,6 +690,7 @@ const closeTaskForm = () => {
   <button
     type="button"
     onClick={() => openEditCategoryModal(node)}
+    disabled={isReadOnly}
     title="Sửa tên hạng mục"
     className="flex min-h-11 min-w-11 items-center justify-center text-[#475569] hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
   >
@@ -655,6 +701,7 @@ const closeTaskForm = () => {
   <button
     type="button"
     onClick={() => handleDeleteCategory(node)}
+    disabled={isReadOnly}
     title="Xóa hạng mục"
     className="flex min-h-11 min-w-11 items-center justify-center text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
   >
@@ -768,6 +815,7 @@ const closeTaskForm = () => {
             <div className="flex items-center justify-end gap-1">
               <button
                 onClick={() => openEditTaskForm (node)}
+    disabled={isReadOnly}
                 title="Sửa công việc"
                 className="flex min-h-11 min-w-11 items-center justify-center text-[#475569] hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
               >
@@ -775,6 +823,7 @@ const closeTaskForm = () => {
               </button>
               <button
                 onClick={() => handleDeleteTask(node)}
+    disabled={isReadOnly}
                 title="Xóa công việc"
                 className="flex min-h-11 min-w-11 items-center justify-center text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
               >
@@ -858,10 +907,22 @@ const visibleItems = useMemo(() => {
               </div>
               <div>
                 <h1 className="text-white text-xl sm:text-[30px] font-bold leading-tight">Cơ cấu công việc (WBS)</h1>
-                <p className="text-white/90 text-sm sm:text-[18px] font-medium mt-1.5">{currentProject ? `Dự án: ${currentProject.name}` : 'Quản lý cấu trúc hạng mục phân cấp của dự án'}</p>
+                <p className="text-white/90 text-[18px] font-medium mt-1.5">{currentProject ? `Dự án: ${currentProject.name}` : 'Quản lý cấu trúc hạng mục phân cấp của dự án'}</p>
               </div>
             </div>
           </div>
+
+          <OfflineSnapshotBanner
+            isFromCache={isFromCache}
+            cachedAt={cachedAt}
+            cacheMiss={cacheMiss}
+            pageName="WBS"
+          />
+          {loadError && (
+            <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {loadError}
+            </div>
+          )}
 
           {/* Toolbar */}
           <div className="flex flex-wrap items-center gap-3 shrink-0">
@@ -892,6 +953,8 @@ const visibleItems = useMemo(() => {
             </button>
             <button 
               onClick={openAddRootModal}
+              disabled={isReadOnly}
+              title={isReadOnly ? offlineMutationMessage : "Cần có mạng để thực hiện thao tác này"}
               className="h-11 px-5 flex items-center gap-2 bg-[#1F63E0] hover:bg-[#1A54C2] text-white rounded-[10px] text-[14px] font-medium shadow-sm transition-colors cursor-pointer"
             >
               <Plus className="size-4" /> Thêm hạng mục gốc
@@ -983,6 +1046,8 @@ const visibleItems = useMemo(() => {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
+              disabled={isReadOnly}
+              title={isReadOnly ? offlineMutationMessage : "Cần có mạng để thực hiện thao tác này"}
                 className="bg-[#F4F7FC] p-3 rounded-xl flex flex-col items-center justify-center gap-2 hover:-translate-y-0.5 hover:border-[#16A34A] border border-transparent transition-all cursor-pointer"
               >
                 <div className="size-10 bg-white rounded-full flex items-center justify-center text-[#16A34A] shadow-sm"><FileSpreadsheet className="size-5" /></div>

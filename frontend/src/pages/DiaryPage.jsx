@@ -158,7 +158,16 @@ export default function DiaryPage({ user }) {
 
     // Đọc trước từ cache để hiển thị tức thời nếu có
     try {
-      const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+      let cachedRaw = localStorage.getItem(cacheKey);
+      if (!cachedRaw) {
+        const prefix = `diary_entries_cache_${projectId}_`;
+        const candidates = Object.keys(localStorage)
+          .filter((key) => key.startsWith(prefix))
+          .sort()
+          .reverse();
+        cachedRaw = candidates.length ? localStorage.getItem(candidates[0]) : null;
+      }
+      const cached = JSON.parse(cachedRaw || 'null');
       if (cached && Array.isArray(cached.data)) {
         serverEntries = cached.data;
         serverTotal = cached.total ?? cached.data.length;
