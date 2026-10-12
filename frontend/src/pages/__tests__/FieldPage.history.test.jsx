@@ -66,6 +66,11 @@ describe('FieldPage — S-39 lich su thao tac (T-104)', () => {
     localStorage.setItem('currentProjectId', '1');
 
     api.get.mockImplementation((url) => {
+      // S-39: FieldPage trên main giờ lấy membership trước khi load task —
+      // mock đúng response này để component vượt qua guard projectRole.
+      if (/^\/projects\/\d+$/.test(url)) {
+        return Promise.resolve({ data: { membership: 'doi_truong' } });
+      }
       if (url.includes('/quantity-reports/history')) {
         return Promise.resolve({ data: mockHistory });
       }
