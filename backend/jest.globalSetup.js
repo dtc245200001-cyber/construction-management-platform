@@ -33,15 +33,20 @@ module.exports = async () => {
   // Chạy node-pg-migrate bằng API (không gọi CLI để tránh lỗi PATH trên Windows)
   const runner = require("node-pg-migrate").default || require("node-pg-migrate");
   
-  await runner({
-    databaseUrl: dbUrl,
-    dir: path.resolve(__dirname, "migrations"),
-    direction: "up",
-    migrationsTable: "pgmigrations",
-    count: Infinity,
-    checkOrder: false,
-    log: () => {}, // Tắt verbose log trong test
-  });
-
-  console.log("[Jest globalSetup] Migration hoàn tất.\n");
+  try {
+    await runner({
+      databaseUrl: dbUrl,
+      dir: path.resolve(__dirname, "migrations"),
+      direction: "up",
+      migrationsTable: "pgmigrations",
+      count: Infinity,
+      checkOrder: false,
+      log: () => {}, // Tắt verbose log trong test
+    });
+    console.log("[Jest globalSetup] Migration hoàn tất.\n");
+  } catch (err) {
+    console.warn(
+      `[Jest globalSetup] Không thể kết nối DB test (${err.message || err}). Các unit test dùng mock vẫn tiếp tục chạy.\n`
+    );
+  }
 };
