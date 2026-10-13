@@ -137,12 +137,17 @@ export default function TaskLogModal({
 
   const [currentLogClientId, setCurrentLogClientId] = useState(() => crypto.randomUUID());
 
+  // Theo dõi trạng thái mounted để chặn cập nhật state sau khi component bị unmount
+  const isMountedRef = useRef(true);
+
   // Lưu trữ các Object URL đã tạo để thu hồi khi unmount
   const createdUrlsRef = useRef(new Set());
 
   useEffect(() => {
+    isMountedRef.current = true;
     const urls = createdUrlsRef.current;
     return () => {
+      isMountedRef.current = false;
       urls.forEach((url) => {
         try {
           URL.revokeObjectURL(url);
@@ -176,11 +181,13 @@ export default function TaskLogModal({
 
     if (!effectiveProjectId || !effectiveTaskId) {
 
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
 
       return;
 
     }
+
+    if (!isMountedRef.current) return;
 
     setLoading(true);
 
@@ -332,6 +339,8 @@ export default function TaskLogModal({
 
       const mergedLogs = [...filteredOffline, ...serverLogs];
 
+      if (!isMountedRef.current) return;
+
       if (isApiFailure && mergedLogs.length === 0) {
 
         setError("Không thể kết nối đến máy chủ và chưa có nhật ký lưu trên thiết bị.");
@@ -344,15 +353,23 @@ export default function TaskLogModal({
 
     } catch (err) {
 
-      setError(
+      if (isMountedRef.current) {
 
-        err.response?.data?.message || "Không thể tải nhật ký của công việc",
+        setError(
 
-      );
+          err.response?.data?.message || "Không thể tải nhật ký của công việc",
+
+        );
+
+      }
 
     } finally {
 
-      setLoading(false);
+      if (isMountedRef.current) {
+
+        setLoading(false);
+
+      }
 
     }
 
@@ -394,9 +411,16 @@ export default function TaskLogModal({
 
   useEffect(() => {
     if (!isOpen) return undefined;
-    const refreshAfterSync = () => fetchLogs();
+    if (typeof window === "undefined") return undefined;
+    const refreshAfterSync = () => {
+      if (isMountedRef.current) fetchLogs();
+    };
     window.addEventListener("diary-sync-updated", refreshAfterSync);
-    return () => window.removeEventListener("diary-sync-updated", refreshAfterSync);
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("diary-sync-updated", refreshAfterSync);
+      }
+    };
     // fetchLogs captures the current project and task IDs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, effectiveProjectId, effectiveTaskId]);
@@ -544,45 +568,19 @@ export default function TaskLogModal({
   // Helper chuẩn hóa đường dẫn ảnh đính kèm
 
   const getAttachmentUrl = (url) => {
-
     if (!url) return "";
-
     if (
-
       url.startsWith("http://") ||
-
       url.startsWith("https://") ||
-
       url.startsWith("blob:") ||
-
       url.startsWith("data:")
-
     ) {
-
       return url;
-
     }
 
-    const baseUrl = api.defaults?.baseURL || "";
-
-    if (baseUrl && baseUrl.startsWith("http")) {
-
-      try {
-
-        const origin = new URL(baseUrl).origin;
-
-        return `${origin}${url.startsWith("/") ? "" : "/"}${url}`;
-
-      } catch {
-
-        return url;
-
-      }
-
-    }
-
+    // Giữ nguyên đường dẫn tương đối (/api/...) để gọi cùng origin
+    // qua Vite proxy (ở local) hoặc Render rewrite (ở production), đảm bảo session cookie luôn được gửi.
     return url;
-
   };
 
 
@@ -968,7 +966,11 @@ export default function TaskLogModal({
 
     } finally {
 
-      setSubmitting(false);
+      if (isMountedRef.current) {
+
+        setSubmitting(false);
+
+      }
 
     }
 
@@ -1925,11 +1927,9 @@ export function AttachmentThumbnail({
       ) : (
 
         <img
-
           src={imageUrl}
-
           alt={attachment.file_name}
-
+          crossOrigin="use-credentials"
           loading={isPriority ? "eager" : "lazy"}
 
           fetchPriority={isPriority ? "high" : "auto"}
@@ -2295,11 +2295,9 @@ export function ImageViewerModal({
           ) : (
 
             <img
-
               src={fullImageUrl}
-
               alt={currentImage.file_name}
-
+              crossOrigin="use-credentials"
               data-testid="full-size-image"
 
               onLoad={() => setLoading(false)}

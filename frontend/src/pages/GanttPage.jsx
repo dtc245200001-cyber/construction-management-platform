@@ -2,9 +2,11 @@ import React, { useState, useEffect } from "react";
 import { useOutletContext } from "react-router-dom";
 import api from "../lib/api";
 import { mapScheduleToGantt, generateTimelineTicks } from "../utils/ganttUtils";
-import { AlertTriangle, RefreshCw, CalendarRange, Edit3 } from "lucide-react";
+import { AlertTriangle, RefreshCw, CalendarRange, Edit3, X } from "lucide-react";
 import { differenceInCalendarDays, parseISO, format } from "date-fns";
 import TaskProgressModal from "../components/TaskProgressModal";
+import { readSnapshot, writeSnapshot, isNetworkError, SNAPSHOT_TYPES } from "../services/offlineSnapshotCache";
+import OfflineSnapshotBanner from "../components/OfflineSnapshotBanner";
 
 function formatDate(dateStr) {
   if (!dateStr) return "--";
@@ -31,6 +33,12 @@ export default function GanttPage() {
   const currentProject = context?.currentProject;
   const [baselineBusy, setBaselineBusy] = useState(false);
   const [baselineMsg, setBaselineMsg] = useState(null);
+  const [isFromCache, setIsFromCache] = useState(false);
+  const [cachedAt, setCachedAt] = useState(null);
+  const [cacheMiss, setCacheMiss] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine !== false);
+  const isReadOnly = isFromCache || !isOnline;
+  const offlineMutationMessage = "Cần có mạng để thực hiện thao tác này";
 
   // T-33: thanh đang được hover / focus / click
   const [activeBar, setActiveBar] = useState(null);
@@ -46,6 +54,25 @@ export default function GanttPage() {
   const fetchData = async () => {
     try {
       if (tasks.length === 0) setLoading(true);
+      if (!navigator.onLine) {
+        const snapshot = await readSnapshot(currentProjectId, SNAPSHOT_TYPES.GANTT);
+        if (snapshot?.payload?.tasks) {
+          const payload = snapshot.payload;
+          setTasks(payload.tasks || []);
+          setDependencies(payload.dependencies || []);
+          setSummary(payload.summary || null);
+          setScheduleSummary(payload.scheduleSummary || null);
+          setCalendar(payload.calendar || null);
+          setHolidays(payload.holidays || []);
+          setIsFromCache(true);
+          setCachedAt(snapshot.cachedAt);
+          setIsOnline(false);
+        } else {
+          setCacheMiss(true);
+          setIsOnline(false);
+        }
+        return;
+      }
       setError(null);
 
       let calcErrObj = null;
@@ -116,15 +143,46 @@ export default function GanttPage() {
         if (holRes.data?.holidays) {
           setHolidays(holRes.data.holidays);
         }
+        await writeSnapshot(currentProjectId, SNAPSHOT_TYPES.GANTT, {
+          tasks: res.data.data || [],
+          dependencies: res.data.dependencies || [],
+          summary: res.data.summary || null,
+          scheduleSummary: summaryRes.data || null,
+          calendar: calRes.data?.calendar || null,
+          holidays: holRes.data?.holidays || [],
+        });
+        setIsFromCache(false);
+        setCachedAt(null);
+        setCacheMiss(false);
+        setIsOnline(true);
       }
     } catch (err) {
-      setError(err.response?.data?.message || "Lỗi tải tiến độ dự án");
+      if (isNetworkError(err)) {
+        setIsOnline(false);
+        const snapshot = await readSnapshot(currentProjectId, SNAPSHOT_TYPES.GANTT);
+        if (snapshot?.payload?.tasks) {
+          const payload = snapshot.payload;
+          setTasks(payload.tasks || []);
+          setDependencies(payload.dependencies || []);
+          setSummary(payload.summary || null);
+          setScheduleSummary(payload.scheduleSummary || null);
+          setCalendar(payload.calendar || null);
+          setHolidays(payload.holidays || []);
+          setIsFromCache(true);
+          setCachedAt(snapshot.cachedAt);
+        } else {
+          setCacheMiss(true);
+        }
+      } else {
+        setError(err.response?.data?.message || "Lỗi tải tiến độ dự án");
+      }
     } finally {
       setLoading(false);
       setIsPolling(false);
     }
   };
   const handleCreateBaseline = async () => {
+    if (isReadOnly) { setBaselineMsg(offlineMutationMessage); return; }
     try {
       setBaselineBusy(true);
       setBaselineMsg(null);
@@ -147,6 +205,15 @@ export default function GanttPage() {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProjectId]);
+
+  useEffect(() => {
+    if (!activeBar) return undefined;
+    const handleEscape = (event) => {
+      if (event.key === "Escape") setActiveBar(null);
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [activeBar]);
 
   if (error) {
     return (
@@ -248,7 +315,7 @@ export default function GanttPage() {
     <div className="flex-1 min-h-0 bg-[#F3F6FB] text-[#0F1B3D] flex flex-col">
       <div className="flex-1 min-h-0 flex flex-col p-4 sm:p-6 gap-6 max-w-[1672px] mx-auto w-full">
         {/* Hero Banner */}
-        <div className="relative h-[115px] rounded-2xl overflow-hidden shrink-0 flex items-center p-6 shadow-sm">
+        <div className="relative h-[115px] rounded-2xl overflow-hidden shrink-0 flex items-center p-4 sm:p-6 shadow-sm">
           <div
             className="absolute inset-0 bg-cover bg-center"
             style={{
@@ -257,16 +324,16 @@ export default function GanttPage() {
             }}
           ></div>
           <div className="absolute inset-0 bg-gradient-to-r from-[#0B3FA8] to-transparent opacity-95"></div>
-          <div className="relative z-10 flex items-center justify-between w-full">
-            <div className="flex items-center gap-5">
-            <div className="size-[60px] bg-[#1F63E0] rounded-xl flex items-center justify-center shadow-lg border border-white/20">
+          <div className="relative z-10 flex w-full flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-3 sm:gap-5">
+            <div className="size-12 sm:size-[60px] bg-[#1F63E0] rounded-xl flex items-center justify-center shadow-lg border border-white/20">
               <CalendarRange className="size-8 text-white" />
             </div>
             <div>
-              <h1 className="text-white text-[30px] font-bold leading-tight">
+              <h1 className="text-white text-xl sm:text-[30px] font-bold leading-tight">
                 Tiến độ thi công (Gantt)
               </h1>
-              <p className="text-white/90 text-[18px] font-medium mt-1.5 flex items-center gap-4">
+              <p className="text-white/90 text-sm sm:text-[18px] font-medium mt-1.5 flex flex-wrap items-center gap-2 sm:gap-4">
                 <span>
                   {currentProject
                     ? `Dự án: ${currentProject.name}`
@@ -319,6 +386,8 @@ export default function GanttPage() {
           </div>
         </div>
       </div>
+
+        <OfflineSnapshotBanner isFromCache={isFromCache} cachedAt={cachedAt} cacheMiss={cacheMiss} pageName="Gantt" />
 
         <div className="flex-1 flex flex-col bg-white overflow-hidden rounded-2xl border border-[#E6EBF3] shadow-sm">
           {/* Toolbar */}
@@ -397,7 +466,7 @@ export default function GanttPage() {
               <button
                 type="button"
                 onClick={handleCreateBaseline}
-                disabled={baselineBusy}
+                disabled={baselineBusy || isReadOnly}
                 className={`px-3 min-h-11 rounded-lg text-white text-xs font-semibold disabled:opacity-60 ${
                   summary.hasBaseline ? "bg-slate-600 hover:bg-slate-700" : "bg-amber-600 hover:bg-amber-700"
                 }`}
@@ -467,9 +536,11 @@ export default function GanttPage() {
                       <button
                         type="button"
                         aria-label={`Cập nhật tiến độ: ${bar.name}`}
-                        title="Cập nhật tiến độ thực tế"
+                        title={isReadOnly ? offlineMutationMessage : "Cập nhật tiến độ thực tế"}
+                        disabled={isReadOnly}
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (isReadOnly) return;
                           setSelectedTaskForProgress(bar);
                           setActiveBar(null);
                         }}
@@ -597,7 +668,7 @@ export default function GanttPage() {
                           onMouseEnter={() => setActiveBar(bar)}
                           onDoubleClick={(e) => {
                             e.stopPropagation();
-                            setSelectedTaskForProgress(bar);
+                            if (!isReadOnly) setSelectedTaskForProgress(bar);
                           }}
                           onTouchStart={(e) => {
                             e.stopPropagation();
@@ -764,14 +835,30 @@ export default function GanttPage() {
 
                 {/* T-33 + T-35: Tooltip chi tiết gọn nhẹ nằm TRÊN thanh công việc */}
                 {activeBar && (
-                  <div
-                    role="tooltip"
-                    className="pointer-events-auto absolute z-50 w-[280px] rounded-lg border border-slate-200 bg-white/95 backdrop-blur-sm p-3 shadow-xl"
-                    style={{
-                      left: Math.max(10, activeBar.x - 20),
-                      top: Math.max(0, 80 + activeBar.y - 120), // Đẩy lên trên thanh bar
-                    }}
-                  >
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Đóng chi tiết công việc"
+                      onClick={() => setActiveBar(null)}
+                      className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm sm:hidden"
+                    />
+                    <div
+                      role="tooltip"
+                      aria-label="Chi tiết công việc"
+                      className="pointer-events-auto absolute z-50 w-[280px] rounded-lg border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur-sm max-sm:fixed max-sm:left-1/2 max-sm:top-1/2 max-sm:z-[61] max-sm:w-[calc(100vw-2rem)] max-sm:max-w-[340px] max-sm:-translate-x-1/2 max-sm:-translate-y-1/2 sm:left-[var(--tooltip-left)] sm:top-[var(--tooltip-top)]"
+                      style={{
+                        "--tooltip-left": `${Math.max(10, activeBar.x - 20)}px`,
+                        "--tooltip-top": `${Math.max(0, 80 + activeBar.y - 120)}px`,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        aria-label="Đóng"
+                        onClick={() => setActiveBar(null)}
+                        className="absolute right-1 top-1 flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 sm:hidden"
+                      >
+                        <X className="size-4" />
+                      </button>
                     <div className="flex flex-col gap-1.5">
                       {/* Dòng 1: Tên và Label */}
                       <div className="flex items-start justify-between gap-2">
@@ -823,8 +910,11 @@ export default function GanttPage() {
                       {/* Dòng 3: Nút cập nhật (nhỏ gọn) */}
                       <button
                         type="button"
+                        disabled={isReadOnly}
+                        title={isReadOnly ? offlineMutationMessage : "Cập nhật tiến độ"}
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (isReadOnly) return;
                           setSelectedTaskForProgress(activeBar);
                           setActiveBar(null);
                         }}
@@ -833,8 +923,9 @@ export default function GanttPage() {
                         <Edit3 className="size-3" />
                         Cập nhật tiến độ
                       </button>
+                      </div>
                     </div>
-                  </div>
+                  </>
                 )}
               </div>
             </div>

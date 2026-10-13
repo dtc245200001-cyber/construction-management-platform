@@ -258,6 +258,27 @@ describe("Diary API Integration Tests", () => {
       expect(res.body.message).toContain("Hạng mục đã có nhật ký, không thể xóa");
     });
 
+    it("xóa mục nhật ký thành công bằng DELETE /diary-entries/:entryId", async () => {
+      // Tạo một nhật ký để xóa
+      const createRes = await request(app)
+        .post(`/api/projects/${projectAId}/diary-entries`)
+        .set("Cookie", cookieKySu)
+        .send({ work_item_id: projectAWorkItemId, content: "Nhật ký sắp bị xóa" });
+      expect(createRes.status).toBe(201);
+      const entryId = createRes.body.id;
+
+      // Xóa thành công
+      const delRes = await request(app)
+        .delete(`/api/projects/${projectAId}/diary-entries/${entryId}`)
+        .set("Cookie", cookieKySu);
+      expect(delRes.status).toBe(200);
+      expect(delRes.body.success).toBe(true);
+
+      // Kiểm tra DB không còn
+      const check = await pool.query(`SELECT id FROM diary_entries WHERE id = $1`, [entryId]);
+      expect(check.rows.length).toBe(0);
+    });
+
     it("xóa dự án có nhật ký thì thành công", async () => {
       const res = await request(app).delete(`/api/projects/${projectAId}`).set("Cookie", cookieAdmin);
       expect(res.status).toBe(200);

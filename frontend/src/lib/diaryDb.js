@@ -12,11 +12,12 @@
  */
 
 export const DB_NAME = "construction_diary_offline";
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 
 export const STORES = {
   DIARY_LOGS: "diaryLogs",
   DIARY_ATTACHMENTS: "diaryAttachments",
+  OFFLINE_SNAPSHOTS: "offlineSnapshots",
   // Aliases theo quy ước đặc tả
   DIARY_ENTRIES: "diaryLogs",
   DIARY_IMAGES: "diaryAttachments",
@@ -25,9 +26,17 @@ export const STORES = {
 export const SYNC_STATUS = {
   PENDING: "pending",
   SYNCING: "syncing",
+  // Đặc tả S-30 gọi trạng thái đang gửi là "sending"; cài đặt giữ chuỗi
+  // "syncing" để tương thích dữ liệu IndexedDB đã lưu ngoài hiện trường.
+  SENDING: "syncing",
   SYNCED: "synced",
   FAILED: "failed",
 };
+
+// Sau khoảng này mà một claim "syncing" vẫn chưa xong (tab crash giữa chừng),
+// vòng quét sau được phép nhặt lại mục đó. Giữ 2 phút để không giẫm chân lên
+// lần gửi đang chạy (timeout axios 15s + withRetry 2 lần) ở tab khác.
+export const STALE_CLAIM_TIMEOUT_MS = 2 * 60 * 1000;
 
 export const ALLOWED_IMAGE_TYPES = [
   "image/jpeg",
@@ -81,7 +90,7 @@ function watchTransaction(transaction, getResult, fallback) {
   transaction.onabort = () =>
     reject(
       transaction.error ||
-        new Error(`${fallback} Transaction đã rollback.`),
+      new Error(`${fallback} Transaction đã rollback.`),
     );
 
   return { promise, reject, isSettled: () => settled };
@@ -249,6 +258,10 @@ export function openDiaryDB() {
           attachStore.createIndex(idx.name, idx.keyPath, { unique: idx.unique });
         }
       }
+
+      if (!db.objectStoreNames.contains(STORES.OFFLINE_SNAPSHOTS)) {
+        db.createObjectStore(STORES.OFFLINE_SNAPSHOTS, { keyPath: "key" });
+      }
     };
 
     request.onsuccess = () => {
@@ -323,20 +336,20 @@ export async function createDiaryEntry(entryData, images = []) {
       sanitized.projectId !== undefined && sanitized.projectId !== null
         ? Number(sanitized.projectId)
         : sanitized.project_id !== undefined && sanitized.project_id !== null
-        ? Number(sanitized.project_id)
-        : null,
+          ? Number(sanitized.project_id)
+          : null,
     taskId:
       sanitized.taskId !== undefined && sanitized.taskId !== null
         ? Number(sanitized.taskId)
         : sanitized.task_id !== undefined && sanitized.task_id !== null
-        ? Number(sanitized.task_id)
-        : null,
+          ? Number(sanitized.task_id)
+          : null,
     workItemId:
       sanitized.workItemId !== undefined
         ? sanitized.workItemId
         : sanitized.work_item_id !== undefined
-        ? sanitized.work_item_id
-        : null,
+          ? sanitized.work_item_id
+          : null,
     categoryId: sanitized.categoryId || sanitized.category_id || null,
     content: (sanitized.content || "").trim(),
     entryAt: sanitized.entryAt || sanitized.entry_at || sanitized.createdAt || now,
@@ -392,8 +405,8 @@ export async function createDiaryEntry(entryData, images = []) {
           imgSanitized.size !== undefined
             ? imgSanitized.size
             : imgSanitized.file_size !== undefined
-            ? imgSanitized.file_size
-            : blob?.size || 0;
+              ? imgSanitized.file_size
+              : blob?.size || 0;
 
         const attachRecord = {
           ...imgSanitized,
@@ -487,8 +500,8 @@ export async function saveDiaryAttachment(attachment) {
     sanitized.size !== undefined
       ? sanitized.size
       : sanitized.file_size !== undefined
-      ? sanitized.file_size
-      : blob?.size || 0;
+        ? sanitized.file_size
+        : blob?.size || 0;
   const logId =
     sanitized.diaryClientId ||
     sanitized.diary_client_id ||
@@ -566,48 +579,48 @@ export async function saveDiaryAttachments(diaryClientId, images) {
 
   try {
     for (const img of images) {
-        const sanitized = sanitizeData(img);
-        const id = sanitized.id || generateUUID();
-        const blob = sanitized.blob || sanitized.file || (isBlob(sanitized) ? sanitized : null);
-        const fileName =
-          sanitized.fileName ||
-          sanitized.file_name ||
-          sanitized.name ||
-          "anh-nhat-ky.jpg";
-        const mimeType =
-          sanitized.mimeType ||
-          sanitized.mime_type ||
-          blob?.type ||
-          "image/jpeg";
-        const size =
-          sanitized.size !== undefined
-            ? sanitized.size
-            : sanitized.file_size !== undefined
+      const sanitized = sanitizeData(img);
+      const id = sanitized.id || generateUUID();
+      const blob = sanitized.blob || sanitized.file || (isBlob(sanitized) ? sanitized : null);
+      const fileName =
+        sanitized.fileName ||
+        sanitized.file_name ||
+        sanitized.name ||
+        "anh-nhat-ky.jpg";
+      const mimeType =
+        sanitized.mimeType ||
+        sanitized.mime_type ||
+        blob?.type ||
+        "image/jpeg";
+      const size =
+        sanitized.size !== undefined
+          ? sanitized.size
+          : sanitized.file_size !== undefined
             ? sanitized.file_size
             : blob?.size || 0;
 
-        const record = {
-          ...sanitized,
-          id,
-          diaryClientId,
-          diary_client_id: diaryClientId,
-          logId: diaryClientId,
-          blob,
-          fileName,
-          file_name: fileName,
-          name: fileName,
-          mimeType,
-          mime_type: mimeType,
-          size,
-          file_size: size,
-          syncStatus: sanitized.syncStatus || SYNC_STATUS.PENDING,
-          createdAt: sanitized.createdAt || now,
-        };
+      const record = {
+        ...sanitized,
+        id,
+        diaryClientId,
+        diary_client_id: diaryClientId,
+        logId: diaryClientId,
+        blob,
+        fileName,
+        file_name: fileName,
+        name: fileName,
+        mimeType,
+        mime_type: mimeType,
+        size,
+        file_size: size,
+        syncStatus: sanitized.syncStatus || SYNC_STATUS.PENDING,
+        createdAt: sanitized.createdAt || now,
+      };
 
-        delete record.previewUrl;
-        if (typeof record.url === "string" && record.url.startsWith("blob:")) {
-          delete record.url;
-        }
+      delete record.previewUrl;
+      if (typeof record.url === "string" && record.url.startsWith("blob:")) {
+        delete record.url;
+      }
 
       const request = store.put(record);
       request.onerror = () => completion.reject(request.error);
@@ -762,7 +775,10 @@ export async function getDiaryEntryWithImages(clientId) {
 }
 
 /**
- * Lấy danh sách các nhật ký đang chờ đồng bộ (pending hoặc failed)
+ * Lấy danh sách các nhật ký đang chờ đồng bộ (pending hoặc failed).
+ * Kết quả sắp xếp theo thời điểm tạo (createdAt) tăng dần để hàng đợi gửi
+ * đúng thứ tự tạo (AC S-30), vì keyPath "id" là UUID ngẫu nhiên nên thứ tự
+ * duyệt cursor của IndexedDB không phản ánh thứ tự tạo.
  */
 export async function getPendingSyncEntries() {
   const db = await openDiaryDB();
@@ -772,7 +788,7 @@ export async function getPendingSyncEntries() {
   const results = [];
   const completion = watchTransaction(
     transaction,
-    () => results,
+    () => sortByCreatedAt(results),
     "Lỗi khi đọc hàng đợi đồng bộ từ IndexedDB.",
   );
   const request = store.openCursor();
@@ -786,7 +802,7 @@ export async function getPendingSyncEntries() {
       (val.syncStatus === SYNC_STATUS.PENDING ||
         val.syncStatus === SYNC_STATUS.FAILED ||
         (val.syncStatus === SYNC_STATUS.SYNCING &&
-          Date.now() - Date.parse(val.syncStartedAt || 0) > 2 * 60 * 1000))
+          Date.now() - Date.parse(val.syncStartedAt || 0) > STALE_CLAIM_TIMEOUT_MS))
     ) {
       results.push(val);
     }
@@ -796,8 +812,52 @@ export async function getPendingSyncEntries() {
   return completion.promise;
 }
 
+export async function saveOfflineSnapshot(projectId, type, payload) {
+  const db = await openDiaryDB();
+  const key = `${Number(projectId)}:${String(type)}`;
+  const record = { key, projectId: Number(projectId), type: String(type), payload, cachedAt: new Date().toISOString() };
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORES.OFFLINE_SNAPSHOTS, "readwrite");
+    tx.objectStore(STORES.OFFLINE_SNAPSHOTS).put(record);
+    tx.oncomplete = () => resolve(record);
+    tx.onerror = () => reject(tx.error || new Error("Không thể lưu dữ liệu ngoại tuyến."));
+    tx.onabort = () => reject(tx.error || new Error("Không thể lưu dữ liệu ngoại tuyến."));
+  });
+}
+
+export async function getOfflineSnapshot(projectId, type) {
+  const db = await openDiaryDB();
+  const key = `${Number(projectId)}:${String(type)}`;
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORES.OFFLINE_SNAPSHOTS, "readonly");
+    const request = tx.objectStore(STORES.OFFLINE_SNAPSHOTS).get(key);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error || new Error("Không thể đọc dữ liệu ngoại tuyến."));
+  });
+}
+
+/**
+ * Sắp xếp mục hàng đợi theo thời điểm tạo tăng dần.
+ * createdAt là chuỗi ISO nên so sánh chuỗi tương đương so sánh thời gian;
+ * dùng Date.parse kèm fallback 0 để mục thiếu createdAt lên đầu, không vỡ sort.
+ */
+function sortByCreatedAt(entries) {
+  return entries.sort((a, b) => {
+    const aTime = Date.parse(a?.createdAt || a?.created_at || 0);
+    const bTime = Date.parse(b?.createdAt || b?.created_at || 0);
+    return (Number.isNaN(aTime) ? 0 : aTime) - (Number.isNaN(bTime) ? 0 : bTime);
+  });
+}
+
 export const getPendingDiaryLogs = getPendingSyncEntries;
 
+/**
+ * Đánh dấu một mục đang chờ để gửi (claim).
+ * LƯU Ý: đây là read-then-write trong một transaction, KHÔNG đảm bảo nguyên tử
+ * liên tab (hai tab có thể cùng đọc "pending" trước khi bên nào ghi "syncing").
+ * Tầng gọi (diarySync) phải bọc bằng navigator.locks; server khử trùng bằng
+ * UNIQUE constraint nên POST kép chỉ tốn request, không sinh dòng trùng.
+ */
 export async function claimDiaryEntryForSync(clientId) {
   if (!clientId) return null;
   const db = await openDiaryDB();
@@ -818,7 +878,7 @@ export async function claimDiaryEntryForSync(clientId) {
 
     const staleSync =
       entry.syncStatus === SYNC_STATUS.SYNCING &&
-      Date.now() - Date.parse(entry.syncStartedAt || 0) > 2 * 60 * 1000;
+      Date.now() - Date.parse(entry.syncStartedAt || 0) > STALE_CLAIM_TIMEOUT_MS;
     if (
       entry.syncStatus !== SYNC_STATUS.PENDING &&
       entry.syncStatus !== SYNC_STATUS.FAILED &&
@@ -835,6 +895,49 @@ export async function claimDiaryEntryForSync(clientId) {
     };
     try {
       const putRequest = store.put(claimed);
+      putRequest.onerror = () => completion.reject(putRequest.error);
+    } catch (error) {
+      completion.reject(error);
+      transaction.abort();
+    }
+  };
+  request.onerror = () => completion.reject(request.error);
+
+  return completion.promise;
+}
+
+/**
+ * Nhả claim của một mục đang gửi về lại "pending" (dùng khi lỗi mạng/timeout,
+ * xem T-72): giữ nguyên syncError để hiển thị, xóa syncStartedAt để vòng quét
+ * sau nhặt ngay mà không phải chờ stale timeout.
+ */
+export async function releaseClaimToPending(clientId, errorMessage) {
+  if (!clientId) return false;
+  const db = await openDiaryDB();
+  const sanitized = sanitizeData({
+    syncStatus: SYNC_STATUS.PENDING,
+    syncError: typeof errorMessage === "string" ? errorMessage : null,
+    syncStartedAt: null,
+  });
+
+  const transaction = db.transaction(STORES.DIARY_LOGS, "readwrite");
+  const store = transaction.objectStore(STORES.DIARY_LOGS);
+  let released = false;
+  const completion = watchTransaction(
+    transaction,
+    () => released,
+    "Lỗi khi nhả claim đồng bộ về pending.",
+  );
+  const request = store.get(clientId);
+
+  request.onsuccess = () => {
+    const entry = request.result;
+    if (!entry || entry.syncStatus !== SYNC_STATUS.SYNCING) return;
+    try {
+      const putRequest = store.put({ ...entry, ...sanitized });
+      putRequest.onsuccess = () => {
+        released = true;
+      };
       putRequest.onerror = () => completion.reject(putRequest.error);
     } catch (error) {
       completion.reject(error);
@@ -1088,4 +1191,91 @@ export async function cleanOrphanAttachments() {
   };
   logKeysReq.onerror = () => completion.reject(logKeysReq.error);
   return completion.promise;
+}
+
+/**
+ * Thống kê nhật ký và ảnh chưa đồng bộ.
+ * Có thể chạy khi offline vì chỉ đọc dữ liệu trong IndexedDB.
+ */
+export async function getDiarySyncStats() {
+  const db = await openDiaryDB();
+
+  const transaction = db.transaction(
+    [STORES.DIARY_LOGS, STORES.DIARY_ATTACHMENTS],
+    "readonly",
+  );
+
+  const logStore = transaction.objectStore(STORES.DIARY_LOGS);
+  const attachmentStore = transaction.objectStore(
+    STORES.DIARY_ATTACHMENTS,
+  );
+
+  const logsRequest = logStore.getAll();
+  const attachmentsRequest = attachmentStore.getAll();
+
+  return new Promise((resolve, reject) => {
+    let logs;
+    let attachments;
+
+    logsRequest.onsuccess = () => {
+      logs = logsRequest.result || [];
+    };
+
+    attachmentsRequest.onsuccess = () => {
+      attachments = attachmentsRequest.result || [];
+    };
+
+    logsRequest.onerror = () => reject(logsRequest.error);
+    attachmentsRequest.onerror = () =>
+      reject(attachmentsRequest.error);
+
+    transaction.oncomplete = () => {
+      const unsentStatuses = new Set([
+        SYNC_STATUS.PENDING,
+        SYNC_STATUS.SYNCING,
+        SYNC_STATUS.FAILED,
+      ]);
+
+      const unsentLogs = (logs || []).filter((log) =>
+        unsentStatuses.has(log.syncStatus),
+      );
+
+      const unsentLogIds = new Set();
+
+      unsentLogs.forEach((log) => {
+        if (log.clientId) unsentLogIds.add(log.clientId);
+        if (log.id) unsentLogIds.add(log.id);
+      });
+
+      const pendingImages = (attachments || []).filter((image) => {
+        const parentId = image.logId || image.diaryClientId;
+
+        return (
+          parentId &&
+          unsentLogIds.has(parentId) &&
+          image.syncStatus !== SYNC_STATUS.SYNCED
+        );
+      }).length;
+
+      resolve({
+        pendingEntries: unsentLogs.length,
+        pendingImages,
+        totalPending: unsentLogs.length + pendingImages,
+      });
+    };
+
+    transaction.onerror = () => {
+      reject(
+        transaction.error ||
+        new Error("Không thể thống kê hàng đợi đồng bộ nhật ký."),
+      );
+    };
+
+    transaction.onabort = () => {
+      reject(
+        transaction.error ||
+        new Error("Giao dịch thống kê đồng bộ đã bị hủy."),
+      );
+    };
+  });
 }

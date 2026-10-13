@@ -175,20 +175,41 @@ export default function FieldPage() {
       return;
     }
 
+    try {
+      const cachedRole = localStorage.getItem(`project_role_${currentProjectId}`);
+      if (cachedRole) {
+        setProjectRole(cachedRole);
+      }
+    } catch {
+      /* ignore */
+    }
+
     let cancelled = false;
 
     api
       .get(`/projects/${currentProjectId}`)
       .then((res) => {
         if (!cancelled) {
-          setProjectRole(
-            res.data?.membership ||
-              null
-          );
+          const role = res.data?.membership || null;
+          setProjectRole(role);
+          try {
+            if (role) localStorage.setItem(`project_role_${currentProjectId}`, role);
+          } catch {
+            /* ignore */
+          }
         }
       })
       .catch(() => {
         if (!cancelled) {
+          try {
+            const cachedRole = localStorage.getItem(`project_role_${currentProjectId}`);
+            if (cachedRole) {
+              setProjectRole(cachedRole);
+              return;
+            }
+          } catch {
+            /* ignore */
+          }
           setProjectRole(null);
         }
       });
@@ -232,6 +253,20 @@ export default function FieldPage() {
         return;
       }
 
+      const cacheKey = `field_tasks_${currentProjectId}_${viewAllTeams ? 'all' : (selectedTeamId || 'my')}`;
+
+      // Nạp trước dữ liệu từ bộ nhớ đệm
+      try {
+        const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+        if (cached) {
+          setTeam(cached.team || null);
+          setTasks(cached.tasks || []);
+          setLoading(false);
+        }
+      } catch {
+        /* ignore */
+      }
+
       try {
         setLoading(true);
         setError("");
@@ -264,6 +299,11 @@ export default function FieldPage() {
           setTasks(
             res.data.tasks || []
           );
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify({ team: null, tasks: res.data.tasks || [] }));
+          } catch {
+            /* ignore */
+          }
           return;
         }
 
@@ -287,7 +327,24 @@ export default function FieldPage() {
         setTasks(
           res.data.tasks || []
         );
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify({ team: res.data.team || null, tasks: res.data.tasks || [] }));
+        } catch {
+          /* ignore */
+        }
       } catch (err) {
+        try {
+          const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+          if (cached && Array.isArray(cached.tasks)) {
+            setTeam(cached.team || null);
+            setTasks(cached.tasks);
+            setError("");
+            return;
+          }
+        } catch {
+          /* ignore */
+        }
+
         setTeam(null);
         setTasks([]);
 
@@ -325,6 +382,16 @@ export default function FieldPage() {
       return;
     }
 
+    const cacheKey = `field_teams_${currentProjectId}`;
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+      if (Array.isArray(cached) && cached.length > 0) {
+        setTeams(cached);
+      }
+    } catch {
+      /* ignore */
+    }
+
     let cancelled = false;
 
     async function loadTeams() {
@@ -343,13 +410,24 @@ export default function FieldPage() {
           res.data ||
           [];
 
-        setTeams(
-          Array.isArray(rows)
-            ? rows
-            : []
-        );
+        const teamList = Array.isArray(rows) ? rows : [];
+        setTeams(teamList);
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(teamList));
+        } catch {
+          /* ignore */
+        }
       } catch {
         if (!cancelled) {
+          try {
+            const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+            if (Array.isArray(cached) && cached.length > 0) {
+              setTeams(cached);
+              return;
+            }
+          } catch {
+            /* ignore */
+          }
           setTeams([]);
         }
       }
@@ -473,13 +551,16 @@ export default function FieldPage() {
 
       setHistoryLoading(true);
 
+      // S-39 / T-104: dùng endpoint history mới — mỗi dòng báo cáo
+      // kèm sẵn thông tin audit "ai đã lập, khi nào" (audit_user_name,
+      // audit_created_at), không cần gọi API thứ hai.
       const res =
         await api.get(
-          `/projects/${currentProjectId}/tasks/${task.task_id}/quantity-reports`
+          `/projects/${currentProjectId}/tasks/${task.task_id}/quantity-reports/history`
         );
 
       setHistoryRows(
-        res.data?.reports || []
+        res.data?.history || []
       );
     } catch (err) {
       setHistoryError(
@@ -1013,6 +1094,13 @@ export default function FieldPage() {
                         <th className="px-3 py-3">
                           Ghi nhận lúc
                         </th>
+
+                        {/* S-39: cột audit "ai đã lập"
+                            để truy trách nhiệm
+                            khi có tranh chấp. */}
+                        <th className="px-3 py-3">
+                          Nhật ký thao tác
+                        </th>
                       </tr>
                     </thead>
 
@@ -1055,6 +1143,34 @@ export default function FieldPage() {
                                     "vi-VN"
                                   )
                                 : "--"}
+                            </td>
+
+                            <td className="px-3 py-3 text-slate-600">
+                              {row.audit_action ? (
+                                <span title="Dòng nhật ký chỉ ghi thêm, không thể sửa/xóa">
+                                  <span className="font-semibold text-slate-700">
+                                    {row.audit_user_name ||
+                                      row.reported_by_name ||
+                                      "--"}
+                                  </span>{" "}
+                                  đã lập
+                                  <br />
+                                  <span className="text-xs text-slate-400">
+                                    {row.audit_created_at
+                                      ? new Date(
+                                          row.audit_created_at
+                                        ).toLocaleString(
+                                          "vi-VN"
+                                        )
+                                      : ""}
+                                  </span>
+                                </span>
+                              ) : (
+                                <span className="text-xs italic text-slate-400">
+                                  Báo cáo cũ (trước
+                                  S-39)
+                                </span>
+                              )}
                             </td>
                           </tr>
                         )

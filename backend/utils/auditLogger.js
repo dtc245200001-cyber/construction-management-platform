@@ -7,15 +7,16 @@ const db = require('../config/db');
  * @param {string} options.action - Description of the action (e.g. 'CREATE_PROJECT')
  * @param {string} [options.entity] - Affected entity name (e.g. 'projects')
  * @param {number} [options.entityId] - ID of the affected entity
+ * @param {number} [options.projectId] - ID of the project in scope (S-39: tra cứu theo dự án)
  * @param {Object} [options.details] - Additional details as JSON
  * @param {string} [options.ipAddress] - IP Address of the user
  */
-async function logAudit({ userId, action, entity = null, entityId = null, details = null, ipAddress = null }) {
+async function logAudit({ userId, action, entity = null, entityId = null, projectId = null, details = null, ipAddress = null }) {
   try {
     await db.query(
-      `INSERT INTO audit_logs (user_id, action, entity, entity_id, details, ip_address)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [userId, action, entity, entityId, details, ipAddress]
+      `INSERT INTO audit_logs (user_id, action, entity, entity_id, project_id, details, ip_address)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [userId, action, entity, entityId, projectId, details, ipAddress]
     );
   } catch (error) {
     // We do not throw the error here so that audit logging failure doesn't break the main flow

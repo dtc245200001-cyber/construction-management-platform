@@ -16,24 +16,41 @@ export default function DiaryWeekStrip({ projectId, selectedDate, onSelectDate, 
   const to = currentWeek[6];
   const today = todayVN();
 
+  const cacheKey = `diary_week_${projectId}_${from}_${to}`;
+
   useEffect(() => {
     let isMounted = true;
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+      if (cached && Array.isArray(cached) && cached.length > 0) {
+        setDays(cached);
+      }
+    } catch {
+      /* ignore */
+    }
+
     const fetchWeek = async () => {
       setLoading(true);
       try {
         const res = await api.get(`/projects/${projectId}/diary-days?from=${from}&to=${to}`);
         if (isMounted) {
-          setDays(res.data.days || []);
+          const fetchedDays = res.data.days || [];
+          setDays(fetchedDays);
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify(fetchedDays));
+          } catch {
+            /* ignore */
+          }
         }
       } catch (err) {
-        console.error("Lỗi lấy dữ liệu tuần:", err);
+        console.warn("Lỗi lấy dữ liệu tuần (có thể đang ngoại tuyến):", err?.message || err);
       } finally {
         if (isMounted) setLoading(false);
       }
     };
     fetchWeek();
     return () => { isMounted = false; };
-  }, [projectId, from, to, refreshKey]);
+  }, [projectId, from, to, refreshKey, cacheKey]);
 
   const handlePrevWeek = () => {
     const d = new Date(`${from}T00:00:00Z`);

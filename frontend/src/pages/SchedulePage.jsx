@@ -15,6 +15,8 @@ import {
   Edit3,
 } from "lucide-react";
 import TaskProgressModal from "../components/TaskProgressModal";
+import { readSnapshot, writeSnapshot, isNetworkError, SNAPSHOT_TYPES } from "../services/offlineSnapshotCache";
+import OfflineSnapshotBanner from "../components/OfflineSnapshotBanner";
 
 // Server đã dựng sẵn câu "A chờ B, B chờ C, C chờ A" trong message,
 // nên frontend dùng luôn, không tự ghép lại.
@@ -35,6 +37,12 @@ export default function SchedulePage() {
   const [hoveredRowId, setHoveredRowId] = useState(null);
   const [selectedTaskForProgress, setSelectedTaskForProgress] = useState(null);
   const [summary, setSummary] = useState(null);
+  const [isFromCache, setIsFromCache] = useState(false);
+  const [cachedAt, setCachedAt] = useState(null);
+  const [cacheMiss, setCacheMiss] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine !== false);
+  const isReadOnly = isFromCache || !isOnline;
+  const offlineMutationMessage = "Cần có mạng để thực hiện thao tác này";
 
   const currentProjectId = localStorage.getItem("currentProjectId") || 1;
 
@@ -51,12 +59,18 @@ export default function SchedulePage() {
       setScheduleData(rows);
       setSummary(res.data.summary || null);
 
+      await writeSnapshot(currentProjectId, SNAPSHOT_TYPES.CPM, { rows, summary: res.data.summary || null });
+      setIsFromCache(false);
+      setCachedAt(null);
+      setCacheMiss(false);
+      setIsOnline(true);
+
       // Có việc nhưng chưa có mốc nào => chưa từng tính
       // hoặc chưa tính được. Thử tính một lần để phát hiện vòng.
       const neverCalculated =
         rows.length > 0 && rows.every((r) => !r.early_start);
 
-      if (neverCalculated) {
+      if (neverCalculated && isOnline) {
         try {
           const calcRes = await api.post(
             `/projects/${currentProjectId}/schedule/recalculate`
@@ -93,6 +107,11 @@ export default function SchedulePage() {
           );
 
           setScheduleData(again.data.data || []);
+          setSummary(again.data.summary || null);
+          await writeSnapshot(currentProjectId, SNAPSHOT_TYPES.CPM, {
+            rows: again.data.data || [],
+            summary: again.data.summary || null,
+          });
         } catch (calcErr) {
           setRecalculating(false);
           if (calcErr.response?.data?.code === "DEPENDENCY_CYCLE" || calcErr.response?.data?.message) {
@@ -102,6 +121,19 @@ export default function SchedulePage() {
       }
     } catch (err) {
       console.error("Lỗi tải tiến độ CPM:", err);
+      if (isNetworkError(err)) {
+        setIsOnline(false);
+        const snapshot = await readSnapshot(currentProjectId, SNAPSHOT_TYPES.CPM);
+        if (snapshot?.payload?.rows) {
+          setScheduleData(snapshot.payload.rows);
+          setSummary(snapshot.payload.summary || null);
+          setIsFromCache(true);
+          setCachedAt(snapshot.cachedAt);
+        } else {
+          setCacheMiss(true);
+        }
+        return;
+      }
 
       setErrorMessage(
         getErrorText(
@@ -115,11 +147,22 @@ export default function SchedulePage() {
   };
 
   useEffect(() => {
+    const updateOnline = () => setIsOnline(navigator.onLine !== false);
+    window.addEventListener("online", updateOnline);
+    window.addEventListener("offline", updateOnline);
+    return () => {
+      window.removeEventListener("online", updateOnline);
+      window.removeEventListener("offline", updateOnline);
+    };
+  }, []);
+
+  useEffect(() => {
     fetchSchedule();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProjectId]);
 
   const handleRecalculate = async () => {
+    if (isReadOnly) { setErrorMessage(offlineMutationMessage); return; }
     try {
       setRecalculating(true);
       setErrorMessage("");
@@ -221,7 +264,7 @@ export default function SchedulePage() {
     <div className="flex-1 min-h-0 bg-[#F3F6FB] text-[#0F1B3D] flex flex-col">
       <div className="flex flex-col p-6 gap-6 max-w-[1672px] mx-auto w-full">
         {/* Hero Banner */}
-        <div className="relative h-[115px] rounded-2xl overflow-hidden shrink-0 flex items-center p-6 shadow-sm">
+        <div className="relative h-[115px] rounded-2xl overflow-hidden shrink-0 flex items-center p-4 sm:p-6 shadow-sm">
           <div
             className="absolute inset-0 bg-cover bg-center"
             style={{
@@ -232,15 +275,15 @@ export default function SchedulePage() {
 
           <div className="absolute inset-0 bg-gradient-to-r from-[#0B3FA8] to-transparent opacity-95" />
 
-          <div className="relative z-10 flex items-center justify-between w-full">
-            <div className="flex items-center gap-5">
-              <div className="size-[60px] bg-[#1F63E0] rounded-xl flex items-center justify-center shadow-lg border border-white/20">
+          <div className="relative z-10 flex w-full flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-3 sm:gap-5">
+              <div className="size-12 sm:size-[60px] bg-[#1F63E0] rounded-xl flex items-center justify-center shadow-lg border border-white/20">
                 <TrendingUp className="size-8 text-white" />
               </div>
 
               <div>
-                <div className="flex items-center gap-3">
-                  <h1 className="text-white text-[30px] font-bold leading-tight">
+                <div className="flex items-center flex-wrap gap-2 sm:gap-3">
+                  <h1 className="text-white text-xl sm:text-[30px] font-bold leading-tight">
                     Bảng đường găng (CPM)
                   </h1>
                   {summary && (
@@ -256,7 +299,7 @@ export default function SchedulePage() {
                   )}
                 </div>
 
-                <p className="text-white/90 text-[18px] font-medium mt-1.5">
+                <p className="text-white/90 text-sm sm:text-[18px] font-medium mt-1.5">
                   {currentProject ? `Dự án: ${currentProject.name}` : 'Phương pháp đường găng (Critical Path Method)'}
                 </p>
               </div>
@@ -264,7 +307,7 @@ export default function SchedulePage() {
 
             <button
               onClick={handleRecalculate}
-              disabled={recalculating}
+              disabled={recalculating || isReadOnly}
               className="h-11 px-5 flex items-center gap-2 bg-white text-[#0B3FA8] hover:bg-white/90 font-semibold rounded-[10px] text-[14px] shadow transition-all cursor-pointer disabled:opacity-60"
             >
               <RefreshCw
@@ -279,6 +322,8 @@ export default function SchedulePage() {
             </button>
           </div>
         </div>
+
+        <OfflineSnapshotBanner isFromCache={isFromCache} cachedAt={cachedAt} cacheMiss={cacheMiss} pageName="CPM" />
 
         {/* Thông báo lỗi */}
         {errorMessage && (
@@ -404,7 +449,7 @@ export default function SchedulePage() {
             <table className="w-full text-left border-collapse min-w-[960px]">
               <thead className="bg-white sticky top-0 z-10 shadow-sm">
                 <tr>
-                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] min-w-[220px] whitespace-nowrap">
+                  <th className="sticky left-0 z-20 bg-white px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] min-w-[220px] whitespace-nowrap">
                     Công việc
                   </th>
 
@@ -440,7 +485,7 @@ export default function SchedulePage() {
                     Tiến độ thực tế
                   </th>
 
-                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[110px] whitespace-nowrap">
+                  <th className="sticky right-0 z-20 bg-white px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[110px] whitespace-nowrap">
                     Thao tác
                   </th>
                 </tr>
@@ -488,8 +533,8 @@ export default function SchedulePage() {
                           : "hover:bg-slate-50"
                       }`}
                     >
-                      <td className={`px-4 py-2 font-medium text-[14px] ${row.newly_critical ? 'text-red-700 font-bold' : 'text-[#0F1B3D]'}`}>
-                        <div className="flex items-center gap-2">
+                      <td className={`sticky left-0 z-20 bg-white px-4 py-2 font-medium text-[14px] ${row.newly_critical ? 'text-red-700 font-bold' : 'text-[#0F1B3D]'}`}>
+                        <div className="min-w-[190px] max-w-[190px] sm:max-w-[220px] break-words">
                           <span>{row.name}</span>
                         </div>
                       </td>
@@ -594,11 +639,13 @@ export default function SchedulePage() {
                       </td>
 
                       {/* Thao tác mở form cập nhật tiến độ (T-35) */}
-                      <td className="px-4 py-2 text-center">
+                      <td className="sticky right-0 z-20 bg-white px-4 py-2 text-center">
                         <button
                           type="button"
                           aria-label={`Cập nhật tiến độ: ${row.name}`}
-                          onClick={() => setSelectedTaskForProgress(row)}
+                          onClick={() => { if (isReadOnly) { setErrorMessage(offlineMutationMessage); return; } setSelectedTaskForProgress(row); }}
+                          disabled={isReadOnly}
+                          title={isReadOnly ? offlineMutationMessage : "Cập nhật tiến độ"}
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-colors cursor-pointer"
                         >
                           <Edit3 className="size-3.5" />
@@ -614,7 +661,7 @@ export default function SchedulePage() {
         </div>
 
         {/* Modal cập nhật tiến độ thực tế (T-35 / S-15) */}
-        {selectedTaskForProgress && (
+        {selectedTaskForProgress && !isReadOnly && (
           <TaskProgressModal
             projectId={currentProjectId}
             task={selectedTaskForProgress}

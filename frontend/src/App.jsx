@@ -34,8 +34,18 @@ import { startDiarySync } from './services/diarySync';
 import FieldPage from './pages/FieldPage';
 import ContractQuantityPage from './pages/ContractQuantityPage';
 
+// S-36 / T-92
+import AcceptancePage from './pages/AcceptancePage';
+
+
 function App() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('cached_auth_user') || 'null');
+    } catch {
+      return null;
+    }
+  });
   const [checkingSession, setCheckingSession] = useState(true);
 
   useEffect(() => {
@@ -43,11 +53,32 @@ function App() {
       try {
         const response = await api.get('/auth/me');
         setUser(response.data.user);
+        try {
+          localStorage.setItem('cached_auth_user', JSON.stringify(response.data.user));
+        } catch {
+          /* ignore */
+        }
       } catch (error) {
         const status = error?.response?.status;
 
-        if (status !== 401 && status !== 403) {
-          console.error('Không thể kiểm tra session', error);
+        if (status === 401 || status === 403) {
+          try {
+            localStorage.removeItem('cached_auth_user');
+          } catch {
+            /* ignore */
+          }
+          setUser(null);
+        } else {
+          // Ngoại tuyến hoặc lỗi kết nối: phục hồi phiên đăng nhập từ bộ nhớ máy
+          console.warn('Không thể kiểm tra session trực tuyến (có thể đang ngoại tuyến):', error?.message || error);
+          try {
+            const cachedUser = JSON.parse(localStorage.getItem('cached_auth_user') || 'null');
+            if (cachedUser) {
+              setUser(cachedUser);
+            }
+          } catch {
+            /* ignore */
+          }
         }
       } finally {
         setCheckingSession(false);
@@ -230,6 +261,11 @@ function App() {
           <Route
             path="/diary"
             element={<DiaryPage user={user} />}
+          />
+
+          <Route
+            path="/acceptance"
+            element={<AcceptancePage user={user} />}
           />
 
           <Route

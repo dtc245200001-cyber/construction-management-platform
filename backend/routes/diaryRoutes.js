@@ -77,42 +77,54 @@ router.post(
 
       let insertedRow;
 
-      // Handle idempotency with client_id
-      if (client_id) {
+      // Idempotency theo client_id (T-70/S-30): INSERT trực tiếp, dựa vào
+      // UNIQUE constraint diary_entries_client_id_idx ở tầng DB. Nếu 2 request
+      // cùng client_id vào đồng thời, bên thua ăn lỗi 23505 thì query lại bản
+      // ghi đã có và trả 200 như mới tạo (client coi là đã đồng bộ).
+      // KHÔNG kiểm tra bằng SELECT-rồi-INSERT (có race condition).
+      const fetchRowById = async (entryId) => {
+        const finalRes = await client.query(
+          `SELECT d.*, w.name AS work_item_name, w.code AS work_item_code, u.name AS created_by_name
+           FROM diary_entries d
+           JOIN work_items w ON w.id = d.work_item_id
+           JOIN users u ON u.id = d.created_by
+           WHERE d.id = $1`,
+          [entryId]
+        );
+        return finalRes.rows[0];
+      };
+
+      try {
+        const insertRes = await client.query(
+          `INSERT INTO diary_entries (project_id, work_item_id, content, entry_at, created_by, client_id)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           RETURNING *`,
+          [projectId, work_item_id, content.trim(), entryAtVal, req.user.id, client_id || null]
+        );
+        insertedRow = await fetchRowById(insertRes.rows[0].id);
+      } catch (insertError) {
+        // Sau lỗi unique_violation, transaction ở trạng thái aborted — bắt buộc
+        // ROLLBACK trước khi SELECT lại, rồi mở transaction mới cho câu SELECT.
+        const isClientIdConflict =
+          insertError &&
+          insertError.code === "23505" &&
+          (insertError.constraint === "diary_entries_client_id_idx" ||
+            String(insertError.message || "").includes("diary_entries_client_id_idx"));
+        if (!client_id || !isClientIdConflict) throw insertError;
+        await client.query("ROLLBACK");
+        await client.query("BEGIN");
         const existing = await client.query(
-          `SELECT d.*, w.name AS work_item_name, w.code AS work_item_code, u.name AS created_by_name 
+          `SELECT d.*, w.name AS work_item_name, w.code AS work_item_code, u.name AS created_by_name
            FROM diary_entries d
            JOIN work_items w ON w.id = d.work_item_id
            JOIN users u ON u.id = d.created_by
            WHERE d.project_id = $1 AND d.client_id = $2`,
           [projectId, client_id]
         );
-        if (existing.rows.length > 0) {
-          await client.query("ROLLBACK");
-          return res.status(200).json(existing.rows[0]);
-        }
+        if (existing.rows.length === 0) throw insertError;
+        await client.query("ROLLBACK");
+        return res.status(200).json(existing.rows[0]);
       }
-
-      const insertRes = await client.query(
-        `INSERT INTO diary_entries (project_id, work_item_id, content, entry_at, created_by, client_id)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING *`,
-        [projectId, work_item_id, content.trim(), entryAtVal, req.user.id, client_id || null]
-      );
-
-      const newEntry = insertRes.rows[0];
-
-      // Join to get extra fields
-      const finalRes = await client.query(
-        `SELECT d.*, w.name AS work_item_name, w.code AS work_item_code, u.name AS created_by_name 
-         FROM diary_entries d
-         JOIN work_items w ON w.id = d.work_item_id
-         JOIN users u ON u.id = d.created_by
-         WHERE d.id = $1`,
-        [newEntry.id]
-      );
-
-      insertedRow = finalRes.rows[0];
 
       await client.query("COMMIT");
 
@@ -216,6 +228,97 @@ router.get(
       offset,
       data: dataRes.rows
     });
+  })
+);
+
+/**
+ * @swagger
+ * /api/projects/{projectId}/diary-entries/{entryId}:
+ *   delete:
+ *     summary: Xóa một mục nhật ký
+ *     tags: [Diary]
+ */
+router.delete(
+  "/:projectId/diary-entries/:entryId",
+  requireAuth,
+  checkProjectAccess,
+  requirePermission("site_log.create"),
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+    const entryId = parsePositiveInt(req.params.entryId);
+    if (!projectId || !entryId) {
+      return res.status(400).json({ message: "Tham số không hợp lệ" });
+    }
+
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Tìm bản ghi nhật ký
+      const entryRes = await client.query(
+        "SELECT * FROM diary_entries WHERE id = $1 AND project_id = $2",
+        [entryId, projectId]
+      );
+      if (entryRes.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Không tìm thấy mục nhật ký cần xóa" });
+      }
+      const entry = entryRes.rows[0];
+
+      // Kiểm tra trạng thái khóa của ngày
+      const entryDate = entry.entry_date || (entry.entry_at ? new Date(entry.entry_at).toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }) : null);
+      if (entryDate) {
+        const lockCheck = await client.query(
+          "SELECT is_locked FROM daily_log_locks WHERE project_id = $1 AND log_date = $2",
+          [projectId, entryDate]
+        );
+        if (lockCheck.rows.length > 0 && lockCheck.rows[0].is_locked) {
+          await client.query("ROLLBACK");
+          return res.status(403).json({ message: "Nhật ký của ngày này đã bị khóa, không thể xóa." });
+        }
+      }
+
+      // Quyền: Admin, người tạo, hoặc chỉ huy trưởng / ban quản lý
+      const isCreator = Number(entry.created_by) === Number(req.user.id);
+      const isAdmin = Boolean(req.user.is_system_admin);
+      const isManager = ["chi_huy_truong", "ban_quan_ly"].includes(req.projectRole);
+
+      if (!isCreator && !isAdmin && !isManager) {
+        await client.query("ROLLBACK");
+        return res.status(403).json({ message: "Bạn chỉ có thể xóa nhật ký do chính mình tạo ra hoặc có quyền quản trị dự án" });
+      }
+
+      // Xóa các attachments liên quan (hoặc để cascade)
+      await client.query("DELETE FROM diary_entry_attachments WHERE diary_entry_id = $1", [entryId]);
+
+      // Xóa diary entry
+      await client.query("DELETE FROM diary_entries WHERE id = $1", [entryId]);
+
+      await client.query("COMMIT");
+
+      try {
+        await logAudit({
+          userId: req.user.id,
+          action: "DELETE_DIARY_ENTRY",
+          entity: "diary_entries",
+          entityId: entryId,
+          details: {
+            content: entry.content?.slice(0, 100),
+            work_item_id: entry.work_item_id,
+            date: entryDate,
+          },
+        });
+      } catch (auditErr) {
+        console.error("Audit error:", auditErr);
+      }
+
+      return res.json({ success: true, message: "Đã xóa mục nhật ký thành công" });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
   })
 );
 
