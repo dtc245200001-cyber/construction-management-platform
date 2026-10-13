@@ -20,12 +20,6 @@ exports.up = (pgm) => {
     SET updated_by = created_by
     WHERE updated_by IS NULL;
   `);
-
-  // 3. Đặt constraint NOT NULL cho updated_by sau khi đã backfill
-  pgm.sql(`
-    ALTER TABLE diary_entries
-      ALTER COLUMN updated_by SET NOT NULL;
-  `);
 };
 
 exports.down = (pgm) => {
