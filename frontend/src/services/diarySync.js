@@ -170,8 +170,35 @@ async function syncDiaryEntry(entry, attachments) {
     if (!serverId) {
       throw new Error("Máy chủ không trả về định danh nhật ký đã tạo.");
     }
-    await updateDiaryEntry(clientId, { serverId, server_id: serverId });
+    await updateDiaryEntry(clientId, {
+      serverId,
+      server_id: serverId,
+      version: serverEntry.version || 1,
+      serverVersion: serverEntry.version || 1,
+      pendingOperation: null,
+    });
     notifySyncUpdated();
+  } else if (entry.pendingOperation === "update") {
+    const response = await withRetry(() =>
+      api.put(`/projects/${projectId}/diary-entries/${serverId}`, {
+        work_item_id: workItemId,
+        content: entry.content,
+        version: entry.version || entry.serverVersion || 1,
+        entry_at: entry.entry_at || entry.entryAt || entry.created_at,
+        source: "offline_sync",
+        client_updated_at: entry.localUpdatedAt || entry.updatedAt || new Date().toISOString(),
+      }),
+    );
+    const updated = response?.data;
+    if (updated?.version) {
+      await updateDiaryEntry(clientId, {
+        version: updated.version,
+        serverVersion: updated.version,
+        pendingOperation: null,
+        syncError: null,
+      });
+      notifySyncUpdated();
+    }
   }
 
   for (const attachment of attachments) {
