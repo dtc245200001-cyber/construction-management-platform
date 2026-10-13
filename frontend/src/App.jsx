@@ -38,6 +38,10 @@ import ContractQuantityPage from './pages/ContractQuantityPage';
 import AcceptancePage from './pages/AcceptancePage';
 
 
+// S-33 / T-80 / T-82 Upload Queue
+import { UploadQueueProvider } from './context/UploadQueueContext';
+import UploadQueueDrawer from './components/UploadQueueDrawer';
+
 function App() {
   const [user, setUser] = useState(() => {
     try {
@@ -104,7 +108,8 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
+      <UploadQueueProvider>
+        <Routes>
 
         {/* ================= LOGIN ================= */}
         <Route element={<AuthLayout />}>
@@ -275,8 +280,10 @@ function App() {
         </Route>
 
       </Routes>
-    </BrowserRouter>
-  );
+      <UploadQueueDrawer />
+    </UploadQueueProvider>
+  </BrowserRouter>
+);
 }
 
 export default App;

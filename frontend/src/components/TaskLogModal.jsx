@@ -66,6 +66,7 @@ import {
   isUnderSizeLimit,
 
 } from "../utils/imageCompressor";
+import uploadQueueManager from "../services/uploadQueue";
 
 
 
@@ -453,7 +454,33 @@ export default function TaskLogModal({
 
   }, [content, projectId, taskId, draftKey]);
 
+  // Lắng nghe hàng đợi tải ảnh để tự động làm mới danh sách ảnh khi ảnh nền tải xong (T-80, T-82)
+  useEffect(() => {
+    if (!isOpen || !effectiveTaskId) return;
 
+    const initialCompleted = uploadQueueManager
+      .getItems()
+      .filter(
+        (it) => it.taskId === Number(effectiveTaskId) && it.status === "completed"
+      );
+    let prevCompletedIds = new Set(initialCompleted.map((it) => it.id));
+
+    const unsubscribe = uploadQueueManager.subscribe((items) => {
+      const taskCompletedItems = items.filter(
+        (it) => it.taskId === Number(effectiveTaskId) && it.status === "completed"
+      );
+      const hasNewCompleted = taskCompletedItems.some((it) => !prevCompletedIds.has(it.id));
+      if (hasNewCompleted) {
+        prevCompletedIds = new Set(taskCompletedItems.map((it) => it.id));
+        fetchLogs();
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, effectiveTaskId]);
 
   // Dọn dẹp object URLs khi unmount
 
@@ -498,13 +525,9 @@ export default function TaskLogModal({
 
 
     try {
-
-      const remainingSlots = 10 - selectedImages.length;
-
+      const remainingSlots = 30 - selectedImages.length;
       if (remainingSlots <= 0) {
-
-        setSubmitError("Đã đạt giới hạn tối đa 10 ảnh cho mỗi mục nhật ký.");
-
+        setSubmitError("Đã đạt giới hạn tối đa 30 ảnh cho mỗi mục nhật ký.");
         setCompressing(false);
 
         return;
@@ -651,227 +674,132 @@ export default function TaskLogModal({
     setSubmitError("");
 
 
-
     // Lưu nhật ký và Blob ảnh nguyên tử vào IndexedDB (T65 / T67)
-
     const persistOffline = async () => {
-
       const now = new Date().toISOString();
-
       const clientUuid = currentLogClientId || crypto.randomUUID();
-
       const imagesToStore = validImagesToUpload.map((img) => ({
-
         id: img.id,
-
         blob: img.file,
-
         fileName: img.name || img.file.name || "anh-hien-truong.jpg",
-
         mimeType: img.file?.type || "image/jpeg",
-
         size: img.file?.size || 0,
-
       }));
-
       const offlineResult = await createDiaryEntry(
-
         {
-
           id: clientUuid,
-
           clientId: clientUuid,
-
           client_id: clientUuid,
           projectId: Number(effectiveProjectId),
           taskId: Number(effectiveTaskId),
           entryType: "taskLog",
-
           content: content.trim(),
-
           createdAt: now,
-
           created_at: now,
-
           syncStatus: "pending",
-
           user_name: "Đã lưu trên thiết bị - chờ đồng bộ",
-
         },
-
         imagesToStore
       );
-
       await requestDiarySync();
-
       const localAttachments = (offlineResult.attachments || []).map((att) => {
-
         let objectUrl = "";
-
         if (isBlob(att.blob)) {
-
           objectUrl = URL.createObjectURL(att.blob);
-
           createdUrlsRef.current.add(objectUrl);
-
         }
-
         return {
-
           ...att,
-
           id: att.id,
-
           url: objectUrl || att.url || "",
-
           file_name: att.fileName || att.file_name || "anh-hien-truong",
-
           file_size: att.size || att.file_size || 0,
-
           isOffline: true,
-
         };
-
       });
-
       return {
-
         ...offlineResult,
-
         id: clientUuid,
-
         created_at: now,
-
         content: content.trim(),
-
         attachments: localAttachments,
-
         syncStatus: "pending",
-
         isOffline: true,
-
       };
-
     };
-
-
 
     const clearSavedForm = () => {
-
       validImagesToUpload.forEach((img) => {
-
         if (img.previewUrl?.startsWith("blob:")) {
-
           URL.revokeObjectURL(img.previewUrl);
-
         }
-
       });
-
-      setSelectedImages((prev) =>
-
-        prev.filter((img) => !validImagesToUpload.includes(img)),
-
-      );
+      if (hasFailedImages) {
+        setSelectedImages((prev) =>
+          prev.filter((img) => !validImagesToUpload.includes(img))
+        );
+      } else {
+        setSelectedImages([]);
+      }
 
       setContent("");
-
       setCurrentLogClientId(crypto.randomUUID());
 
-
-
       try {
-
         localStorage.removeItem(draftKey);
-
       } catch {
-
         // Bỏ qua nếu không thể xóa bản nháp
-
       }
-
     };
 
-
-
     try {
-
       // Mất mạng: lưu trực tiếp vào IndexedDB, không gọi API
-
       if (!navigator.onLine) {
-
         const offlineLog = await persistOffline();
-
         clearSavedForm();
-
         setLogs((prev) => [offlineLog, ...prev]);
-
         setError("");
-
         return;
-
       }
 
-
-
-      // Có mạng: giữ nguyên luồng gửi API hiện tại
-
+      // Có mạng: tách rời nhật ký và hàng đợi ảnh (T-80, T-81, T-82)
       const formData = new FormData();
-
-
-
       if (content.trim()) {
-
         formData.append("content", content.trim());
-
       }
-
       formData.append("client_id", currentLogClientId);
 
-
-
-      validImagesToUpload.forEach((img) => {
-
-        formData.append("images", img.file);
-
-      });
-
-
-
+      // 1. Đồng bộ nhật ký lên máy chủ trước (T-80: Nhật ký sync trước <300ms)
       const res = await api.post(
-
         `/projects/${effectiveProjectId}/tasks/${effectiveTaskId}/logs`,
-
         formData,
-
         {
-
           headers: {
-
             "Content-Type": "multipart/form-data",
-
           },
-
-        },
-
+        }
       );
 
+      const createdLog = res.data?.log;
+      const logId = createdLog?.id;
 
+      // 2. Tách ảnh sang hàng đợi nền độc lập (T-80: Chỉ gửi ảnh sau khi nhật ký đã tạo trên server)
+      if (logId && validImagesToUpload.length > 0) {
+        await uploadQueueManager.enqueueImages({
+          projectId: effectiveProjectId,
+          taskId: effectiveTaskId,
+          logId: logId,
+          files: validImagesToUpload.map((img) => img.file),
+        });
+      }
 
       clearSavedForm();
 
-
-
       if (res.data?.log) {
-
         setLogs((prev) => [res.data.log, ...prev]);
-
         if (onLogAdded) onLogAdded(res.data.log);
-
       } else {
-
         await fetchLogs();
-
       }
 
     } catch (err) {
