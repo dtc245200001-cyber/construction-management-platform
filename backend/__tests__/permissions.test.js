@@ -48,16 +48,18 @@ describe("permissions matrix (phân quyền 6 vai trò)", () => {
     });
   });
 
-  describe("chốt/mở khóa nhật ký thuộc Chỉ huy trưởng", () => {
-    test("chi_huy_truong chốt + điều chỉnh được nhật ký đã chốt", () => {
-      expect(can(ROLES.CHI_HUY_TRUONG, "site_log.close_daily")).toBe(true);
-      expect(can(ROLES.CHI_HUY_TRUONG, "site_log.correct_locked")).toBe(true);
-    });
-    test("ky_su_giam_sat và ban_quan_ly KHÔNG chốt/mở được", () => {
-      expect(can(ROLES.KY_SU_GIAM_SAT, "site_log.close_daily")).toBe(false);
-      expect(can(ROLES.BAN_QUAN_LY, "site_log.close_daily")).toBe(false);
+  describe("chốt/mở khóa nhật ký (S-24)", () => {
+    test("ky_su_giam_sat chốt sổ được, nhưng KHÔNG mở khóa được", () => {
+      expect(can(ROLES.KY_SU_GIAM_SAT, "site_log.close_daily")).toBe(true);
       expect(can(ROLES.KY_SU_GIAM_SAT, "site_log.correct_locked")).toBe(false);
-      expect(can(ROLES.BAN_QUAN_LY, "site_log.correct_locked")).toBe(false);
+    });
+    test("ban_quan_ly mở khóa được, nhưng KHÔNG chốt sổ được", () => {
+      expect(can(ROLES.BAN_QUAN_LY, "site_log.close_daily")).toBe(false);
+      expect(can(ROLES.BAN_QUAN_LY, "site_log.correct_locked")).toBe(true);
+    });
+    test("chi_huy_truong KHÔNG chốt sổ và KHÔNG mở khóa được", () => {
+      expect(can(ROLES.CHI_HUY_TRUONG, "site_log.close_daily")).toBe(false);
+      expect(can(ROLES.CHI_HUY_TRUONG, "site_log.correct_locked")).toBe(false);
     });
   });
 

@@ -77,10 +77,10 @@ export default function DiaryPage({ user }) {
     };
   }, []);
 
-  // S-27: chốt/mở sổ nhật ký là quyền của Chỉ huy trưởng (đồng bộ backend
-  // site_log.close_daily / site_log.correct_locked qua ma trận dùng chung).
-  const canLock = user && (user.is_system_admin || can(projectRole, 'site_log.close_daily'));
-  const canUnlock = user && (user.is_system_admin || can(projectRole, 'site_log.correct_locked'));
+  // S-24: Kỹ sư giám sát chốt/khóa sổ nhật ký ngày đã qua (site_log.close_daily), Ban quản lý mở khóa (site_log.correct_locked).
+  const effectiveRole = projectRole || user?.role;
+  const canLock = user && (user.is_system_admin || can(effectiveRole, 'site_log.close_daily'));
+  const canUnlock = user && (user.is_system_admin || can(effectiveRole, 'site_log.correct_locked'));
   const isPastDate = dateFilter && dateFilter < todayVN;
   useEffect(() => {
     if (location.state?.openForm) {
