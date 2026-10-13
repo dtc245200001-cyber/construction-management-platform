@@ -277,8 +277,24 @@ export function openDiaryDB() {
     };
 
     request.onerror = () => {
+      const err = request.error;
       dbPromise = null;
-      reject(request.error);
+      if (err?.name === "VersionError" && typeof idb.deleteDatabase === "function") {
+        console.warn("Phát hiện xung đột version IndexedDB, tự động đặt lại cơ sở dữ liệu...");
+        try {
+          const delReq = idb.deleteDatabase(DB_NAME);
+          delReq.onsuccess = () => {
+            dbPromise = null;
+            openDiaryDB().then(resolve).catch(reject);
+          };
+          delReq.onerror = () => reject(err);
+          return;
+        } catch {
+          reject(err);
+          return;
+        }
+      }
+      reject(err);
     };
 
     request.onblocked = () => {

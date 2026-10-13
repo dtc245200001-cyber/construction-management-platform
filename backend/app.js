@@ -6,7 +6,10 @@
 "use strict";
 
 require("dotenv").config({ path: require("path").resolve(__dirname, "../.env") });
-require("dotenv").config({ path: require("path").resolve(__dirname, ".env"), override: true });
+require("dotenv").config({
+  path: require("path").resolve(__dirname, ".env"),
+  override: process.env.NODE_ENV !== "test",
+});
 
 const express = require("express");
 const cors = require("cors");

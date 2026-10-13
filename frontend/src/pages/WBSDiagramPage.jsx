@@ -151,6 +151,14 @@ function WBSDiagramInner() {
   };
 
   useEffect(() => {
+    setItems([]);
+    setNodes([]);
+    setEdges([]);
+    setShowTaskForm(false);
+    setModalConfig(prev => ({ ...prev, isOpen: false, error: "" }));
+  }, [projectId]);
+
+  useEffect(() => {
     fetchWBS();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);

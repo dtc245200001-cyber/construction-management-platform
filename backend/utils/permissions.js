@@ -37,8 +37,10 @@ const PERMISSIONS = {
   // ── Ban quản lý dự án ──────────────────────────────────────────────
   // LỆCH đặc tả gốc (giữ theo quyết định): route POST/DELETE /members hiện cho
   // cả CHU_DAU_TU thao tác, nên giữ cả hai để không đổi hành vi đang chạy thật.
-  "member.manage": [BAN_QUAN_LY, CHU_DAU_TU],
-  "work_item.manage": [BAN_QUAN_LY],
+  // Điều chỉnh: bỏ CHU_DAU_TU (không quản lý thành viên, chỉ giám sát).
+  "member.manage": [BAN_QUAN_LY],
+  // Điều chỉnh: bổ sung CHI_HUY_TRUONG (tạo/sửa/xóa Hạng mục WBS).
+  "work_item.manage": [BAN_QUAN_LY, CHI_HUY_TRUONG],
   // TREO: duyệt nghiệm thu NỘI BỘ — bước riêng, không gộp bảng/trạng thái với
   // acceptance.approve_official của Chủ đầu tư.
   "acceptance.review_internal": [BAN_QUAN_LY],
@@ -51,18 +53,19 @@ const PERMISSIONS = {
   // LỆCH đặc tả gốc (giữ theo quyết định): các route đọc nhật ký / nhật ký ngày
   // hiện mở cho mọi thành viên, nên giữ đọc mở để không đổi hành vi.
   "site_log.view": ALL_MEMBERS,
-  // S-24: Kỹ sư giám sát chốt/khóa sổ nhật ký ngày đã qua.
-  "site_log.close_daily": [KY_SU_GIAM_SAT],
-  // S-24: Ban quản lý mở khóa nhật ký đã khóa (kèm lý do và audit log).
-  "site_log.correct_locked": [BAN_QUAN_LY],
   // TREO.
   "schedule.view_delays": [CHI_HUY_TRUONG],
 
   // ── Kỹ sư giám sát ─────────────────────────────────────────────────
-  // LỆCH đặc tả gốc (giữ theo quyết định): route POST /diary-entries hiện cho
-  // 4 role tạo (giám sát, chỉ huy trưởng, ban quản lý, đội trưởng), nên giữ
-  // nguyên để không đổi hành vi.
-  "site_log.create": [KY_SU_GIAM_SAT, CHI_HUY_TRUONG, BAN_QUAN_LY, DOI_TRUONG],
+  // Điều chỉnh: bỏ DOI_TRUONG khỏi site_log.create (đội trưởng chỉ báo cáo
+  // khối lượng tại /field, không ghi nhật ký). Bỏ CHI_HUY_TRUONG khỏi
+  // site_log.close_daily / correct_locked (chuyển giao cho KGS và BQL).
+  "site_log.create": [KY_SU_GIAM_SAT, CHI_HUY_TRUONG, BAN_QUAN_LY],
+  // Chốt sổ nhật ký cuối ngày — chuyển từ CHI_HUY_TRUONG sang KY_SU_GIAM_SAT.
+  "site_log.close_daily": [KY_SU_GIAM_SAT],
+  // Mở khóa nhật ký để điều chỉnh (bắt buộc nhập lý do, validate trong route).
+  // Chuyển từ CHI_HUY_TRUONG sang BAN_QUAN_LY.
+  "site_log.correct_locked": [BAN_QUAN_LY],
   // TREO: tải ảnh thực tế công trường làm bằng chứng.
   "site_log.upload_photo": [KY_SU_GIAM_SAT],
   // TREO: đối chiếu khối lượng đội báo cáo với thực tế.

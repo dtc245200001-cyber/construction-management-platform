@@ -7,6 +7,8 @@
 // Biến tuỳ chọn:
 //   DB_SSL=true     — bật TLS khi kết nối (Render yêu cầu).
 //   DB_POOL_MAX     — số kết nối tối đa (mặc định 10).
+// Bảo vệ: nếu biến trỏ production Supabase/Render mà NODE_ENV không phải production
+// thì từ chối khởi động để tránh ghi nhầm. Bypass có chủ ý: ALLOW_SUPABASE_LOCAL=true.
 
 const { Pool, types } = require("pg");
 
@@ -14,6 +16,23 @@ const { Pool, types } = require("pg");
 types.setTypeParser(1082, (val) => val);
 
 const ssl = process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : false;
+
+// ── Guard chặn kết nối production từ môi trường non-production ──
+(function guardProductionConnection() {
+  if (process.env.NODE_ENV === "production" || process.env.NODE_ENV === "test" || process.env.ALLOW_SUPABASE_LOCAL === "true") return;
+  const target = process.env.DATABASE_URL || process.env.DB_HOST || "";
+  const prodPatterns = [/supabase\.co/i, /pooler\.supabase/i, /render\.com/i, /railway\.app/i, /neon\.tech/i];
+  const isProd = prodPatterns.some((p) => p.test(target));
+  if (isProd) {
+    const masked = target.replace(/:[^:@]*@/, ":***@");
+    throw new Error(
+      "[GUARD] Từ chối kết nối production từ môi trường non-production. " +
+      "DATABASE_URL/DB_HOST trỏ supabase/render: " + masked.substring(0, 80) + ". " +
+      "Dùng DB local (localhost) hoặc đặt ALLOW_SUPABASE_LOCAL=true nếu cố ý. " +
+      "Xem AGENTS.md mục 2."
+    );
+  }
+})();
 
 const poolConfig = process.env.DATABASE_URL
   ? {

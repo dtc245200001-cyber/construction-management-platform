@@ -1,4 +1,8 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env.test') });
+
+// 🛡️ GUARD: Chặn ghi production — chỉ chạy trên localhost/test DB
+try { require('./_production-guard')(__filename.split('/').pop() || 'script.js'); } catch(e) { console.error(e.message); process.exit(1); }
+
 process.env.DATABASE_URL = process.env.LOCAL_DATABASE_URL;
 const pool = require('../config/db');
 

@@ -5,6 +5,7 @@ import React, {
 } from "react";
 
 import api from "../lib/api";
+import { usePermission } from "../hooks/usePermission";
 
 import {
   BriefcaseBusiness,
@@ -223,26 +224,12 @@ export default function MembersPage({
   // ROLE PERMISSIONS
   // ==========================================================
 
-  const currentMember = members.find(
-    (member) => Number(member.id) === Number(user?.id)
-  );
-
-  const currentProjectRole = currentMember?.role;
-
-  const canInvite =
-    user?.is_system_admin === true ||
-    currentProjectRole === "ban_quan_ly" ||
-    currentProjectRole === "chu_dau_tu";
-
-  const canManageTeams =
-    user?.role === "chu_dau_tu" ||
-    user?.role === "ban_quan_ly" ||
-    user?.role === "chi_huy_truong";
-
-  // S-25 NFR:
-  // chỉ Chỉ huy trưởng được giao việc.
-  const canAssign =
-    user?.role === "chi_huy_truong";
+  // Quyền lấy từ config/permissions (vai trò TRONG DỰ ÁN, không dùng user.role toàn cục).
+  // S-25 NFR: chỉ Chỉ huy trưởng được giao việc.
+  const { can } = usePermission();
+  const canInvite = can("member.invite");
+  const canManageTeams = can("team.manage");
+  const canAssign = can("work.assign");
 
   // ==========================================================
   // LOAD DATA
@@ -474,6 +461,13 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
     if (!currentProjectId) {
       return;
     }
+
+    setMembers([]);
+    setTeams([]);
+    setTasks([]);
+    setSelectedTeamMembers([]);
+    setAssignedTasks([]);
+    setTeamWorkload(null);
 
     fetchMembers();
     fetchTeams();
@@ -1376,6 +1370,7 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
             </div>
 
             {/* TASK ASSIGNMENT */}
+            {canAssign && (
             <div>
               <div className="rounded-xl border border-site-border bg-site-bg/40 p-4">
                 <div className="mb-4 flex items-start gap-3">
@@ -1395,20 +1390,7 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
                   </div>
                 </div>
 
-                {!canAssign ? (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                    Tài khoản hiện tại
-                    có thể quản lý đội,
-                    nhưng không có quyền
-                    giao việc. Hãy đăng
-                    nhập bằng tài khoản
-                    <strong>
-                      {" "}
-                      Chỉ huy trưởng
-                    </strong>{" "}
-                    để phân công.
-                  </div>
-                ) : !selectedTeamId ? (
+                {!selectedTeamId ? (
                   <div className="rounded-xl border border-dashed border-site-border p-6 text-center text-sm text-site-baseline">
                     Hãy chọn đội ở bên
                     trái trước.
@@ -1737,6 +1719,7 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
                 )}
               </div>
             </div>
+            )}
           </div>
         </section>
       )}
@@ -1780,7 +1763,8 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Desktop Table */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-site-border bg-site-bg/50 font-semibold text-site-baseline">
                 <tr>
@@ -2029,6 +2013,151 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
               </tbody>
             </table>
           </div>
+
+          {/* Mobile Card List */}
+          <div className="md:hidden flex flex-col divide-y divide-site-border">
+            {filteredMembers.map((member) => {
+              const locked = isLocked(member);
+              return (
+                <div
+                  key={`m-card-${member.id}`}
+                  className={`p-4 flex flex-col gap-3 ${locked ? "bg-site-critical/5" : "bg-white"}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`flex size-10 shrink-0 items-center justify-center rounded-full font-bold text-sm ${
+                          locked
+                            ? "bg-site-critical/10 text-site-critical"
+                            : "bg-site-primary/10 text-site-primary"
+                        }`}
+                      >
+                        {locked ? (
+                          <Lock className="size-4" />
+                        ) : (
+                          String(member.name || "?").substring(0, 2).toUpperCase()
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-site-dark text-sm">{member.name}</p>
+                        <p className="mt-0.5 flex items-center gap-1 text-xs text-site-baseline">
+                          <Mail className="size-3" />
+                          {member.email}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-site-bg text-site-dark border border-site-border shrink-0">
+                      <Shield className="size-3.5 text-site-baseline" />
+                      <span>{roleLabels[member.role] || member.role}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-site-border/60">
+                    <div>
+                      {locked ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-site-critical/10 px-2.5 py-1 text-xs font-medium text-site-critical">
+                          <Lock className="size-3" />
+                          Đang bị khóa
+                        </span>
+                      ) : hasFailedAttempts(member) ? (
+                        <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">
+                          Sai {member.failed_login_attempts}/5 lần
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-site-success/10 px-2.5 py-1 text-xs font-medium text-site-success">
+                          <span className="size-1.5 rounded-full bg-current" />
+                          Đã tham gia
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {locked && canInvite && (
+                        <button
+                          type="button"
+                          onClick={() => handleUnlock(member.id)}
+                          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg bg-site-primary/10 px-3 py-1.5 text-xs font-semibold text-site-primary hover:bg-site-primary/20 touch-target"
+                        >
+                          <LockOpen className="size-3.5" />
+                          Mở khóa
+                        </button>
+                      )}
+
+                      {!locked && hasFailedAttempts(member) && canInvite && (
+                        <button
+                          type="button"
+                          onClick={() => handleUnlock(member.id)}
+                          className="inline-flex min-h-[36px] items-center gap-1 rounded-lg bg-site-primary/10 px-3 py-1.5 text-xs font-semibold text-site-primary hover:bg-site-primary/20 touch-target"
+                        >
+                          <LockOpen className="size-3.5" />
+                          Reset
+                        </button>
+                      )}
+
+                      {canInvite &&
+                        Number(member.id) !== Number(user?.id) &&
+                        member.role !== "chu_dau_tu" && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveMember(member)}
+                            disabled={removingId === member.id}
+                            title="Xóa thành viên khỏi dự án"
+                            className="inline-flex min-h-[36px] items-center gap-1 rounded-lg bg-site-critical/10 px-3 py-1.5 text-xs font-semibold text-site-critical hover:bg-site-critical hover:text-white disabled:opacity-50 touch-target"
+                          >
+                            <Trash2 className="size-3.5" />
+                            {removingId === member.id ? "Đang xóa..." : "Xóa"}
+                          </button>
+                        )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {invitations.map((inv) => {
+              const badge = getInvitationStatusBadge(inv, sendingStatus[inv.id]);
+              return (
+                <div
+                  key={`inv-card-${inv.id}`}
+                  className="p-4 bg-amber-50/30 border-l-4 border-site-warning flex flex-col gap-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold italic text-site-dark text-sm">Chưa đăng ký</p>
+                      <p className="mt-0.5 text-xs text-site-baseline">{inv.email}</p>
+                    </div>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-site-bg text-site-dark border border-site-border shrink-0">
+                      {roleLabels[inv.role] || inv.role}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-site-border/60">
+                    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}>
+                      <span className="size-1.5 rounded-full bg-current" />
+                      {badge.label}
+                    </span>
+
+                    {canInvite && (
+                      <button
+                        type="button"
+                        onClick={() => handleResend(inv.id)}
+                        disabled={resendingId === inv.id || sendingStatus[inv.id] === "pending"}
+                        className="min-h-[36px] rounded-lg bg-site-primary/10 px-3 py-1.5 text-xs font-semibold text-site-primary disabled:opacity-50 touch-target"
+                      >
+                        {resendingId === inv.id ? "Đang gửi..." : "Gửi lại"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {filteredMembers.length === 0 && invitations.length === 0 && (
+              <div className="p-8 text-center text-sm text-site-baseline">
+                Chưa có thành viên nào trong dự án.
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -2037,13 +2166,13 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
       ===================================================== */}
 
       {showInviteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-site-dark/50 p-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-site-dark/50 p-0 sm:p-4 backdrop-blur-xs">
           <form
             onSubmit={handleInvite}
-            className="w-full max-w-md overflow-hidden rounded-2xl bg-site-surface shadow-xl"
+            className="w-full max-w-md overflow-hidden rounded-t-2xl sm:rounded-2xl bg-site-surface shadow-2xl safe-pb"
           >
-            <div className="flex items-center justify-between border-b border-site-border px-6 py-4">
-              <h3 className="text-lg font-bold">
+            <div className="flex items-center justify-between border-b border-site-border px-5 py-4">
+              <h3 className="text-base sm:text-lg font-bold">
                 Mời thành viên mới
               </h3>
 
@@ -2054,12 +2183,13 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
                     false
                   )
                 }
+                className="p-1 touch-target text-site-baseline hover:text-site-dark"
               >
                 <X className="size-5" />
               </button>
             </div>
 
-            <div className="space-y-4 p-6">
+            <div className="space-y-4 p-5 sm:p-6">
               {inviteError && (
                 <div className="rounded-lg bg-site-critical/10 p-3 text-sm text-site-critical">
                   {inviteError}
@@ -2073,7 +2203,7 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
               )}
 
               <div>
-                <label className="mb-1.5 block text-sm font-medium">
+                <label className="mb-1.5 block text-sm font-semibold">
                   Email người dùng *
                 </label>
 
@@ -2090,13 +2220,13 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
                         e.target.value,
                     })
                   }
-                  className="w-full rounded-lg border border-site-border bg-site-bg px-3 py-2.5 text-sm"
+                  className="w-full min-h-[44px] rounded-xl border border-site-border bg-site-bg px-3.5 py-2.5 text-[15px]"
                   placeholder="VD: nv.a@cong-truong-360.vn"
                 />
               </div>
 
               <div>
-                <label className="mb-1.5 block text-sm font-medium">
+                <label className="mb-1.5 block text-sm font-semibold">
                   Vai trò *
                 </label>
 
@@ -2111,7 +2241,7 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
                         e.target.value,
                     })
                   }
-                  className="w-full rounded-lg border border-site-border bg-site-bg px-3 py-2.5 text-sm"
+                  className="w-full min-h-[44px] rounded-xl border border-site-border bg-site-bg px-3.5 py-2.5 text-[15px]"
                 >
                   <option value="ban_quan_ly">
                     Ban quản lý
@@ -2136,7 +2266,7 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 border-t border-site-border bg-site-bg/50 px-6 py-4">
+            <div className="flex justify-end gap-3 border-t border-site-border bg-site-bg/50 px-5 py-4">
               <button
                 type="button"
                 onClick={() =>
@@ -2144,7 +2274,7 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
                     false
                   )
                 }
-                className="px-4 py-2 text-sm font-medium"
+                className="min-h-[44px] px-4 py-2 text-sm font-medium touch-target"
               >
                 Hủy
               </button>
@@ -2152,7 +2282,7 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
               <button
                 type="submit"
                 disabled={inviteSubmitting}
-                className="rounded-lg bg-site-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                className="min-h-[44px] rounded-xl bg-site-primary px-5 py-2 text-sm font-bold text-white disabled:opacity-50 touch-target"
               >
                 {inviteSubmitting ? "Đang gửi..." : "Gửi lời mời"}
               </button>

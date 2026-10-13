@@ -74,33 +74,35 @@ export default function DiaryWeekStrip({ projectId, selectedDate, onSelectDate, 
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
-          <h2 className="font-bold text-gray-800 text-lg">
+          <h2 className="font-bold text-gray-800 text-base sm:text-lg">
             Tuần {formatShortDayVN(from).split(' ')[1]} - {formatShortDayVN(to).split(' ')[1]}
           </h2>
           {adverseDaysCount > 0 && (
-            <p className="text-sm text-orange-600 font-medium flex items-center gap-1 mt-1">
-              <CloudRain size={16} /> Tuần này có {adverseDaysCount} ngày thời tiết bất lợi
+            <p className="text-xs sm:text-sm text-orange-600 font-medium flex items-center gap-1 mt-1">
+              <CloudRain size={15} /> Tuần này có {adverseDaysCount} ngày thời tiết bất lợi
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <button
             onClick={handlePrevWeek}
-            className="px-3 rounded-xl hover:bg-gray-100 text-gray-600 transition-colors min-w-[48px] min-h-[48px] flex items-center justify-center font-medium border border-gray-200"
+            className="flex-1 sm:flex-initial px-3 rounded-xl hover:bg-gray-100 text-gray-600 transition-colors min-h-[44px] flex items-center justify-center font-medium border border-gray-200 touch-target"
             title="Tuần trước"
+            aria-label="Tuần trước"
           >
             <ChevronLeft size={20} />
           </button>
           <button
             onClick={handleThisWeek}
-            className="px-4 rounded-xl hover:bg-blue-50 text-blue-600 transition-colors min-h-[48px] flex items-center justify-center font-semibold border border-blue-200"
+            className="flex-2 sm:flex-initial px-4 rounded-xl hover:bg-blue-50 text-blue-600 transition-colors min-h-[44px] flex items-center justify-center font-semibold border border-blue-200 text-sm touch-target"
           >
             Tuần này
           </button>
           <button
             onClick={handleNextWeek}
-            className="px-3 rounded-xl hover:bg-gray-100 text-gray-600 transition-colors min-w-[48px] min-h-[48px] flex items-center justify-center font-medium border border-gray-200"
+            className="flex-1 sm:flex-initial px-3 rounded-xl hover:bg-gray-100 text-gray-600 transition-colors min-h-[44px] flex items-center justify-center font-medium border border-gray-200 touch-target"
             title="Tuần sau"
+            aria-label="Tuần sau"
           >
             <ChevronRight size={20} />
           </button>
@@ -109,10 +111,10 @@ export default function DiaryWeekStrip({ projectId, selectedDate, onSelectDate, 
 
       <div 
         ref={scrollRef}
-        className="flex gap-3 overflow-x-auto pb-4 snap-x scroll-smooth hide-scrollbar"
+        className="flex gap-2.5 sm:gap-3 overflow-x-auto pb-3 snap-x snap-mandatory scroll-smooth no-scrollbar"
       >
         {loading && days.length === 0 ? (
-          <div className="flex-1 text-center py-4 text-sm text-gray-400 min-h-[140px] flex items-center justify-center">Đang tải...</div>
+          <div className="flex-1 text-center py-4 text-sm text-gray-400 min-h-[130px] flex items-center justify-center">Đang tải...</div>
         ) : (
           (days.length > 0 ? days : currentWeek.map(d => ({ date: d }))).map((day) => {
             const isSelected = day.date === selectedDate;
@@ -126,17 +128,18 @@ export default function DiaryWeekStrip({ projectId, selectedDate, onSelectDate, 
                 key={day.date}
                 onClick={() => onSelectDate(day.date)}
                 className={`
-                  relative flex-shrink-0 w-36 min-h-[140px] rounded-2xl transition-all snap-start flex flex-col p-3 gap-2 text-left
-                  ${isSelected ? 'bg-blue-50 shadow-md ring-2 ring-blue-600 border-transparent' : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'}
+                  relative shrink-0 w-32 sm:w-36 min-h-[130px] sm:min-h-[140px] rounded-2xl transition-all snap-start flex flex-col p-3 gap-2 text-left touch-target cursor-pointer
+                  ${isSelected ? 'bg-blue-50 shadow-sm ring-2 ring-blue-600 border-transparent' : 'bg-gray-50/80 hover:bg-gray-100 border border-gray-200'}
+                  ${isToday && !isSelected ? 'border-blue-400 ring-1 ring-blue-400/40' : ''}
                   ${isAdverse ? (isSelected ? 'border-dashed border-2 border-orange-500' : 'border-dashed border-2 border-orange-400 bg-orange-50/30') : ''}
                 `}
               >
                 <div className="flex items-center justify-between w-full">
-                  <span className={`text-sm font-bold ${isSelected ? 'text-blue-700' : 'text-gray-800'}`}>
+                  <span className={`text-xs sm:text-sm font-bold ${isSelected ? 'text-blue-700' : 'text-gray-800'}`}>
                     {formatShortDayVN(day.date)}
                   </span>
                   {isToday && (
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">
+                    <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full bg-blue-600 text-white shadow-xs">
                       Hôm nay
                     </span>
                   )}

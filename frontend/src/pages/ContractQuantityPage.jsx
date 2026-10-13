@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import api from "../lib/api";
+import { can } from "../config/permissions";
 import { buildTree } from "../utils/buildTree";
 import {
   formatMoneyVND,
@@ -54,7 +55,6 @@ import {
 } from "../components/ui/select";
 
 // Danh sách vai trò có quyền chỉnh sửa khối lượng hợp đồng
-const EDIT_ALLOWED_ROLES = ["chu_dau_tu", "ban_quan_ly"];
 
 /**
  * Kiểm tra xem một node hoặc bất kỳ node con cháu nào trong nhánh có khai báo khối lượng hay không.
@@ -105,9 +105,15 @@ export default function ContractQuantityPage({ user: _user }) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingItem, setDeletingItem] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const fetchSeqRef = React.useRef(0);
+  React.useEffect(() => {
+    setData(null); setError(null); setForbidden(false); setIsFromCache(false); setCachedAt(null); setCacheMiss(false);
+    setDialogOpen(false); setDeleteDialogOpen(false); setEditingItem(null); setDeletingItem(null);
+    fetchSeqRef.current += 1;
+  }, [projectId]);
 
   // Xác định quyền sửa: Chỉ khi đã tải xong vai trò và thuộc chu_dau_tu hoặc ban_quan_ly
-  const canEdit = projectRole ? EDIT_ALLOWED_ROLES.includes(projectRole) && !isReadOnly : false;
+  const canEdit = can(projectRole, "contract_quantity.edit") && !isReadOnly;
 
   // Lấy vai trò thành viên trong dự án
   const fetchMembership = useCallback(async () => {
@@ -121,13 +127,15 @@ export default function ContractQuantityPage({ user: _user }) {
 
   // Lấy dữ liệu khối lượng hợp đồng
   const fetchContractQuantities = useCallback(async () => {
+    const mySeq = ++fetchSeqRef.current; const myProjectId = projectId; const isStale = () => mySeq !== fetchSeqRef.current || myProjectId !== (localStorage.getItem("currentProjectId") || 1);
     setLoading(true);
     setError(null);
     setForbidden(false);
 
     try {
-      const res = await api.get(`/projects/${projectId}/contract-quantities`);
-      await writeSnapshot(projectId, SNAPSHOT_TYPES.CONTRACT_QUANTITIES, res.data);
+      const res = await api.get(`/projects/${myProjectId}/contract-quantities`);
+      if (isStale()) return;
+      await writeSnapshot(myProjectId, SNAPSHOT_TYPES.CONTRACT_QUANTITIES, res.data);
       setData(res.data);
       setIsFromCache(false);
       setCachedAt(null);
@@ -139,7 +147,8 @@ export default function ContractQuantityPage({ user: _user }) {
         setForbidden(true);
       } else if (isNetworkError(err)) {
         setIsOnline(false);
-        const snapshot = await readSnapshot(projectId, SNAPSHOT_TYPES.CONTRACT_QUANTITIES);
+        const snapshot = await readSnapshot(myProjectId, SNAPSHOT_TYPES.CONTRACT_QUANTITIES);
+        if (isStale()) return;
         if (snapshot?.payload !== undefined) {
           setData(snapshot.payload);
           setIsFromCache(true);
@@ -467,10 +476,12 @@ export default function ContractQuantityPage({ user: _user }) {
     return rows;
   };
 
+
+
   // 1. Trạng thái Đang tải (Skeleton)
   if (loading && !data) {
     return (
-      <div className="p-6 space-y-4 max-w-7xl mx-auto">
+      <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto">
         <div className="flex items-center justify-between">
           <Skeleton className="h-8 w-64" />
           <Skeleton className="h-10 w-36" />
@@ -483,7 +494,7 @@ export default function ContractQuantityPage({ user: _user }) {
   // 2. Trạng thái 403 Forbidden (Không có quyền)
   if (forbidden) {
     return (
-      <div className="p-8 max-w-3xl mx-auto text-center space-y-4 my-12">
+      <div className="p-6 sm:p-8 max-w-3xl mx-auto text-center space-y-4 my-12">
         <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-950/40 text-red-600 flex items-center justify-center mx-auto">
           <AlertCircle className="w-8 h-8" />
         </div>
@@ -498,7 +509,7 @@ export default function ContractQuantityPage({ user: _user }) {
   // 3. Trạng thái Lỗi mạng hoặc lỗi máy chủ
   if (error) {
     return (
-      <div className="p-8 max-w-xl mx-auto text-center space-y-4 my-12 border rounded-lg bg-card shadow-sm">
+      <div className="p-6 sm:p-8 max-w-xl mx-auto text-center space-y-4 my-12 border rounded-lg bg-card shadow-sm">
         <AlertCircle className="w-12 h-12 text-destructive mx-auto" />
         <h3 className="text-lg font-semibold">Đã xảy ra lỗi tải dữ liệu</h3>
         <p className="text-sm text-muted-foreground">{error}</p>
@@ -514,15 +525,15 @@ export default function ContractQuantityPage({ user: _user }) {
   const canViewPrices = data?.can_view_prices;
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-3.5 sm:p-6 pb-28 md:pb-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
       {/* Header trang */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 pb-2 border-b">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Coins className="w-6 h-6 text-primary" />
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <Coins className="w-5 sm:w-6 h-5 sm:h-6 text-primary" />
             Khối lượng và đơn giá hợp đồng
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">
             Quản lý khối lượng, đơn giá hợp đồng cho các hạng mục lá. Hạng mục cha tự động cộng dồn.
           </p>
         </div>
@@ -533,7 +544,7 @@ export default function ContractQuantityPage({ user: _user }) {
               variant="outline"
               size="sm"
               onClick={toggleAllCollapse}
-              className="h-10 px-3 cursor-pointer text-xs flex items-center gap-1.5"
+              className="h-9 sm:h-10 px-3 cursor-pointer text-xs flex items-center gap-1.5"
             >
               <ChevronsUpDown className="w-4 h-4 text-muted-foreground" />
               Mở rộng / Thu gọn
@@ -546,7 +557,7 @@ export default function ContractQuantityPage({ user: _user }) {
 
       {/* Trạng thái rỗng: Dự án chưa có hạng mục */}
       {items.length === 0 ? (
-        <div className="p-12 text-center border rounded-lg bg-card space-y-4">
+        <div className="p-8 sm:p-12 text-center border rounded-lg bg-card space-y-4">
           <FolderTree className="w-12 h-12 text-muted-foreground mx-auto stroke-1" />
           <h3 className="text-base font-semibold">Dự án chưa có hạng mục công việc nào</h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
@@ -557,40 +568,42 @@ export default function ContractQuantityPage({ user: _user }) {
           </Button>
         </div>
       ) : (
-        /* Bảng hiển thị khối lượng cây */
-        <div className="border rounded-lg bg-card shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left">
-              <thead>
-                <tr className="border-b bg-muted/60 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  <th className="p-3 w-28">Mã hạng mục</th>
-                  <th className="p-3 min-w-[280px]">Hạng mục</th>
-                  <th className="p-3 text-right w-36">Khối lượng</th>
-                  <th className="p-3 text-center w-28">Đơn vị</th>
-                  {canViewPrices && <th className="p-3 text-right w-44">Đơn giá</th>}
-                  {canViewPrices && <th className="p-3 text-right w-48">Thành tiền (₫)</th>}
-                  {canEdit && <th className="p-3 text-right w-32">Thao tác</th>}
-                </tr>
-              </thead>
-              <tbody>{renderTreeRows(treeRoots)}</tbody>
-
-              {/* Dòng tổng dự án cuối bảng */}
-              {canViewPrices && (
-                <tfoot>
-                  <tr className="border-t-2 bg-muted/40 font-bold">
-                    <td colSpan={5} className="p-4 text-sm text-right text-foreground uppercase tracking-wider">
-                      Tổng giá trị hợp đồng:
-                    </td>
-                    <td className="p-4 text-base text-right font-mono tabular-nums text-primary">
-                      {formatMoneyVND(data?.project_total)}
-                    </td>
-                    {canEdit && <td />}
+        <>
+          {/* Bảng hiển thị khối lượng cây */}
+          <div className="border rounded-lg bg-card shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-left">
+                <thead>
+                  <tr className="border-b bg-muted/60 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    <th className="p-3 w-28">Mã hạng mục</th>
+                    <th className="p-3 min-w-[280px]">Hạng mục</th>
+                    <th className="p-3 text-right w-36">Khối lượng</th>
+                    <th className="p-3 text-center w-28">Đơn vị</th>
+                    {canViewPrices && <th className="p-3 text-right w-44">Đơn giá</th>}
+                    {canViewPrices && <th className="p-3 text-right w-48">Thành tiền (₫)</th>}
+                    {canEdit && <th className="p-3 text-right w-32">Thao tác</th>}
                   </tr>
-                </tfoot>
-              )}
-            </table>
+                </thead>
+                <tbody>{renderTreeRows(treeRoots)}</tbody>
+
+                {/* Dòng tổng dự án cuối bảng */}
+                {canViewPrices && (
+                  <tfoot>
+                    <tr className="border-t-2 bg-muted/40 font-bold">
+                      <td colSpan={5} className="p-4 text-sm text-right text-foreground uppercase tracking-wider">
+                        Tổng giá trị hợp đồng:
+                      </td>
+                      <td className="p-4 text-base text-right font-mono tabular-nums text-primary">
+                        {formatMoneyVND(data?.project_total)}
+                      </td>
+                      {canEdit && <td />}
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* Dialog Nhập/Sửa Khối Lượng Hợp Đồng */}

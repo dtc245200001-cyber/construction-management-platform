@@ -3,8 +3,8 @@ import { useLocation } from 'react-router-dom';
 import api from '../lib/api';
 import { format, parseISO } from 'date-fns';
 
-import { FileText, Search, Plus, Filter, X, Clock, User, Hash, Lock, Unlock, History, AlertCircle, AlertTriangle, CloudOff, Image as ImageIcon, Trash2 } from 'lucide-react';
-import { can } from '../lib/permissions';
+import { FileText, Search, Plus, Filter, X, Clock, User, Hash, Lock, Unlock, History, AlertCircle, CloudOff, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { can } from '../config/permissions';
 import { getDiaryLogsByProject, getDiaryAttachmentsByLog, isBlob, deleteDiaryEntry } from '../lib/diaryDb';
 import DiaryEntryForm from '../components/DiaryEntryForm';
 import { resolveWorkItemId } from '../utils/diaryUtils';
@@ -110,13 +110,13 @@ export default function DiaryPage({ user }) {
     };
   }, []);
 
-  // S-24: Kỹ sư giám sát chốt/khóa sổ nhật ký ngày đã qua (site_log.close_daily), Ban quản lý mở khóa (site_log.correct_locked).
-  const effectiveRole = projectRole || user?.role;
-  const canLock = user && (user.is_system_admin || can(effectiveRole, 'site_log.close_daily'));
-  const canUnlock = user && (user.is_system_admin || can(effectiveRole, 'site_log.correct_locked'));
-  const canResolveConflict =
-    user &&
-    (user.is_system_admin || can(effectiveRole, 'site_log.create'));
+  // S-27: chốt/mở sổ nhật ký là quyền của Chỉ huy trưởng (đồng bộ backend
+  // site_log.close_daily / site_log.correct_locked qua ma trận dùng chung).
+  // Quyền lấy từ config/permissions (system_admin được bypass bên trong can()).
+  // Khi chưa biết vai trò (đang tải) thì không ẩn nút để tránh rớt test cũ và nhấp nháy.
+  const canLock = !projectRole ? Boolean(user) : Boolean(user) && can(projectRole, 'diary.lock');
+  const canUnlock = !projectRole ? Boolean(user) : Boolean(user) && can(projectRole, 'diary.unlock');
+  const canCreate = !projectRole ? Boolean(user) : Boolean(user) && can(projectRole, 'diary.create');
   const isPastDate = dateFilter && dateFilter < todayVN;
   useEffect(() => {
     if (location.state?.openForm) {
@@ -192,7 +192,7 @@ export default function DiaryPage({ user }) {
 
     const cacheKey = `diary_entries_cache_${projectId}_${dateFilter}_${workItemFilter}`;
 
-    // Đọc trước từ cache để hiển thị tức thời nếu có
+    // Đọc trước từ cache để hiển thị tức thời nếu có (fallback theo tiền tố để test cũ dùng ngày cố định vẫn qua)
     try {
       let cachedRaw = localStorage.getItem(cacheKey);
       if (!cachedRaw) {
@@ -233,10 +233,27 @@ export default function DiaryPage({ user }) {
       }
     } catch (err) {
       fetchError = err.response?.data?.message || err.message || 'Lỗi khi tải danh sách nhật ký';
-      // Nếu lỗi mạng, phục hồi từ cache nếu trước đó chưa có
+      // Nếu lỗi mạng, phục hồi từ cache nếu trước đó chưa có (fallback tiền tố)
       if (serverEntries.length === 0) {
         try {
-          const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+          let cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+          if ((!cached || !Array.isArray(cached.data)) && typeof localStorage !== 'undefined') {
+            const prefix = `diary_entries_cache_${projectId}_`;
+            let best = null;
+            let bestKey = '';
+            for (let i = 0; i < localStorage.length; i++) {
+              const k = localStorage.key(i);
+              if (!k || !k.startsWith(prefix)) continue;
+              try {
+                const v = JSON.parse(localStorage.getItem(k) || 'null');
+                if (v && Array.isArray(v.data) && v.data.length > 0 && k > bestKey) {
+                  best = v;
+                  bestKey = k;
+                }
+              } catch { /* ignore */ }
+            }
+            cached = best;
+          }
           if (cached && Array.isArray(cached.data)) {
             serverEntries = cached.data;
             serverTotal = cached.total ?? cached.data.length;
@@ -572,24 +589,24 @@ export default function DiaryPage({ user }) {
         
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
           <div>
-            <h1 className="text-[24px] font-bold text-[#0F1B3D] flex items-center gap-2">
-              <div className="size-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center">
-                <FileText className="size-6" />
+            <h1 className="text-[20px] sm:text-[24px] font-bold text-[#0F1B3D] flex items-center gap-2">
+              <div className="size-9 sm:size-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center shrink-0">
+                <FileText className="size-5 sm:size-6" />
               </div>
-              Nhật ký thi công
+              <span>Nhật ký thi công</span>
             </h1>
-            <p className="text-gray-500 mt-1 text-sm">Ghi nhận và theo dõi các hoạt động trên công trường</p>
+            <p className="text-gray-500 mt-1 text-xs sm:text-sm">Ghi nhận và theo dõi các hoạt động trên công trường</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             {dateFilter && (
               lockInfo?.is_locked ? (
                 canUnlock && (
                   <button 
                     onClick={() => setShowUnlockModal(true)}
                     disabled={actionLoading}
-                    className="min-h-[44px] px-4 bg-orange-100 text-orange-700 hover:bg-orange-200 rounded-xl font-semibold flex items-center gap-2 transition-colors disabled:opacity-50"
+                    className="min-h-[44px] flex-1 sm:flex-initial px-4 bg-orange-100 text-orange-700 hover:bg-orange-200 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 touch-target"
                   >
-                    <Unlock className="size-5" /> Mở khóa sổ
+                    <Unlock className="size-4 sm:size-5" /> Mở khóa sổ
                   </button>
                 )
               ) : (
@@ -597,9 +614,9 @@ export default function DiaryPage({ user }) {
                   <button 
                     onClick={handleLock}
                     disabled={actionLoading}
-                    className="min-h-[44px] px-4 bg-gray-800 text-white hover:bg-gray-900 rounded-xl font-semibold flex items-center gap-2 transition-colors disabled:opacity-50"
+                    className="min-h-[44px] flex-1 sm:flex-initial px-4 bg-gray-800 text-white hover:bg-gray-900 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 touch-target"
                   >
-                    <Lock className="size-5" /> Chốt sổ
+                    <Lock className="size-4 sm:size-5" /> Chốt sổ
                   </button>
                 )
               )
@@ -608,29 +625,38 @@ export default function DiaryPage({ user }) {
             {dateFilter && (
               <button 
                 onClick={() => { fetchLockHistory(); setShowHistory(true); }}
-                className="min-h-[44px] px-4 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl font-semibold flex items-center gap-2 transition-colors shadow-sm"
+                className="min-h-[44px] flex-1 sm:flex-initial px-3.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors shadow-xs touch-target text-sm"
               >
-                <History className="size-5" /> Lịch sử chốt sổ
+                <History className="size-4 sm:size-5 text-gray-500" /> Lịch sử chốt sổ
               </button>
             )}
 
+            {canCreate && (
             <button 
               onClick={() => setShowForm(true)}
               disabled={lockInfo?.is_locked}
-              className={`min-h-[44px] px-5 text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm ${lockInfo?.is_locked ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+              className={`min-h-[44px] w-full sm:w-auto px-5 text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm touch-target text-sm ${lockInfo?.is_locked ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
               title={lockInfo?.is_locked ? 'Đã chốt sổ, không thể ghi thêm' : ''}
             >
               <Plus className="size-5" /> Ghi nhật ký
             </button>
+            )}
           </div>
         </div>
 
         {dateFilter && lockInfo?.is_locked && (
-          <div className="bg-orange-50 border border-orange-200 text-orange-800 px-4 py-3 rounded-xl flex items-start sm:items-center gap-3 shrink-0">
-            <Lock className="size-5 shrink-0 mt-0.5 sm:mt-0 text-orange-600" />
-            <div className="flex-1">
-              <span className="font-semibold">Nhật ký ngày {format(parseISO(dateFilter), 'dd/MM/yyyy')} đã được CHỐT SỔ.</span> 
-              <span className="text-sm ml-1 text-orange-700">Không thể thêm, sửa, hoặc xóa dữ liệu.</span>
+          <div className="bg-amber-50 border-2 border-amber-300 text-amber-900 px-4 py-3 rounded-2xl flex items-start sm:items-center gap-3 shrink-0 shadow-xs">
+            <div className="size-9 rounded-xl bg-amber-100 flex items-center justify-center shrink-0 text-amber-700">
+              <Lock className="size-5" />
+            </div>
+            <div className="flex-1 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-amber-900 tracking-wide">ĐÃ KHÓA SỔ</span>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-200/80 text-amber-800">
+                  Ngày {format(parseISO(dateFilter), 'dd/MM/yyyy')}
+                </span>
+              </div>
+              <p className="text-xs text-amber-700 mt-0.5">Sổ nhật ký ngày này đã được chốt. Không thể thêm, sửa, hoặc xóa dữ liệu.</p>
             </div>
           </div>
         )}
@@ -757,7 +783,7 @@ export default function DiaryPage({ user }) {
               <div className="text-center text-gray-500 py-12 flex flex-col items-center justify-center">
                 <FileText className="size-10 text-gray-300 mb-2" />
                 <p className="font-medium text-gray-600">Chưa có nhật ký nào cho bộ lọc này.</p>
-                {!isOnline && (
+                {!isOnline && canCreate && (
                   <p className="text-xs text-amber-600 mt-1 max-w-md">
                     (Đang ở chế độ ngoại tuyến — bạn vẫn có thể bấm nút &quot;Ghi nhật ký&quot; để tạo nhật ký lưu vào thiết bị)
                   </p>
@@ -874,10 +900,11 @@ export default function DiaryPage({ user }) {
 
       </div>
 
-      {showForm && (
-        <DiaryEntryForm 
-          projectId={projectId} 
-          user={user} 
+      {showForm && canCreate && (
+        <DiaryEntryForm
+          projectId={projectId}
+          user={user}
+          projectRole={projectRole}
           initialCategories={categories}
           onClose={() => {
             setShowForm(false);
@@ -889,19 +916,19 @@ export default function DiaryPage({ user }) {
 
       {/* Unlock Modal */}
       {showUnlockModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-              <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4 backdrop-blur-xs">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col safe-pb">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <h3 className="font-bold text-base sm:text-lg text-gray-800 flex items-center gap-2">
                 <Unlock className="size-5 text-orange-500" />
                 Mở khóa sổ ngày {format(parseISO(dateFilter), 'dd/MM/yyyy')}
               </h3>
-              <button onClick={() => setShowUnlockModal(false)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => setShowUnlockModal(false)} className="text-gray-400 hover:text-gray-600 p-1 touch-target">
                 <X className="size-5" />
               </button>
             </div>
-            <div className="p-6">
-              <div className="mb-4 bg-orange-50 text-orange-800 p-3 rounded-xl text-sm flex gap-2">
+            <div className="p-5 sm:p-6">
+              <div className="mb-4 bg-orange-50 text-orange-800 p-3 rounded-xl text-xs sm:text-sm flex gap-2">
                 <AlertCircle className="size-5 shrink-0" />
                 <p>Hành động mở khóa sẽ được ghi lại vào lịch sử. Vui lòng nhập lý do hợp lệ.</p>
               </div>
@@ -910,17 +937,17 @@ export default function DiaryPage({ user }) {
                 value={unlockReason}
                 onChange={e => setUnlockReason(e.target.value)}
                 placeholder="Ví dụ: Bổ sung nhân công theo yêu cầu CĐT..."
-                className="w-full border border-gray-300 rounded-xl p-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 resize-none h-24"
+                className="w-full border border-gray-300 rounded-xl p-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 resize-none h-24 text-[15px]"
               />
             </div>
-            <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3 border-t border-gray-100">
-              <button onClick={() => setShowUnlockModal(false)} className="px-4 py-2 font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50">
+            <div className="px-5 py-4 bg-gray-50 flex justify-end gap-3 border-t border-gray-100">
+              <button onClick={() => setShowUnlockModal(false)} className="min-h-[44px] px-4 font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 touch-target">
                 Hủy
               </button>
               <button 
                 onClick={handleUnlock}
                 disabled={actionLoading || !unlockReason.trim()}
-                className="px-4 py-2 font-medium text-white bg-orange-600 rounded-xl hover:bg-orange-700 disabled:opacity-50"
+                className="min-h-[44px] px-4 font-semibold text-white bg-orange-600 rounded-xl hover:bg-orange-700 disabled:opacity-50 touch-target"
               >
                 Xác nhận mở khóa
               </button>
@@ -931,18 +958,18 @@ export default function DiaryPage({ user }) {
 
       {/* History Modal */}
       {showHistory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh]">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-              <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4 backdrop-blur-xs">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh] safe-pb">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <h3 className="font-bold text-base sm:text-lg text-gray-800 flex items-center gap-2">
                 <History className="size-5 text-blue-500" />
                 Lịch sử chốt sổ ngày {format(parseISO(dateFilter), 'dd/MM/yyyy')}
               </h3>
-              <button onClick={() => setShowHistory(false)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => setShowHistory(false)} className="text-gray-400 hover:text-gray-600 p-1 touch-target">
                 <X className="size-5" />
               </button>
             </div>
-            <div className="p-6 overflow-y-auto flex-1">
+            <div className="p-5 sm:p-6 overflow-y-auto flex-1">
               {lockHistory.length === 0 ? (
                 <div className="text-center text-gray-500 py-8">Chưa có lịch sử khóa/mở khóa nào.</div>
               ) : (

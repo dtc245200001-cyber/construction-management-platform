@@ -1,3 +1,12 @@
+
+// =======================================================
+// PRODUCTION GUARD — T? d?ng ch?n khi tr? vào production
+// =======================================================
+{
+  require('dotenv').config();
+  const _guard = require('./_production-guard');
+  _guard(__filename.split(/[\\/]/).pop());
+}
 const { Pool } = require("pg");
 const argon2 = require("argon2");
 require("dotenv").config({ path: __dirname + "/../.env" });
