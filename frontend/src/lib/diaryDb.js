@@ -17,6 +17,7 @@ export const DB_VERSION = 3;
 export const STORES = {
   DIARY_LOGS: "diaryLogs",
   DIARY_ATTACHMENTS: "diaryAttachments",
+  OFFLINE_SNAPSHOTS: "offlineSnapshots",
   // Aliases theo quy ước đặc tả
   DIARY_ENTRIES: "diaryLogs",
   DIARY_IMAGES: "diaryAttachments",
@@ -256,6 +257,10 @@ export function openDiaryDB() {
         if (!attachStore.indexNames.contains(idx.name)) {
           attachStore.createIndex(idx.name, idx.keyPath, { unique: idx.unique });
         }
+      }
+
+      if (!db.objectStoreNames.contains(STORES.OFFLINE_SNAPSHOTS)) {
+        db.createObjectStore(STORES.OFFLINE_SNAPSHOTS, { keyPath: "key" });
       }
     };
 
@@ -821,6 +826,30 @@ export async function getPendingSyncEntries() {
   };
   request.onerror = () => completion.reject(request.error);
   return completion.promise;
+}
+
+export async function saveOfflineSnapshot(projectId, type, payload) {
+  const db = await openDiaryDB();
+  const key = `${Number(projectId)}:${String(type)}`;
+  const record = { key, projectId: Number(projectId), type: String(type), payload, cachedAt: new Date().toISOString() };
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORES.OFFLINE_SNAPSHOTS, "readwrite");
+    tx.objectStore(STORES.OFFLINE_SNAPSHOTS).put(record);
+    tx.oncomplete = () => resolve(record);
+    tx.onerror = () => reject(tx.error || new Error("Không thể lưu dữ liệu ngoại tuyến."));
+    tx.onabort = () => reject(tx.error || new Error("Không thể lưu dữ liệu ngoại tuyến."));
+  });
+}
+
+export async function getOfflineSnapshot(projectId, type) {
+  const db = await openDiaryDB();
+  const key = `${Number(projectId)}:${String(type)}`;
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORES.OFFLINE_SNAPSHOTS, "readonly");
+    const request = tx.objectStore(STORES.OFFLINE_SNAPSHOTS).get(key);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error || new Error("Không thể đọc dữ liệu ngoại tuyến."));
+  });
 }
 
 /**

@@ -161,24 +161,16 @@ export default function DiaryPage({ user }) {
 
     // Đọc trước từ cache để hiển thị tức thời nếu có (fallback theo tiền tố để test cũ dùng ngày cố định vẫn qua)
     try {
-      let cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
-      if ((!cached || !Array.isArray(cached.data)) && typeof localStorage !== 'undefined') {
+      let cachedRaw = localStorage.getItem(cacheKey);
+      if (!cachedRaw) {
         const prefix = `diary_entries_cache_${projectId}_`;
-        let best = null;
-        let bestKey = '';
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          if (!k || !k.startsWith(prefix)) continue;
-          try {
-            const v = JSON.parse(localStorage.getItem(k) || 'null');
-            if (v && Array.isArray(v.data) && v.data.length > 0 && k > bestKey) {
-              best = v;
-              bestKey = k;
-            }
-          } catch { /* ignore */ }
-        }
-        cached = best;
+        const candidates = Object.keys(localStorage)
+          .filter((key) => key.startsWith(prefix))
+          .sort()
+          .reverse();
+        cachedRaw = candidates.length ? localStorage.getItem(candidates[0]) : null;
       }
+      const cached = JSON.parse(cachedRaw || 'null');
       if (cached && Array.isArray(cached.data)) {
         serverEntries = cached.data;
         serverTotal = cached.total ?? cached.data.length;

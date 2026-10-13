@@ -22,6 +22,8 @@ import {
   ChevronsUpDown,
 } from "lucide-react";
 import { toast } from "sonner";
+import { readSnapshot, writeSnapshot, isNetworkError, SNAPSHOT_TYPES } from "../services/offlineSnapshotCache";
+import OfflineSnapshotBanner from "../components/OfflineSnapshotBanner";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -79,6 +81,12 @@ export default function ContractQuantityPage({ user: _user }) {
   const [forbidden, setForbidden] = useState(false);
   const [data, setData] = useState(null);
   const [projectRole, setProjectRole] = useState(null);
+  const [isFromCache, setIsFromCache] = useState(false);
+  const [cachedAt, setCachedAt] = useState(null);
+  const [cacheMiss, setCacheMiss] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine !== false);
+  const isReadOnly = isFromCache || !isOnline;
+  const offlineMutationMessage = "Cần có mạng để thực hiện thao tác này";
 
   // Trạng thái thu gọn/mở rộng cây
   const [collapsedNodes, setCollapsedNodes] = useState({});
@@ -99,7 +107,7 @@ export default function ContractQuantityPage({ user: _user }) {
   const [deleting, setDeleting] = useState(false);
 
   // Xác định quyền sửa: Chỉ khi đã tải xong vai trò và thuộc chu_dau_tu hoặc ban_quan_ly
-  const canEdit = can(projectRole, "contract_quantity.edit");
+  const canEdit = can(projectRole, "contract_quantity.edit") && !isReadOnly;
 
   // Lấy vai trò thành viên trong dự án
   const fetchMembership = useCallback(async () => {
@@ -119,11 +127,26 @@ export default function ContractQuantityPage({ user: _user }) {
 
     try {
       const res = await api.get(`/projects/${projectId}/contract-quantities`);
+      await writeSnapshot(projectId, SNAPSHOT_TYPES.CONTRACT_QUANTITIES, res.data);
       setData(res.data);
+      setIsFromCache(false);
+      setCachedAt(null);
+      setCacheMiss(false);
+      setIsOnline(true);
     } catch (err) {
       const status = err?.response?.status;
       if (status === 403) {
         setForbidden(true);
+      } else if (isNetworkError(err)) {
+        setIsOnline(false);
+        const snapshot = await readSnapshot(projectId, SNAPSHOT_TYPES.CONTRACT_QUANTITIES);
+        if (snapshot?.payload !== undefined) {
+          setData(snapshot.payload);
+          setIsFromCache(true);
+          setCachedAt(snapshot.cachedAt);
+        } else {
+          setCacheMiss(true);
+        }
       } else {
         setError(err?.response?.data?.message || "Không thể tải khối lượng hợp đồng");
       }
@@ -171,6 +194,7 @@ export default function ContractQuantityPage({ user: _user }) {
 
   // Mở form chỉnh sửa
   const handleOpenEdit = (item) => {
+    if (isReadOnly) { toast.info(offlineMutationMessage); return; }
     setEditingItem(item);
     setFormQuantity(formatInputDisplayVN(item.quantity));
     // A1: Khai mới (chưa có giá trị): ô đơn vị trống "". Sửa hạng mục đã có giá trị: điền sẵn đơn vị hiện tại.
@@ -192,6 +216,7 @@ export default function ContractQuantityPage({ user: _user }) {
 
   // Lưu form cập nhật
   const handleSubmitForm = async (e) => {
+    if (isReadOnly) { toast.info(offlineMutationMessage); return; }
     e.preventDefault();
     if (submitting) return;
 
@@ -270,12 +295,14 @@ export default function ContractQuantityPage({ user: _user }) {
 
   // Mở hộp thoại xác nhận xoá
   const handleOpenDelete = (item) => {
+    if (isReadOnly) { toast.info(offlineMutationMessage); return; }
     setDeletingItem(item);
     setDeleteDialogOpen(true);
   };
 
   // Thực hiện xoá khối lượng
   const handleConfirmDelete = async () => {
+    if (isReadOnly) { toast.info(offlineMutationMessage); return; }
     if (!deletingItem || deleting) return;
 
     setDeleting(true);
@@ -516,6 +543,8 @@ export default function ContractQuantityPage({ user: _user }) {
           </div>
         )}
       </div>
+
+      <OfflineSnapshotBanner isFromCache={isFromCache} cachedAt={cachedAt} cacheMiss={cacheMiss} pageName="khối lượng hợp đồng" />
 
       {/* Trạng thái rỗng: Dự án chưa có hạng mục */}
       {items.length === 0 ? (

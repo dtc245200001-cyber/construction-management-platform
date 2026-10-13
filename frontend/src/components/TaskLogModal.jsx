@@ -137,12 +137,17 @@ export default function TaskLogModal({
 
   const [currentLogClientId, setCurrentLogClientId] = useState(() => crypto.randomUUID());
 
+  // Theo dõi trạng thái mounted để chặn cập nhật state sau khi component bị unmount
+  const isMountedRef = useRef(true);
+
   // Lưu trữ các Object URL đã tạo để thu hồi khi unmount
   const createdUrlsRef = useRef(new Set());
 
   useEffect(() => {
+    isMountedRef.current = true;
     const urls = createdUrlsRef.current;
     return () => {
+      isMountedRef.current = false;
       urls.forEach((url) => {
         try {
           URL.revokeObjectURL(url);
@@ -176,11 +181,13 @@ export default function TaskLogModal({
 
     if (!effectiveProjectId || !effectiveTaskId) {
 
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
 
       return;
 
     }
+
+    if (!isMountedRef.current) return;
 
     setLoading(true);
 
@@ -332,6 +339,8 @@ export default function TaskLogModal({
 
       const mergedLogs = [...filteredOffline, ...serverLogs];
 
+      if (!isMountedRef.current) return;
+
       if (isApiFailure && mergedLogs.length === 0) {
 
         setError("Không thể kết nối đến máy chủ và chưa có nhật ký lưu trên thiết bị.");
@@ -344,15 +353,23 @@ export default function TaskLogModal({
 
     } catch (err) {
 
-      setError(
+      if (isMountedRef.current) {
 
-        err.response?.data?.message || "Không thể tải nhật ký của công việc",
+        setError(
 
-      );
+          err.response?.data?.message || "Không thể tải nhật ký của công việc",
+
+        );
+
+      }
 
     } finally {
 
-      setLoading(false);
+      if (isMountedRef.current) {
+
+        setLoading(false);
+
+      }
 
     }
 
@@ -394,9 +411,16 @@ export default function TaskLogModal({
 
   useEffect(() => {
     if (!isOpen) return undefined;
-    const refreshAfterSync = () => fetchLogs();
+    if (typeof window === "undefined") return undefined;
+    const refreshAfterSync = () => {
+      if (isMountedRef.current) fetchLogs();
+    };
     window.addEventListener("diary-sync-updated", refreshAfterSync);
-    return () => window.removeEventListener("diary-sync-updated", refreshAfterSync);
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("diary-sync-updated", refreshAfterSync);
+      }
+    };
     // fetchLogs captures the current project and task IDs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, effectiveProjectId, effectiveTaskId]);
@@ -942,7 +966,11 @@ export default function TaskLogModal({
 
     } finally {
 
-      setSubmitting(false);
+      if (isMountedRef.current) {
+
+        setSubmitting(false);
+
+      }
 
     }
 

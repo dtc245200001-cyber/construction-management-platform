@@ -564,20 +564,47 @@ function DashboardShell({ user, setUser }) {
               </button>
 
               {isUserMenuOpen && (
-                <div className="absolute right-0 top-full mt-2 w-48 rounded-2xl border border-border bg-card p-1.5 shadow-xl z-50 animate-in fade-in zoom-in-95">
-                  <div className="px-3 py-2 border-b border-border/50 lg:hidden">
-                    <p className="text-xs font-bold">{user?.name || "Hương Lan"}</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {ROLE_LABELS[role] || "Chưa có vai trò"}
-                    </p>
+                <div className="absolute right-0 top-full mt-2 w-56 rounded-2xl border border-border bg-card p-2 shadow-xl z-50 animate-in fade-in zoom-in-95">
+                  <div className="px-3 py-2 border-b border-border/50 mb-1">
+                    <p className="text-xs font-bold truncate text-foreground">{user?.name || "Hương Lan"}</p>
+                    {user?.email && (
+                      <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
+                    )}
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {user?.is_system_admin && (
+                        <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold text-primary">
+                          Quản trị hệ thống
+                        </span>
+                      )}
+                      <span className="rounded-md bg-info/10 px-1.5 py-0.5 text-[9px] font-bold text-info">
+                        {ROLE_LABELS[role] || "Chưa có vai trò"}
+                      </span>
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleLogout}
-                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs text-danger hover:bg-danger-soft transition-colors text-left font-semibold outline-none cursor-pointer"
-                  >
-                    <LogOut className="size-4" /> Đăng xuất
-                  </button>
+
+                  {user?.is_system_admin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsUserMenuOpen(false);
+                        navigate("/admin");
+                      }}
+                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-foreground hover:bg-accent transition-colors text-left outline-none cursor-pointer"
+                    >
+                      <ShieldCheck className="size-4 text-primary" />
+                      Quản trị hệ thống
+                    </button>
+                  )}
+
+                  <div className="border-t border-border/50 mt-1 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs text-danger hover:bg-danger-soft transition-colors text-left font-semibold outline-none cursor-pointer"
+                    >
+                      <LogOut className="size-4" /> Đăng xuất
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -587,7 +614,7 @@ function DashboardShell({ user, setUser }) {
         {/* NỘI DUNG TRANG CHÍNH: CÓ CHỪA CHỖ CHO BOTTOM NAV TRÊN MOBILE */}
         <main className="flex-1 overflow-y-auto bg-background pb-20 lg:pb-0">
           <RouteGuard>
-            <Outlet context={{ currentProject }} />
+            <Outlet context={{ currentProject, projectRole: role, is_system_admin: Boolean(user?.is_system_admin) }} />
           </RouteGuard>
         </main>
       </div>
