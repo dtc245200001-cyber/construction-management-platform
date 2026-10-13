@@ -149,7 +149,14 @@ navigate(
 
   return (
     <div className="nl-login-page">
-      <img src={loginBg} className="nl-login-bg" alt="Background" />
+      <img
+        src={loginBg}
+        className="nl-login-bg"
+        alt="Background"
+        onError={(e) => {
+          e.currentTarget.style.display = 'none';
+        }}
+      />
       
       <main className="nl-main">
         <div className="nl-left-column">
@@ -199,7 +206,14 @@ navigate(
               <div className="nl-line"></div>
             </div>
             
-            <img src={loginIllustration} alt="Illustration" className="nl-illustration" />
+            <img
+              src={loginIllustration}
+              alt="Illustration"
+              className="nl-illustration"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
             
             <div className="nl-benefits">
               <div className="nl-benefit">
@@ -351,6 +365,7 @@ navigate(
           box-sizing: border-box;
           overflow-x: hidden;
           font-family: inherit;
+          background: linear-gradient(135deg, #e8f0fe 0%, #f1f5f9 100%);
         }
 
         .nl-login-bg {

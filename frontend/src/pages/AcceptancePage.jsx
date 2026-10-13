@@ -428,13 +428,13 @@ export default function AcceptancePage({ user }) {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
           <Button
             variant="outline"
             size="sm"
             onClick={fetchVouchers}
             disabled={loadingList}
-            className="flex items-center gap-1.5"
+            className="flex-1 sm:flex-initial min-h-[44px] flex items-center justify-center gap-1.5 touch-target"
           >
             <RefreshCw
               className={`h-4 w-4 ${loadingList ? "animate-spin" : ""}`}
@@ -445,17 +445,17 @@ export default function AcceptancePage({ user }) {
           {isSupervisor ? (
             <Button
               onClick={handleOpenCreateModal}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2"
+              className="w-full sm:w-auto min-h-[44px] bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-2 font-bold touch-target shadow-sm"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-5 w-5" />
               Lập phiếu nghiệm thu
             </Button>
           ) : (
             <div
               title="Chỉ Kỹ sư giám sát hoặc Quản trị viên mới có quyền lập phiếu"
-              className="inline-block"
+              className="w-full sm:w-auto"
             >
-              <Button disabled variant="secondary" className="cursor-not-allowed">
+              <Button disabled variant="secondary" className="w-full sm:w-auto min-h-[44px] cursor-not-allowed">
                 <Plus className="h-4 w-4 mr-1.5" />
                 Lập phiếu (Cần quyền Kỹ sư giám sát)
               </Button>
@@ -472,7 +472,7 @@ export default function AcceptancePage({ user }) {
             placeholder="Tìm theo tên đợt nghiệm thu..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9"
+            className="pl-9 min-h-[44px] text-[15px]"
           />
         </div>
 
@@ -504,7 +504,7 @@ export default function AcceptancePage({ user }) {
             variant="outline"
             size="sm"
             onClick={fetchVouchers}
-            className="mt-4"
+            className="mt-4 min-h-[44px] touch-target"
           >
             Thử lại
           </Button>
@@ -526,106 +526,111 @@ export default function AcceptancePage({ user }) {
           </p>
         </Card>
       ) : (
-        <div className="border rounded-lg overflow-x-auto bg-white shadow-sm">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50 text-slate-700 font-semibold border-b">
-              <tr>
-                <th className="py-3 px-4">Mã</th>
-                <th className="py-3 px-4">Tên đợt nghiệm thu</th>
-                <th className="py-3 px-4">Trạng thái</th>
-                <th className="py-3 px-4">Đợt âm</th>
-                <th className="py-3 px-4 text-center">Hạng mục</th>
-                <th className="py-3 px-4 text-center">Ảnh</th>
-                <th className="py-3 px-4">Người lập</th>
-                <th className="py-3 px-4">Thời gian</th>
-                <th className="py-3 px-4 text-right">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y text-slate-800">
-              {filteredVouchers.map((v) => {
-                const isNegative = v.has_negative_delta;
-                return (
-                  <tr key={v.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-3 px-4 font-mono font-medium text-slate-600">
-                      #{v.id}
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-slate-900">
-                      {v.batch_name}
-                    </td>
-                    <td className="py-3 px-4">
-                      {v.status === "draft" && (
-                        <Badge variant="outline" className="bg-slate-100 text-slate-700">
-                          Bản nháp
-                        </Badge>
-                      )}
-                      {v.status === "pending_review" && (
-                        <Badge className="bg-blue-100 text-blue-800 border-blue-200">
-                          Chờ duyệt
-                        </Badge>
-                      )}
-                      {v.status === "approved" && (
-                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">
-                          Đã duyệt
-                        </Badge>
-                      )}
-                      {v.status === "rejected" && (
-                        <Badge className="bg-rose-100 text-rose-800 border-rose-200">
-                          Từ chối
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      {isNegative ? (
-                        <Badge
-                          variant="destructive"
-                          className="bg-rose-100 text-rose-800 border-rose-300 font-normal gap-1"
+        <>
+          {/* Danh sách bảng phiếu nghiệm thu */}
+          <div className="border rounded-xl overflow-x-auto bg-white shadow-xs">
+            <table className="w-full text-sm text-left min-w-[760px]">
+              <thead className="bg-slate-50 text-slate-700 font-semibold border-b">
+                <tr>
+                  <th className="py-3 px-4">Mã</th>
+                  <th className="py-3 px-4">Tên đợt nghiệm thu</th>
+                  <th className="py-3 px-4">Trạng thái</th>
+                  <th className="py-3 px-4">Đợt âm</th>
+                  <th className="py-3 px-4 text-center">Hạng mục</th>
+                  <th className="py-3 px-4 text-center">Ảnh</th>
+                  <th className="py-3 px-4">Người lập</th>
+                  <th className="py-3 px-4">Thời gian</th>
+                  <th className="py-3 px-4 text-right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y text-slate-800">
+                {filteredVouchers.map((v) => {
+                  const isNegative = v.has_negative_delta;
+                  return (
+                    <tr key={v.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-3 px-4 font-mono font-medium text-slate-600">
+                        #{v.id}
+                      </td>
+                      <td className="py-3 px-4 font-semibold text-slate-900">
+                        {v.batch_name}
+                      </td>
+                      <td className="py-3 px-4">
+                        {v.status === "draft" && (
+                          <Badge variant="outline" className="bg-slate-100 text-slate-700">
+                            Bản nháp
+                          </Badge>
+                        )}
+                        {v.status === "pending_review" && (
+                          <Badge className="bg-blue-100 text-blue-800 border-blue-200">
+                            Chờ duyệt
+                          </Badge>
+                        )}
+                        {v.status === "approved" && (
+                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">
+                            Đã duyệt
+                          </Badge>
+                        )}
+                        {v.status === "rejected" && (
+                          <Badge className="bg-rose-100 text-rose-800 border-rose-200">
+                            Từ chối
+                          </Badge>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        {isNegative ? (
+                          <Badge
+                            variant="destructive"
+                            className="bg-rose-100 text-rose-800 border-rose-300 font-normal gap-1"
+                          >
+                            <AlertTriangle className="h-3 w-3 text-rose-600" />
+                            Có đợt âm
+                          </Badge>
+                        ) : (
+                          <span className="text-slate-400 text-xs">Không</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-center font-medium">
+                        {v.item_count}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        {v.photo_count > 0 ? (
+                          <span className="inline-flex items-center gap-1 text-slate-700 font-medium">
+                            <Camera className="h-3.5 w-3.5 text-slate-400" />
+                            {v.photo_count}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">0</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-slate-600">
+                        <div className="flex items-center gap-1.5">
+                          <User className="h-3.5 w-3.5 text-slate-400" />
+                          <span>{v.created_by_name || "—"}</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-xs text-slate-500 whitespace-nowrap">
+                        {new Date(v.created_at).toLocaleString("vi-VN")}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleViewDetail(v.id)}
+                          className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 h-8 px-2.5"
                         >
-                          <AlertTriangle className="h-3 w-3 text-rose-600" />
-                          Có đợt âm
-                        </Badge>
-                      ) : (
-                        <span className="text-slate-400 text-xs">Không</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-center font-medium">
-                      {v.item_count}
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      {v.photo_count > 0 ? (
-                        <span className="inline-flex items-center gap-1 text-slate-700 font-medium">
-                          <Camera className="h-3.5 w-3.5 text-slate-400" />
-                          {v.photo_count}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400">0</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-slate-600">
-                      <div className="flex items-center gap-1.5">
-                        <User className="h-3.5 w-3.5 text-slate-400" />
-                        <span>{v.created_by_name || "—"}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-xs text-slate-500 whitespace-nowrap">
-                      {new Date(v.created_at).toLocaleString("vi-VN")}
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleViewDetail(v.id)}
-                        className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 h-8 px-2.5"
-                      >
-                        <Eye className="h-3.5 w-3.5 mr-1" />
-                        Chi tiết
-                      </Button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                          <Eye className="h-3.5 w-3.5 mr-1" />
+                          Chi tiết
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+
+        </>
       )}
 
       {/* ── DIALOG: LẬP PHIẾU NGHIỆM THU MỚI ── */}

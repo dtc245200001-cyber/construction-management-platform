@@ -149,9 +149,9 @@ export default function LandingPage({ user, setUser }) {
     : 0;
 
   return (
-        <main className="grid flex-1 gap-5 p-6 xl:grid-cols-[minmax(0,1fr)_340px] overflow-y-auto">
+        <main className="grid flex-1 gap-4 sm:gap-5 p-3.5 sm:p-6 xl:grid-cols-[minmax(0,1fr)_340px] overflow-y-auto">
           {/* Left column */}
-          <div className="flex min-w-0 flex-col gap-5">
+          <div className="flex min-w-0 flex-col gap-4 sm:gap-5">
             {/* Hero */}
             <section className="hero-surface relative overflow-hidden rounded-2xl border border-border">
               <img
@@ -165,155 +165,170 @@ export default function LandingPage({ user, setUser }) {
                   WebkitMaskImage: "linear-gradient(90deg, transparent, #000 35%)",
                 }}
               />
-              <div className="relative p-7">
-                <p className="text-lg font-semibold text-info">Xin chào, {user?.name || 'Hương Lan'} 👋</p>
-                <h1 className="mt-1 text-4xl font-bold tracking-tight">Tổng quan dự án</h1>
-                <p className="mt-2 max-w-md text-sm text-muted-foreground">
+              <div className="relative p-4 sm:p-7">
+                <p className="text-sm sm:text-lg font-semibold text-info">Xin chào, {user?.name || 'Hương Lan'} 👋</p>
+                <h1 className="mt-1 text-2xl sm:text-4xl font-bold tracking-tight">Tổng quan dự án</h1>
+                <p className="mt-1.5 max-w-md text-xs sm:text-sm text-muted-foreground">
                   Theo dõi tiến độ, nghiệm thu và tình hình thi công công trình một cách nhanh chóng
                   và chính xác.
                 </p>
 
-                <div className="card-surface mt-6 grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex size-11 items-center justify-center rounded-xl bg-info-soft text-info">
-                      <Building2 className="size-5" />
+                <div className="card-surface mt-4 sm:mt-6 grid grid-cols-2 gap-2.5 sm:gap-4 p-3 sm:p-4 lg:grid-cols-4">
+                  <div className="flex items-center gap-2.5 sm:gap-3">
+                    <div className="flex size-9 sm:size-11 shrink-0 items-center justify-center rounded-xl bg-info-soft text-info">
+                      <Building2 className="size-4 sm:size-5" />
                     </div>
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold">Dự án {projectData.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">Tổng quan công trình</p>
+                      <p className="truncate text-xs sm:text-sm font-semibold">
+                        {projectData.name?.toLowerCase().startsWith("dự án") ? projectData.name : `Dự án ${projectData.name}`}
+                      </p>
+                      <p className="truncate text-[10px] sm:text-xs text-muted-foreground">Tổng quan công trình</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex size-11 items-center justify-center rounded-xl bg-info-soft text-info">
-                      <CalendarDays className="size-5" />
+                  <div className="flex items-center gap-2.5 sm:gap-3">
+                    <div className="flex size-9 sm:size-11 shrink-0 items-center justify-center rounded-xl bg-info-soft text-info">
+                      <CalendarDays className="size-4 sm:size-5" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs text-muted-foreground">Ngày bắt đầu</p>
-                      <p className="whitespace-nowrap text-sm font-semibold">
+                      <p className="text-[10px] sm:text-xs text-muted-foreground">Ngày bắt đầu</p>
+                      <p className="whitespace-nowrap text-xs sm:text-sm font-semibold">
                         {projectData.startDate ? format(parseISO(projectData.startDate), 'dd/MM/yyyy') : '--'}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex size-11 items-center justify-center rounded-xl bg-info-soft text-info">
-                      <UsersRound className="size-5" />
+                  <div className="flex items-center gap-2.5 sm:gap-3">
+                    <div className="flex size-9 sm:size-11 shrink-0 items-center justify-center rounded-xl bg-info-soft text-info">
+                      <UsersRound className="size-4 sm:size-5" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs text-muted-foreground">Số lượng nhân sự</p>
-                      <p className="whitespace-nowrap text-sm font-semibold">{projectData.membersCount} người</p>
+                      <p className="text-[10px] sm:text-xs text-muted-foreground">Số nhân sự</p>
+                      <p className="whitespace-nowrap text-xs sm:text-sm font-semibold">{projectData.membersCount} người</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex size-11 items-center justify-center rounded-xl bg-info-soft text-info">
-                      <CalendarDays className="size-5" />
+                  <div className="flex items-center gap-2.5 sm:gap-3">
+                    <div className="flex size-9 sm:size-11 shrink-0 items-center justify-center rounded-xl bg-info-soft text-info">
+                      <CalendarDays className="size-4 sm:size-5" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs text-muted-foreground">Thời gian sprint</p>
-                      <p className="whitespace-nowrap text-sm font-semibold">1 tuần</p>
+                      <p className="text-[10px] sm:text-xs text-muted-foreground">Chu kỳ sprint</p>
+                      <p className="whitespace-nowrap text-xs sm:text-sm font-semibold">1 tuần</p>
                     </div>
                   </div>
                 </div>
               </div>
             </section>
 
-            {/* KPI cards */}
-            <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-              <article className="card-surface p-5">
-                <div className="flex items-start gap-3 [&>div]:min-w-0">
-                  <div className="flex size-11 items-center justify-center rounded-xl bg-info-soft text-info">
-                    <CalendarDays className="size-5" />
+            {/* KPI cards: 2x2 grid on mobile/laptop with right rail, 4 columns on wide 2xl */}
+            <section className="grid grid-cols-2 gap-3 sm:gap-4 2xl:grid-cols-4">
+              <article className="card-surface p-3.5 sm:p-5 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-start gap-2.5 sm:gap-3 [&>div]:min-w-0">
+                    <div className="flex size-9 sm:size-11 shrink-0 items-center justify-center rounded-xl bg-info-soft text-info">
+                      <CalendarDays className="size-4 sm:size-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs sm:text-sm font-medium text-info-foreground">Tiến độ thực tế</p>
+                      <p className="whitespace-nowrap text-lg sm:text-2xl font-bold">{projectData.actualProgress}%</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-info-foreground">Tiến độ thực tế</p>
-                    <p className="whitespace-nowrap text-2xl font-bold">{projectData.actualProgress}%</p>
-                  </div>
-                </div>
-                <p className="mt-4 text-xs text-muted-foreground">
-                  ↘ Kế hoạch {projectData.plannedProgress}% 
-                  {projectData.actualProgress < projectData.plannedProgress && 
-                    <span className="text-danger-foreground"> · Chênh -{projectData.plannedProgress - projectData.actualProgress}%</span>
-                  }
-                </p>
-                <div className="mt-3 h-2 rounded-full bg-muted">
-                  <div className="h-2 rounded-full bg-info" style={{ width: `${projectData.actualProgress}%` }} />
-                </div>
-              </article>
-
-              <article className="card-surface bg-danger-soft/60 p-5">
-                <div className="flex items-start gap-3 [&>div]:min-w-0">
-                  <div className="flex size-11 items-center justify-center rounded-xl bg-danger-soft text-danger">
-                    <CalendarDays className="size-5" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-danger-foreground">Dự kiến hoàn thành</p>
-                    <p className="whitespace-nowrap text-xl font-bold">
-                      {projectData.currentFinish ? format(parseISO(projectData.currentFinish), 'dd/MM/yyyy') : '--'}
-                    </p>
-                  </div>
-                </div>
-                {delayDays > 0 ? (
-                  <p className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-danger/25 bg-card px-2.5 py-1.5 text-xs text-danger-foreground">
-                    <AlertCircle className="size-3.5" /> Trễ {delayDays} ngày so với kế hoạch gốc
+                  <p className="mt-3 text-[11px] sm:text-xs text-muted-foreground">
+                    ↘ KH {projectData.plannedProgress}%
+                    {projectData.actualProgress < projectData.plannedProgress &&
+                      <span className="text-danger-foreground"> · -{projectData.plannedProgress - projectData.actualProgress}%</span>
+                    }
                   </p>
-                ) : (
-                  <p className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-card px-2.5 py-1.5 text-xs text-success-foreground">
-                    <AlertCircle className="size-3.5" /> Đúng tiến độ gốc
-                  </p>
-                )}
+                </div>
+                <div className="mt-2.5 h-2 rounded-full bg-muted">
+                  <div className="h-2 rounded-full bg-info transition-all duration-500" style={{ width: `${projectData.actualProgress}%` }} />
+                </div>
               </article>
 
-              <article className="card-surface bg-success-soft/50 p-5">
-                <div className="flex items-start gap-3 [&>div]:min-w-0">
-                  <div className="flex size-11 items-center justify-center rounded-xl bg-success text-primary-foreground">
-                    <UsersRound className="size-5" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-success-foreground">
-                      Công việc đường găng
-                    </p>
-                    <p className="whitespace-nowrap text-2xl font-bold">{projectData.criticalTaskCount} việc</p>
+              <article className="card-surface bg-danger-soft/60 p-3.5 sm:p-5 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-start gap-2.5 sm:gap-3 [&>div]:min-w-0">
+                    <div className="flex size-9 sm:size-11 shrink-0 items-center justify-center rounded-xl bg-danger-soft text-danger">
+                      <CalendarDays className="size-4 sm:size-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs sm:text-sm font-medium text-danger-foreground">Dự kiến hoàn thành</p>
+                      <p className="truncate text-base sm:text-xl font-bold font-mono">
+                        {projectData.currentFinish ? format(parseISO(projectData.currentFinish), 'dd/MM/yyyy') : '--'}
+                      </p>
+                    </div>
                   </div>
                 </div>
-                <p className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-warning/30 bg-card px-2.5 py-1.5 text-xs text-warning-foreground">
-                  <AlertCircle className="size-3.5" /> Ưu tiên điều phối nhân lực
+                <div className="mt-3">
+                  {delayDays > 0 ? (
+                    <p className="inline-flex items-center gap-1 rounded-md border border-danger/25 bg-card px-2 py-1 text-[11px] font-medium text-danger-foreground">
+                      <AlertCircle className="size-3 shrink-0" /> Trễ {delayDays} ngày
+                    </p>
+                  ) : (
+                    <p className="inline-flex items-center gap-1 rounded-md border border-success/30 bg-card px-2 py-1 text-[11px] font-medium text-success-foreground">
+                      <AlertCircle className="size-3 shrink-0" /> Đúng hạn
+                    </p>
+                  )}
+                </div>
+              </article>
+
+              <article className="card-surface bg-success-soft/50 p-3.5 sm:p-5 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-start gap-2.5 sm:gap-3 [&>div]:min-w-0">
+                    <div className="flex size-9 sm:size-11 shrink-0 items-center justify-center rounded-xl bg-success text-primary-foreground">
+                      <UsersRound className="size-4 sm:size-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs sm:text-sm font-medium text-success-foreground">
+                        Việc đường găng
+                      </p>
+                      <p className="whitespace-nowrap text-lg sm:text-2xl font-bold">{projectData.criticalTaskCount} việc</p>
+                    </div>
+                  </div>
+                </div>
+                <p className="mt-3 inline-flex items-center gap-1 rounded-md border border-warning/30 bg-card px-2 py-1 text-[11px] text-warning-foreground font-medium">
+                  <AlertCircle className="size-3 shrink-0" /> Ưu tiên điều phối
                 </p>
               </article>
 
-              <article className="card-surface bg-warning-soft/50 p-5">
-                <div className="flex items-start gap-3 [&>div]:min-w-0">
-                  <div className="flex size-11 items-center justify-center rounded-xl bg-warning text-primary-foreground">
-                    <ClipboardList className="size-5" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-warning-foreground">
-                      Nghiệm thu chờ duyệt
-                    </p>
-                    <p className="whitespace-nowrap text-2xl font-bold">5 phiếu</p>
+              <article className="card-surface bg-warning-soft/50 p-3.5 sm:p-5 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-start gap-2.5 sm:gap-3 [&>div]:min-w-0">
+                    <div className="flex size-9 sm:size-11 shrink-0 items-center justify-center rounded-xl bg-warning text-primary-foreground">
+                      <ClipboardList className="size-4 sm:size-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs sm:text-sm font-medium text-warning-foreground">
+                        Nghiệm thu chờ duyệt
+                      </p>
+                      <p className="whitespace-nowrap text-lg sm:text-2xl font-bold">5 phiếu</p>
+                    </div>
                   </div>
                 </div>
-                <p className="mt-4 text-xs text-muted-foreground">
-                  2 phiếu quá 24h · chờ thanh toán
-                </p>
-                <p className="text-xl font-bold">1,24 tỷ</p>
+                <div className="mt-3 flex items-baseline justify-between gap-1">
+                  <p className="text-[11px] text-muted-foreground truncate">2 phiếu quá 24h</p>
+                  <p className="text-sm sm:text-lg font-bold text-foreground">1,24 tỷ</p>
+                </div>
               </article>
             </section>
 
-            {/* Task table */}
-            <section className="card-surface p-5">
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex size-9 items-center justify-center rounded-lg bg-info-soft text-info">
-                  <ClipboardList className="size-5" />
+            {/* Task table / Mobile Cards */}
+            <section className="card-surface p-4 sm:p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex size-8 sm:size-9 items-center justify-center rounded-lg bg-info-soft text-info">
+                    <ClipboardList className="size-4 sm:size-5" />
+                  </div>
+                  <h2 className="text-sm sm:text-base font-semibold">
+                    Công việc ưu tiên đường găng
+                  </h2>
                 </div>
-                <h2 className="text-base font-semibold">
-                  Công việc ưu tiên hôm nay (xếp theo ảnh hưởng đường găng)
-                </h2>
-                <button className="ml-auto inline-flex items-center gap-1 text-sm font-medium text-info">
-                  Xem tất cả <ChevronRight className="size-4" />
-                </button>
+                <Link to="/schedule" className="inline-flex items-center gap-1 text-xs sm:text-sm font-medium text-info hover:underline">
+                  Xem tất cả <ChevronRight className="size-3.5 sm:size-4" />
+                </Link>
               </div>
 
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full min-w-[720px] text-sm">
+              {/* Desktop Table (md and up) */}
+              <div className="mt-4 hidden md:block overflow-x-auto">
+                <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-left text-muted-foreground">
                       <th className="px-3 py-3 font-medium">Công việc</th>
@@ -321,30 +336,30 @@ export default function LandingPage({ user, setUser }) {
                       <th className="px-3 py-3 font-medium">Tiến độ</th>
                       <th className="px-3 py-3 font-medium">Thời hạn</th>
                       <th className="px-3 py-3 font-medium">Trạng thái</th>
-                      <th className="px-3 py-3 font-medium">Thao tác</th>
+                      <th className="px-3 py-3 font-medium text-right">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody>
                     {projectData.criticalTasks.length === 0 ? (
                       <tr><td colSpan="6" className="px-3 py-8 text-center text-muted-foreground font-medium">Không có công việc ưu tiên nào</td></tr>
                     ) : projectData.criticalTasks.map((t) => (
-                      <tr key={t.task_id} className="border-b border-border/70 last:border-0">
-                        <td className="px-3 py-4">
-                          <span className="flex items-center gap-3 font-medium">
-                            <span className="h-6 w-1.5 rounded-full bg-danger" />
+                      <tr key={t.task_id} className="border-b border-border/70 last:border-0 hover:bg-muted/40 transition-colors">
+                        <td className="px-3 py-3.5 font-medium">
+                          <span className="flex items-center gap-2.5">
+                            <span className="h-5 w-1.5 rounded-full bg-danger shrink-0" />
                             {t.task_name}
                           </span>
                         </td>
-                        <td className="px-3 py-4 text-muted-foreground">{t.assignee || 'Chưa giao'}</td>
-                        <td className="px-3 py-4">{t.percent_complete || 0}%</td>
-                        <td className="px-3 py-4">{t.early_finish ? format(parseISO(t.early_finish), 'dd/MM/yyyy') : '--'}</td>
-                        <td className="px-3 py-4">
-                          <span className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold bg-danger-soft text-danger-foreground border-danger/25">
+                        <td className="px-3 py-3.5 text-muted-foreground">{t.assignee || 'Chưa giao'}</td>
+                        <td className="px-3 py-3.5 font-medium tabular-nums">{t.percent_complete || 0}%</td>
+                        <td className="px-3 py-3.5 tabular-nums">{t.early_finish ? format(parseISO(t.early_finish), 'dd/MM/yyyy') : '--'}</td>
+                        <td className="px-3 py-3.5">
+                          <span className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-semibold bg-danger-soft text-danger-foreground border-danger/25">
                             ◆ GĂNG
                           </span>
                         </td>
-                        <td className="px-3 py-4">
-                          <Link to="/schedule" className="rounded-lg border border-info/30 px-3 py-1.5 text-xs font-medium text-info transition-colors hover:bg-info-soft">
+                        <td className="px-3 py-3.5 text-right">
+                          <Link to="/schedule" className="rounded-lg border border-info/30 px-2.5 py-1 text-xs font-medium text-info transition-colors hover:bg-info-soft">
                             Cập nhật
                           </Link>
                         </td>
@@ -353,22 +368,53 @@ export default function LandingPage({ user, setUser }) {
                   </tbody>
                 </table>
               </div>
+
+              {/* Mobile Card View (< md) */}
+              <div className="mt-3.5 space-y-2.5 md:hidden">
+                {projectData.criticalTasks.length === 0 ? (
+                  <p className="py-6 text-center text-xs text-muted-foreground">Không có công việc ưu tiên nào</p>
+                ) : projectData.criticalTasks.map((t) => (
+                  <div key={t.task_id} className="rounded-xl border border-border bg-card p-3 shadow-xs">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2">
+                        <span className="mt-0.5 h-4 w-1.5 rounded-full bg-danger shrink-0" />
+                        <div>
+                          <p className="text-sm font-semibold text-foreground line-clamp-1">{t.task_name}</p>
+                          <p className="text-xs text-muted-foreground">{t.assignee || 'Chưa giao đội'}</p>
+                        </div>
+                      </div>
+                      <span className="inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[10px] font-bold bg-danger-soft text-danger-foreground border-danger/25">
+                        GĂNG
+                      </span>
+                    </div>
+                    <div className="mt-2.5 flex items-center justify-between border-t border-border/50 pt-2 text-xs">
+                      <div className="flex items-center gap-3">
+                        <span className="text-muted-foreground">Hạn: <strong className="text-foreground tabular-nums">{t.early_finish ? format(parseISO(t.early_finish), 'dd/MM/yyyy') : '--'}</strong></span>
+                        <span className="text-muted-foreground">Đạt: <strong className="text-foreground tabular-nums">{t.percent_complete || 0}%</strong></span>
+                      </div>
+                      <Link to="/schedule" className="rounded-md border border-info/30 bg-info-soft px-2.5 py-1 text-xs font-medium text-info">
+                        Cập nhật
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </section>
 
             {/* Footer strip */}
-            <section className="card-surface grid gap-5 p-5 md:grid-cols-3">
+            <section className="card-surface grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-5 p-3.5 sm:p-5">
               {[
                 { icon: ShieldCheck, title: "An toàn lao động", sub: "Tối ưu và an toàn" },
                 { icon: Zap, title: "Vận hành ổn định", sub: "Luôn sẵn sàng" },
                 { icon: HeartHandshake, title: "Đồng hành cùng bạn", sub: "Trên mọi công trình" },
               ].map((item) => (
                 <div key={item.title} className="flex items-center gap-3">
-                  <div className="flex size-11 items-center justify-center rounded-xl bg-info-soft text-info">
-                    <item.icon className="size-5" />
+                  <div className="flex size-10 sm:size-11 shrink-0 items-center justify-center rounded-xl bg-info-soft text-info">
+                    <item.icon className="size-4 sm:size-5" />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold">{item.title}</p>
-                    <p className="text-xs text-muted-foreground">{item.sub}</p>
+                    <p className="text-xs sm:text-sm font-semibold">{item.title}</p>
+                    <p className="text-[11px] sm:text-xs text-muted-foreground">{item.sub}</p>
                   </div>
                 </div>
               ))}
@@ -376,7 +422,7 @@ export default function LandingPage({ user, setUser }) {
           </div>
 
           {/* Right column */}
-          <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-4 sm:gap-5">
             <section className="card-surface p-5">
               <div className="flex items-center gap-3">
                 <div className="flex size-9 items-center justify-center rounded-lg bg-info-soft text-info">

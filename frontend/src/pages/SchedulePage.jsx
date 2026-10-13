@@ -15,6 +15,7 @@ import {
   Edit3,
 } from "lucide-react";
 import TaskProgressModal from "../components/TaskProgressModal";
+import { usePermission } from "../hooks/usePermission";
 
 // Server đã dựng sẵn câu "A chờ B, B chờ C, C chờ A" trong message,
 // nên frontend dùng luôn, không tự ghép lại.
@@ -23,6 +24,9 @@ function getErrorText(err, fallback) {
 }
 
 export default function SchedulePage() {
+  const { can } = usePermission();
+  const canRecalculate = can("cpm.recalculate");
+  const canUpdateProgress = can("progress.update");
   const [scheduleData, setScheduleData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [recalculating, setRecalculating] = useState(false);
@@ -218,10 +222,10 @@ export default function SchedulePage() {
       : 0;
 
   return (
-    <div className="flex-1 min-h-0 bg-[#F3F6FB] text-[#0F1B3D] flex flex-col">
-      <div className="flex flex-col p-6 gap-6 max-w-[1672px] mx-auto w-full">
+    <div className="flex-1 min-h-0 bg-[#F3F6FB] text-[#0F1B3D] flex flex-col overflow-y-auto">
+      <div className="flex flex-col p-3.5 sm:p-6 pb-24 lg:pb-6 gap-4 sm:gap-6 max-w-[1672px] mx-auto w-full">
         {/* Hero Banner */}
-        <div className="relative h-[115px] rounded-2xl overflow-hidden shrink-0 flex items-center p-4 sm:p-6 shadow-sm">
+        <div className="relative min-h-[115px] rounded-2xl overflow-hidden shrink-0 flex items-center p-4 sm:p-6 shadow-sm">
           <div
             className="absolute inset-0 bg-cover bg-center"
             style={{
@@ -230,21 +234,21 @@ export default function SchedulePage() {
             }}
           />
 
-          <div className="absolute inset-0 bg-gradient-to-r from-[#0B3FA8] to-transparent opacity-95" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#0B3FA8] via-[#0B3FA8]/90 to-transparent" />
 
           <div className="relative z-10 flex w-full flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
             <div className="flex items-center gap-3 sm:gap-5">
-              <div className="size-12 sm:size-[60px] bg-[#1F63E0] rounded-xl flex items-center justify-center shadow-lg border border-white/20">
-                <TrendingUp className="size-8 text-white" />
+              <div className="size-11 sm:size-[60px] bg-[#1F63E0] rounded-xl flex items-center justify-center shadow-lg border border-white/20 shrink-0">
+                <TrendingUp className="size-6 sm:size-8 text-white" />
               </div>
 
               <div>
                 <div className="flex items-center flex-wrap gap-2 sm:gap-3">
-                  <h1 className="text-white text-xl sm:text-[30px] font-bold leading-tight">
+                  <h1 className="text-white text-lg sm:text-[26px] md:text-[30px] font-bold leading-tight">
                     Bảng đường găng (CPM)
                   </h1>
                   {summary && (
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                    <span className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold ${
                       summary.status === 'late' ? 'bg-red-500 text-white' : 
                       summary.status === 'early' ? 'bg-emerald-500 text-white' : 
                       'bg-blue-500 text-white'
@@ -256,27 +260,28 @@ export default function SchedulePage() {
                   )}
                 </div>
 
-                <p className="text-white/90 text-sm sm:text-[18px] font-medium mt-1.5">
+                <p className="text-white/90 text-xs sm:text-sm md:text-base font-medium mt-1">
                   {currentProject ? `Dự án: ${currentProject.name}` : 'Phương pháp đường găng (Critical Path Method)'}
                 </p>
               </div>
             </div>
 
-            <button
-              onClick={handleRecalculate}
-              disabled={recalculating}
-              className="h-11 px-5 flex items-center gap-2 bg-white text-[#0B3FA8] hover:bg-white/90 font-semibold rounded-[10px] text-[14px] shadow transition-all cursor-pointer disabled:opacity-60"
-            >
-              <RefreshCw
-                className={`size-4 ${
-                  recalculating ? "animate-spin" : ""
-                }`}
-              />
-
-              {recalculating
-                ? "Đang tính toán..."
-                : "Tính lại tiến độ (CPM)"}
-            </button>
+            {canRecalculate && (
+              <button
+                onClick={handleRecalculate}
+                disabled={recalculating}
+                className="w-full sm:w-auto h-10 sm:h-11 px-4 sm:px-5 flex items-center justify-center gap-2 bg-white text-[#0B3FA8] hover:bg-white/90 font-semibold rounded-[10px] text-xs sm:text-[14px] shadow transition-all cursor-pointer disabled:opacity-60 shrink-0"
+              >
+                <RefreshCw
+                  className={`size-4 ${
+                    recalculating ? "animate-spin" : ""
+                  }`}
+                />
+                {recalculating
+                  ? "Đang tính toán..."
+                  : "Tính lại tiến độ (CPM)"}
+              </button>
+            )}
           </div>
         </div>
 
@@ -284,54 +289,51 @@ export default function SchedulePage() {
         {errorMessage && (
           <div
             role="alert"
-            className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm"
+            className="flex items-center gap-3 p-3.5 sm:p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs sm:text-sm"
           >
-            <AlertTriangle className="size-5 shrink-0 text-red-500" />
+            <AlertTriangle className="size-4 sm:size-5 shrink-0 text-red-500" />
             <span>{errorMessage}</span>
           </div>
         )}
 
         {/* Thông báo thành công */}
         {successMessage && (
-          <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-sm">
-            <CheckCircle2 className="size-5 shrink-0 text-emerald-600" />
+          <div className="flex items-center gap-3 p-3.5 sm:p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs sm:text-sm">
+            <CheckCircle2 className="size-4 sm:size-5 shrink-0 text-emerald-600" />
             <span>{successMessage}</span>
           </div>
         )}
 
-        {/* KPI */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 shrink-0">
-          <div className="bg-white rounded-2xl border border-[#E6EBF3] p-5 shadow-sm flex items-center gap-4">
-            <div className="size-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-              <Layers className="size-6" />
+        {/* KPI: 1 cột mobile -> 3 cột tablet & laptop */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-5 shrink-0">
+          <div className="bg-white rounded-2xl border border-[#E6EBF3] p-4 sm:p-5 shadow-sm flex items-center gap-3.5">
+            <div className="size-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+              <Layers className="size-5 sm:size-6" />
             </div>
 
             <div>
               <p className="text-xs text-muted-foreground font-medium">
                 Tổng số công việc
               </p>
-
-              <p className="text-2xl font-bold text-[#0F1B3D] mt-0.5">
+              <p className="text-xl sm:text-2xl font-bold text-[#0F1B3D] mt-0.5">
                 {totalTasks}
               </p>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-[#E6EBF3] p-5 shadow-sm flex items-center gap-4">
-            <div className="size-12 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0">
-              <AlertTriangle className="size-6" />
+          <div className="bg-white rounded-2xl border border-[#E6EBF3] p-4 sm:p-5 shadow-sm flex items-center gap-3.5">
+            <div className="size-11 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+              <AlertTriangle className="size-5 sm:size-6" />
             </div>
 
             <div>
               <p className="text-xs text-muted-foreground font-medium">
                 Công việc đường găng
               </p>
-
               <div className="flex items-baseline gap-2 mt-0.5">
-                <span className="text-2xl font-bold text-red-600">
+                <span className="text-xl sm:text-2xl font-bold text-red-600">
                   {criticalTasksCount}
                 </span>
-
                 <span className="text-xs font-semibold text-red-500">
                   ({criticalPercent}% tổng số)
                 </span>
@@ -339,17 +341,16 @@ export default function SchedulePage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-[#E6EBF3] p-5 shadow-sm flex items-center gap-4">
-            <div className="size-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-              <Clock className="size-6" />
+          <div className="bg-white rounded-2xl border border-[#E6EBF3] p-4 sm:p-5 shadow-sm flex items-center gap-3.5">
+            <div className="size-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+              <Clock className="size-5 sm:size-6" />
             </div>
 
             <div>
               <p className="text-xs text-muted-foreground font-medium">
                 Độ trễ dự phòng (Total Float)
               </p>
-
-              <p className="text-sm font-semibold text-[#0F1B3D] mt-1">
+              <p className="text-xs sm:text-sm font-semibold text-[#0F1B3D] mt-1">
                 {criticalTasksCount > 0
                   ? "Float = 0 ngày trên đường găng"
                   : "Chưa có đường găng"}
@@ -358,24 +359,23 @@ export default function SchedulePage() {
           </div>
         </div>
 
-        {/* Toolbar */}
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
+        {/* Toolbar: Search & Segmented Control */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3 shrink-0">
           <div className="relative w-full sm:w-[320px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-[#64748B]" />
-
             <input
               type="text"
               placeholder="Tìm kiếm công việc, hạng mục..."
-              className="w-full h-11 pl-10 pr-4 rounded-[10px] border border-[#E6EBF3] bg-white text-[14px] focus:outline-none focus:ring-2 focus:ring-[#1F63E0]/20 focus:border-[#1F63E0]"
+              className="w-full h-10 sm:h-11 pl-10 pr-4 rounded-xl border border-[#E6EBF3] bg-white text-xs sm:text-[14px] focus:outline-none focus:ring-2 focus:ring-[#1F63E0]/20 focus:border-[#1F63E0]"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
 
-          <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-[#E6EBF3]">
+          <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-[#E6EBF3] overflow-x-auto no-scrollbar">
             <button
               onClick={() => setCriticalOnly(false)}
-              className={`min-h-11 px-4 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+              className={`flex-1 sm:flex-initial h-9 sm:h-10 px-3 sm:px-4 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                 !criticalOnly
                   ? "bg-[#1F63E0] text-white"
                   : "text-[#64748B] hover:bg-slate-100"
@@ -386,20 +386,20 @@ export default function SchedulePage() {
 
             <button
               onClick={() => setCriticalOnly(true)}
-              className={`min-h-11 px-4 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+              className={`flex-1 sm:flex-initial h-9 sm:h-10 px-3 sm:px-4 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap ${
                 criticalOnly
                   ? "bg-red-600 text-white"
                   : "text-red-600 hover:bg-red-50"
               }`}
             >
-              <Filter className="size-3.5" />
+              <Filter className="size-3.5 shrink-0" />
               Chỉ đường găng ({criticalTasksCount})
             </button>
           </div>
         </div>
 
-        {/* Bảng tiến độ */}
-        <div className="flex-1 bg-white rounded-2xl border border-[#E6EBF3] shadow-[0_1px_2px_rgba(16,24,40,.04),0_4px_12px_rgba(16,24,40,.04)] flex flex-col overflow-hidden">
+        {/* Bảng tiến độ CPM */}
+        <div className="flex flex-1 bg-white rounded-2xl border border-[#E6EBF3] shadow-[0_1px_2px_rgba(16,24,40,.04),0_4px_12px_rgba(16,24,40,.04)] flex-col overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[960px]">
               <thead className="bg-white sticky top-0 z-10 shadow-sm">
@@ -407,42 +407,35 @@ export default function SchedulePage() {
                   <th className="sticky left-0 z-20 bg-white px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] min-w-[220px] whitespace-nowrap">
                     Công việc
                   </th>
-
                   <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] min-w-[160px] whitespace-nowrap">
                     Hạng mục
                   </th>
-
-                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[150px] whitespace-nowrap">
+                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[140px] whitespace-nowrap">
                     Bắt đầu sớm (ES)
                   </th>
-
-                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[150px] whitespace-nowrap">
+                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[140px] whitespace-nowrap">
                     Kết thúc sớm (EF)
                   </th>
-
-                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[150px] whitespace-nowrap">
+                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[140px] whitespace-nowrap">
                     Bắt đầu muộn (LS)
                   </th>
-
-                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[150px] whitespace-nowrap">
+                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[140px] whitespace-nowrap">
                     Kết thúc muộn (LF)
                   </th>
-
                   <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[130px] whitespace-nowrap">
                     Dự phòng (Float)
                   </th>
-
-                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[140px] whitespace-nowrap">
+                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[130px] whitespace-nowrap">
                     Trạng thái
                   </th>
-
-                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[160px] whitespace-nowrap">
+                  <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[150px] whitespace-nowrap">
                     Tiến độ thực tế
                   </th>
-
+                  {canUpdateProgress && (
                   <th className="sticky right-0 z-20 bg-white px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] text-center w-[110px] whitespace-nowrap">
                     Thao tác
                   </th>
+                  )}
                 </tr>
               </thead>
 
@@ -469,7 +462,6 @@ export default function SchedulePage() {
                     >
                       <div className="flex flex-col items-center justify-center gap-2">
                         <Calendar className="size-8 text-gray-300" />
-
                         <p className="font-medium text-gray-600">
                           {criticalOnly
                             ? "Không có công việc nào trên đường găng (hoặc chưa tính toán CPM)."
@@ -489,7 +481,7 @@ export default function SchedulePage() {
                       }`}
                     >
                       <td className={`sticky left-0 z-20 bg-white px-4 py-2 font-medium text-[14px] ${row.newly_critical ? 'text-red-700 font-bold' : 'text-[#0F1B3D]'}`}>
-                        <div className="min-w-[190px] max-w-[190px] sm:max-w-[220px] break-words">
+                        <div className="min-w-[190px] max-w-[220px] break-words">
                           <span>{row.name}</span>
                         </div>
                       </td>
@@ -556,7 +548,6 @@ export default function SchedulePage() {
                         )}
                       </td>
 
-                      {/* Tiến độ thực tế (T-35) */}
                       <td className="px-4 py-2 text-center text-[13px]">
                         <div className="flex flex-col items-center gap-1">
                           <span className="font-semibold text-slate-800 text-xs">
@@ -593,7 +584,7 @@ export default function SchedulePage() {
                         </div>
                       </td>
 
-                      {/* Thao tác mở form cập nhật tiến độ (T-35) */}
+                      {canUpdateProgress && (
                       <td className="sticky right-0 z-20 bg-white px-4 py-2 text-center">
                         <button
                           type="button"
@@ -605,6 +596,7 @@ export default function SchedulePage() {
                           <span>Cập nhật</span>
                         </button>
                       </td>
+                      )}
                     </tr>
                   ))
                 )}
@@ -612,6 +604,7 @@ export default function SchedulePage() {
             </table>
           </div>
         </div>
+
 
         {/* Modal cập nhật tiến độ thực tế (T-35 / S-15) */}
         {selectedTaskForProgress && (

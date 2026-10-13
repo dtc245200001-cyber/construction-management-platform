@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useOutletContext, Link } from "react-router-dom";
 import * as XLSX from "@e965/xlsx";
 import api from "../lib/api";
+import { usePermission } from "../hooks/usePermission";
 import TaskForm from "../components/TaskForm";
 import CategoryModal, { saveCategory } from "../components/CategoryModal";
 import { buildTree, rollupCategoryDates, isLeafCategory, flattenTasks } from "../utils/buildTree";
@@ -53,6 +54,9 @@ export default function WBSPageWrapper(props) {
 }
 
 function WBSPage() {
+  // Chỉ Ban quản lý được tạo/sửa/xóa WBS; vai trò khác chỉ xem (nút bị ẩn hẳn).
+  const { can } = usePermission();
+  const canManage = can("wbs.manage");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(new Set());
@@ -61,6 +65,7 @@ function WBSPage() {
   // Lỗi 2 responsive: id node đang mở kebab menu hành động trên mobile
   // (null = không mở menu nào). Chỉ dùng ở màn hẹp (nút kebab lg:hidden).
   const [openMenuNodeId, setOpenMenuNodeId] = useState(null);
+  const [mobileTab, setMobileTab] = useState('tree'); // 'tree' | 'overview'
   const context = useOutletContext();
   const currentProject = context?.currentProject;
 
@@ -608,6 +613,8 @@ const closeTaskForm = () => {
             <td className="px-4 text-sm text-[#475569]">{renderDate(node.start_date)}</td>
             <td className="px-4 text-sm text-[#475569]">{renderDate(node.end_date)}</td>
             <td className={`px-4 text-right sticky right-0 z-10 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] transition-colors ${color.bg}`}>
+{canManage && (
+<>
  <div className="hidden items-center justify-end gap-1 lg:flex">
   {/* T-43: Đặt mốc */}
   <button
@@ -722,6 +729,8 @@ const closeTaskForm = () => {
     </>
   )}
 </div>
+</>
+)}
 </td>
           </tr>
           {isExpanded && node.children.map((child, i) => renderRow(child, level + 1, `${indexStr}.${i + 1}`, colorIndex))}
@@ -765,6 +774,7 @@ const closeTaskForm = () => {
           <td className="px-4 text-sm text-[#475569]">{renderDate(node.start_date)}</td>
           <td className="px-4 text-sm text-[#475569]">{renderDate(node.end_date)}</td>
           <td className="px-4 text-right sticky right-0 bg-white group-hover:bg-[#F5F8FF] z-10 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] transition-colors">
+            {canManage && (
             <div className="flex items-center justify-end gap-1">
               <button
                 onClick={() => openEditTaskForm (node)}
@@ -781,8 +791,194 @@ const closeTaskForm = () => {
                 <Trash2 className="size-4" />
               </button>
             </div>
+            )}
           </td>
         </tr>
+      );
+    }
+  };
+
+  const renderMobileTreeRow = (node, level, indexStr, colorIndex = 0) => {
+    const isExpanded = search.trim() ? true : expanded.has(node.id);
+    const isCategory = node.type === 'category';
+    const indent = Math.min(level * 14, 42); // compact indentation on mobile
+    const color = COLORS[colorIndex % COLORS.length];
+
+    if (isCategory) {
+      return (
+        <React.Fragment key={`mob-${node.id}`}>
+          <div
+            className={`rounded-xl border border-slate-200/90 p-3 flex flex-col gap-2 shadow-2xs transition-colors ${color.bg}`}
+            style={{ marginLeft: `${indent}px` }}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-2 flex-1 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => toggleExpand(node.id)}
+                  aria-label={isExpanded ? "Thu gọn" : "Mở rộng"}
+                  className="mt-0.5 size-7 shrink-0 flex items-center justify-center bg-white/70 hover:bg-white rounded-lg touch-target"
+                >
+                  {isExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                </button>
+                <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold bg-white/90 shrink-0 ${color.text}`}>
+                  {indexStr}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <FolderOpen className={`size-4 shrink-0 ${color.text}`} />
+                    <span className="font-bold text-sm text-[#0F1B3D] break-words">{node.name}</span>
+                  </div>
+                  {milestones[node.id] && (
+                    <span className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-600">
+                      <Flag className="size-3" />
+                      Mốc: {renderDate(milestones[node.id].required_date)}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {canManage && (
+                <div className="relative shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setOpenMenuNodeId(openMenuNodeId === node.id ? null : node.id)}
+                    aria-label="Mở menu thao tác"
+                    className="size-8 flex items-center justify-center rounded-lg hover:bg-black/5 text-[#475569] touch-target"
+                  >
+                    <MoreVertical className="size-4" />
+                  </button>
+                  {openMenuNodeId === node.id && (
+                    <>
+                      <button
+                        type="button"
+                        aria-label="Đóng menu thao tác"
+                        onClick={() => setOpenMenuNodeId(null)}
+                        className="fixed inset-0 z-40 cursor-default bg-transparent"
+                      />
+                      <div className="absolute right-0 top-full z-50 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+                        <button
+                          type="button"
+                          onClick={() => { setOpenMenuNodeId(null); openMilestoneModal(node); }}
+                          className="flex min-h-[40px] w-full items-center gap-2 px-3.5 text-left text-xs font-semibold text-red-600 hover:bg-red-50"
+                        >
+                          <Flag className="size-3.5" /> Đặt mốc bàn giao
+                        </button>
+                        {isLeafCategory(node) && (
+                          <button
+                            type="button"
+                            onClick={() => { setOpenMenuNodeId(null); openCreateTaskForm(node); }}
+                            className="flex min-h-[40px] w-full items-center gap-2 px-3.5 text-left text-xs font-semibold text-[#1F63E0] hover:bg-blue-50"
+                          >
+                            <Plus className="size-3.5" /> Thêm công việc
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => { setOpenMenuNodeId(null); openAddChildModal(node); }}
+                          className="flex min-h-[40px] w-full items-center gap-2 px-3.5 text-left text-xs font-semibold text-[#1F63E0] hover:bg-blue-50"
+                        >
+                          <PlusCircle className="size-3.5" /> Thêm mục con
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setOpenMenuNodeId(null); openEditCategoryModal(node); }}
+                          className="flex min-h-[40px] w-full items-center gap-2 px-3.5 text-left text-xs font-semibold text-[#475569] hover:bg-slate-50"
+                        >
+                          <Pencil className="size-3.5" /> Sửa tên hạng mục
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setOpenMenuNodeId(null); handleDeleteCategory(node); }}
+                          className="flex min-h-[40px] w-full items-center gap-2 px-3.5 text-left text-xs font-semibold text-red-500 hover:bg-red-50"
+                        >
+                          <Trash2 className="size-3.5" /> Xóa hạng mục
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-[#475569] pt-1.5 border-t border-black/5">
+              <span className="font-semibold px-2 py-0.5 rounded bg-white/80 text-[#4F46E5]">Hạng mục</span>
+              <span>{renderDate(node.start_date)} - {renderDate(node.end_date)}</span>
+            </div>
+          </div>
+
+          {isExpanded && node.children.map((child, i) =>
+            renderMobileTreeRow(child, level + 1, `${indexStr}.${i + 1}`, colorIndex)
+          )}
+        </React.Fragment>
+      );
+    } else {
+      // Task row
+      return (
+        <div
+          key={`mob-${node.id}`}
+          className="rounded-xl border border-slate-200 bg-white p-3 flex flex-col gap-2 shadow-2xs hover:border-blue-200 transition-colors"
+          style={{ marginLeft: `${indent}px` }}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-start gap-2 flex-1 min-w-0">
+              <span className="px-1.5 py-0.5 rounded text-[11px] font-mono font-bold bg-slate-100 text-slate-600 shrink-0 mt-0.5">
+                {indexStr}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <FileText className="size-4 shrink-0 text-[#94A3B8]" />
+                  <span className="font-medium text-sm text-[#0F1B3D]">{node.name}</span>
+                  {node.duration_days && (
+                    <span className="text-[10px] text-[#475569] bg-[#F1F5F9] px-1.5 py-0.5 rounded font-mono font-medium">
+                      {node.duration_days}d
+                    </span>
+                  )}
+                </div>
+                {node.predecessors?.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    <span className="text-[10px] text-slate-400">RB:</span>
+                    {node.predecessors.map((p, idx) => {
+                      const refIdx = taskIdToIndexMap[p.id] || p.id;
+                      const type = p.type !== 'FS' ? p.type : '';
+                      return (
+                        <span key={idx} className="bg-slate-100 text-slate-600 px-1 py-0.2 rounded text-[10px] font-mono border border-slate-200">
+                          {refIdx}{type}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {canManage && (
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => openEditTaskForm(node)}
+                  title="Sửa công việc"
+                  className="size-8 flex items-center justify-center text-[#475569] hover:bg-slate-100 rounded-lg touch-target"
+                >
+                  <Pencil className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteTask(node)}
+                  title="Xóa công việc"
+                  className="size-8 flex items-center justify-center text-red-500 hover:bg-red-50 rounded-lg touch-target"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between text-[11px] text-[#475569] pt-1.5 border-t border-slate-100">
+            <span className="font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">Công việc</span>
+            <span>{renderDate(node.start_date)} - {renderDate(node.end_date)}</span>
+          </div>
+        </div>
       );
     }
   };
@@ -846,69 +1042,94 @@ const visibleItems = useMemo(() => {
     <div className="flex-1 min-h-0 bg-[#F3F6FB] text-[#0F1B3D] flex flex-col">
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row p-4 sm:p-6 gap-6 max-w-[1672px] mx-auto w-full">
         {/* Main Content */}
-        <div className="flex-1 flex flex-col gap-6 overflow-hidden min-w-0">
+        <div className={`flex-1 flex flex-col gap-5 sm:gap-6 overflow-hidden min-w-0 ${mobileTab === 'overview' ? 'hidden lg:flex' : 'flex'}`}>
           
           {/* Hero Banner */}
-          <div className="relative h-[115px] rounded-2xl overflow-hidden shrink-0 flex items-center p-4 sm:p-6 shadow-sm">
+          <div className="relative min-h-[96px] sm:h-[115px] rounded-2xl overflow-hidden shrink-0 flex items-center p-4 sm:p-6 shadow-sm">
             <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1541888086425-d81bb19240f5?auto=format&fit=crop&q=80')" }}></div>
             <div className="absolute inset-0 bg-gradient-to-r from-[#0B3FA8] to-transparent opacity-95"></div>
             <div className="relative z-10 flex flex-wrap items-center gap-3 sm:gap-5">
-              <div className="size-12 sm:size-[60px] bg-[#1F63E0] rounded-xl flex items-center justify-center shadow-lg">
-                <Network className="size-8 text-white" />
+              <div className="size-10 sm:size-[56px] bg-[#1F63E0] rounded-xl flex items-center justify-center shadow-lg shrink-0">
+                <Network className="size-6 sm:size-8 text-white" />
               </div>
-              <div>
-                <h1 className="text-white text-xl sm:text-[30px] font-bold leading-tight">Cơ cấu công việc (WBS)</h1>
-                <p className="text-white/90 text-sm sm:text-[18px] font-medium mt-1.5">{currentProject ? `Dự án: ${currentProject.name}` : 'Quản lý cấu trúc hạng mục phân cấp của dự án'}</p>
+              <div className="min-w-0">
+                <h1 className="text-white text-lg sm:text-[28px] font-bold leading-tight">Cơ cấu công việc (WBS)</h1>
+                <p className="text-white/90 text-xs sm:text-[15px] font-medium mt-1 truncate">{currentProject ? `Dự án: ${currentProject.name}` : 'Quản lý cấu trúc hạng mục phân cấp của dự án'}</p>
               </div>
             </div>
           </div>
 
+          {/* Mobile Tab Switcher */}
+          <div className="flex lg:hidden bg-slate-200/80 p-1 rounded-xl shrink-0">
+            <button
+              type="button"
+              onClick={() => setMobileTab('tree')}
+              className={`flex-1 py-2 text-xs sm:text-sm font-bold rounded-lg transition-all touch-target ${
+                mobileTab === 'tree' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Cơ cấu WBS ({stats.totalTasks + stats.totalCategories})
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileTab('overview')}
+              className={`flex-1 py-2 text-xs sm:text-sm font-bold rounded-lg transition-all touch-target ${
+                mobileTab === 'overview' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Tổng quan & Thao tác
+            </button>
+          </div>
+
           {/* Toolbar */}
-          <div className="flex flex-wrap items-center gap-3 shrink-0">
-            <div className="relative w-full sm:w-[290px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-[#64748B]" />
-              <input 
-                type="text" 
-                placeholder="Tìm kiếm công việc, hạng mục…"
-                className="w-full h-11 pl-10 pr-4 rounded-[10px] border border-[#E6EBF3] bg-white text-[14px] focus:outline-none focus:ring-2 focus:ring-[#1F63E0]/20 focus:border-[#1F63E0]"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+            <div className="flex items-center gap-2 flex-1 w-full sm:max-w-md">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-[#64748B]" />
+                <input
+                  type="text"
+                  placeholder="Tìm kiếm công việc, hạng mục…"
+                  className="w-full h-11 pl-10 pr-4 rounded-xl border border-[#E6EBF3] bg-white text-[14px] focus:outline-none focus:ring-2 focus:ring-[#1F63E0]/20 focus:border-[#1F63E0]"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-[#E6EBF3] shrink-0">
+                <button aria-label="Xem dạng danh sách" className="size-9 flex items-center justify-center rounded-lg bg-[#1F63E0] text-white"><List className="size-4" /></button>
+                <button aria-label="Xem dạng lưới" className="size-9 flex items-center justify-center rounded-lg text-[#64748B] hover:bg-black/5"><LayoutGrid className="size-4" /></button>
+              </div>
             </div>
-            <select className="h-11 px-4 rounded-[10px] border border-[#E6EBF3] bg-white text-[14px] outline-none">
-              <option>Tất cả thời gian</option>
-            </select>
-            <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-[#E6EBF3]">
-              <button aria-label="Xem dạng danh sách" className="size-11 flex items-center justify-center rounded-lg bg-[#1F63E0] text-white"><List className="size-4" /></button>
-              <button aria-label="Xem dạng lưới" className="size-11 flex items-center justify-center rounded-lg text-[#64748B] hover:bg-black/5"><LayoutGrid className="size-4" /></button>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <button
+                onClick={() => setShowRightPanel(!showRightPanel)}
+                className="hidden lg:flex h-11 px-3.5 items-center gap-2 bg-white border border-[#E6EBF3] hover:bg-black/5 text-[#475569] rounded-xl text-[14px] transition-colors shadow-xs"
+                title={showRightPanel ? "Ẩn bảng phụ" : "Hiện bảng phụ"}
+              >
+                {showRightPanel ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+              </button>
+              {canManage && (
+                <button
+                  onClick={openAddRootModal}
+                  className="w-full sm:w-auto h-11 px-4 sm:px-5 flex items-center justify-center gap-2 bg-[#1F63E0] hover:bg-[#1A54C2] text-white rounded-xl text-[14px] font-bold shadow-sm transition-colors cursor-pointer touch-target"
+                >
+                  <Plus className="size-4" /> Thêm hạng mục gốc
+                </button>
+              )}
             </div>
-            <div className="flex-1"></div>
-            <button 
-              onClick={() => setShowRightPanel(!showRightPanel)}
-              className="h-11 px-4 flex items-center gap-2 bg-white border border-[#E6EBF3] hover:bg-black/5 text-[#475569] rounded-[10px] text-[14px] transition-colors shadow-sm"
-              title={showRightPanel ? "Ẩn bảng phụ" : "Hiện bảng phụ"}
-            >
-              {showRightPanel ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
-            </button>
-            <button 
-              onClick={openAddRootModal}
-              className="h-11 px-5 flex items-center gap-2 bg-[#1F63E0] hover:bg-[#1A54C2] text-white rounded-[10px] text-[14px] font-medium shadow-sm transition-colors cursor-pointer"
-            >
-              <Plus className="size-4" /> Thêm hạng mục gốc
-            </button>
           </div>
 
           {/* WBS Table Card */}
           <div className="flex-1 bg-white rounded-2xl border border-[#E6EBF3] shadow-[0_1px_2px_rgba(16,24,40,.04),0_4px_12px_rgba(16,24,40,.04)] flex flex-col overflow-hidden min-w-0">
             <div className="overflow-x-auto overflow-y-auto flex-1 min-w-0">
-              <table className="w-full text-left border-collapse min-w-[900px]">
+              <table className="w-full text-left border-collapse min-w-[720px] md:min-w-[900px]">
                 <thead className="bg-white sticky top-0 z-10 shadow-sm">
                   <tr>
-                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] min-w-[360px] whitespace-nowrap">STT / Tên công việc / Hạng mục</th>
-                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[110px] whitespace-nowrap">Loại</th>
-                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[120px] whitespace-nowrap">Ràng buộc</th>
-                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[120px] whitespace-nowrap">Bắt đầu</th>
-                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[120px] whitespace-nowrap">Kết thúc</th>
+                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] min-w-[300px] md:min-w-[360px] whitespace-nowrap">STT / Tên công việc / Hạng mục</th>
+                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[100px] md:w-[110px] whitespace-nowrap">Loại</th>
+                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[110px] md:w-[120px] whitespace-nowrap">Ràng buộc</th>
+                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[110px] md:w-[120px] whitespace-nowrap">Bắt đầu</th>
+                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[110px] md:w-[120px] whitespace-nowrap">Kết thúc</th>
                     <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[50px] sticky right-0 bg-white z-20 shadow-[-4px_0_12px_rgba(0,0,0,0.05)]"></th>
                   </tr>
                 </thead>
@@ -929,8 +1150,9 @@ const visibleItems = useMemo(() => {
         </div>
 
         {/* Right Panel */}
-        {showRightPanel && (
-        <div className="w-full lg:w-[320px] shrink-0 flex flex-col gap-5 lg:overflow-y-auto pr-1 pb-4">
+        <div className={`w-full lg:w-[320px] shrink-0 flex flex-col gap-5 lg:overflow-y-auto pr-1 pb-4 ${
+          mobileTab === 'tree' ? 'hidden lg:flex' : 'flex'
+        } ${!showRightPanel ? 'lg:hidden' : ''}`}>
           
           {/* Tổng quan dự án (đã bỏ trạng thái / tiến độ, giữ tổng số công việc) */}
           <div className="bg-white rounded-2xl border border-[#E6EBF3] p-5 shadow-[0_1px_2px_rgba(16,24,40,.04),0_4px_12px_rgba(16,24,40,.04)]">
@@ -972,6 +1194,7 @@ const visibleItems = useMemo(() => {
           <div className="bg-white rounded-2xl border border-[#E6EBF3] p-5 shadow-[0_1px_2px_rgba(16,24,40,.04),0_4px_12px_rgba(16,24,40,.04)]">
             <h3 className="font-bold text-[#0F1B3D] mb-4">Thao tác nhanh</h3>
             <div className="grid grid-cols-2 gap-3">
+              {canManage && (
               <button
                 type="button"
                 onClick={openAddRootModal}
@@ -980,6 +1203,9 @@ const visibleItems = useMemo(() => {
                 <div className="size-10 bg-white rounded-full flex items-center justify-center text-[#1F63E0] shadow-sm"><Plus className="size-5" /></div>
                 <span className="text-[12px] font-medium text-[#0F1B3D]">Thêm hạng mục</span>
               </button>
+              )}
+              {canManage && (
+<>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -995,6 +1221,8 @@ const visibleItems = useMemo(() => {
                 className="hidden"
                 onChange={handleImportFileChange}
               />
+</>
+              )}
               <button
                 type="button"
                 onClick={handleExportExcel}
@@ -1021,12 +1249,11 @@ const visibleItems = useMemo(() => {
               <div className="mt-0.5 text-[#1F63E0]"><Lightbulb className="size-4 fill-current" /></div>
               <div>
                 <h4 className="font-bold text-[13px] text-[#0F1B3D] mb-1">Mẹo nhỏ</h4>
-                <p className="text-[12px] text-[#64748B] leading-relaxed">Bạn có thể thêm hạng mục con, sửa tên hoặc xóa trực tiếp tại mỗi dòng hạng mục.</p>
+                <p className="text-[12px] text-[#64748B] leading-relaxed">{canManage ? "Bạn có thể thêm hạng mục con, sửa tên hoặc xóa trực tiếp tại mỗi dòng hạng mục." : "Bạn chỉ có quyền xem cơ cấu công việc."}</p>
               </div>
             </div>
           </div>
         </div>
-        )}
 
 {showTaskForm && (
   <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs overflow-y-auto">
