@@ -185,8 +185,8 @@ export const PERMISSIONS = {
   "field.viewAll": ALL_ROLES.filter((r) => r !== DOI_TRUONG),
 
   "diary.create": [BAN_QUAN_LY, CHI_HUY_TRUONG, KY_SU_GIAM_SAT, DOI_TRUONG],
-  "diary.lock": [CHI_HUY_TRUONG],
-  "diary.unlock": [CHI_HUY_TRUONG],
+  "diary.lock": [KY_SU_GIAM_SAT],
+  "diary.unlock": [BAN_QUAN_LY],
 };
 
 function isKnownRole(role) {
