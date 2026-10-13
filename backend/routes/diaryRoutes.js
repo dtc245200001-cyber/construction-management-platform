@@ -371,7 +371,7 @@ router.put(
          JOIN users u ON u.id = d.created_by
          LEFT JOIN users u2 ON u2.id = d.updated_by
          WHERE d.id = $1 AND d.project_id = $2
-         FOR UPDATE`,
+         FOR UPDATE OF d`,
         [entryId, projectId]
       );
 
@@ -704,7 +704,7 @@ router.post(
          JOIN users u ON u.id = d.created_by
          LEFT JOIN users u2 ON u2.id = d.updated_by
          WHERE d.id = $1 AND d.project_id = $2
-         FOR UPDATE`,
+         FOR UPDATE OF d`,
         [conflict.diary_entry_id, projectId]
       );
 
