@@ -31,6 +31,7 @@ export const SYNC_STATUS = {
   SENDING: "syncing",
   SYNCED: "synced",
   FAILED: "failed",
+  CONFLICT: "conflict",
 };
 
 // Sau khoảng này mà một claim "syncing" vẫn chưa xong (tab crash giữa chừng),
@@ -364,6 +365,7 @@ export async function createDiaryEntry(entryData, images = []) {
     version: sanitized.version || sanitized.serverVersion || 1,
     serverVersion: sanitized.serverVersion || sanitized.version || null,
     pendingOperation: sanitized.pendingOperation || (sanitized.serverId || sanitized.server_id ? "update" : "create"),
+    conflictId: sanitized.conflictId || null,
   };
 
   const transaction = db.transaction(
