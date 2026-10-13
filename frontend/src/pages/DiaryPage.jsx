@@ -117,6 +117,7 @@ export default function DiaryPage({ user }) {
   const canLock = !projectRole ? Boolean(user) : Boolean(user) && can(projectRole, 'diary.lock');
   const canUnlock = !projectRole ? Boolean(user) : Boolean(user) && can(projectRole, 'diary.unlock');
   const canCreate = !projectRole ? Boolean(user) : Boolean(user) && can(projectRole, 'diary.create');
+  const canResolveConflict = canCreate;
   const isPastDate = dateFilter && dateFilter < todayVN;
   useEffect(() => {
     if (location.state?.openForm) {
