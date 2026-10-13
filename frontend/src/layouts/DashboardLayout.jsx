@@ -261,7 +261,8 @@ export default function DashboardLayout({ user, setUser }) {
                       item.path === '/warnings' ||
                       item.path === '/calendar' ||
                       item.path === '/field' ||
-                      item.path === '/diary'
+                      item.path === '/diary' ||
+                      item.path === '/acceptance'
                     ) {
                       navigate(item.path);
                     } else {
