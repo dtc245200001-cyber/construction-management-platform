@@ -364,7 +364,10 @@ export async function createDiaryEntry(entryData, images = []) {
     createdBy: sanitized.createdBy || sanitized.created_by || sanitized.user_name || null,
     version: sanitized.version || sanitized.serverVersion || 1,
     serverVersion: sanitized.serverVersion || sanitized.version || null,
-    pendingOperation: sanitized.pendingOperation || (sanitized.serverId || sanitized.server_id ? "update" : "create"),
+    pendingOperation:
+      sanitized.pendingOperation !== undefined
+        ? sanitized.pendingOperation
+        : (sanitized.serverId || sanitized.server_id ? null : "create"),
     conflictId: sanitized.conflictId || null,
   };
 
@@ -671,6 +674,48 @@ export async function getDiaryEntryById(idOrClientId) {
 }
 
 export const getDiaryLogById = getDiaryEntryById;
+
+/**
+ * Tìm mục nhật ký cục bộ theo id phía server mà không cần tăng DB_VERSION.
+ * IndexedDB đang dùng clientId làm keyPath nên phải quét store khi chỉ có serverId.
+ */
+export async function getDiaryEntryByServerId(serverId) {
+  if (serverId === undefined || serverId === null) return null;
+  const targetServerId = Number(serverId);
+  if (!Number.isInteger(targetServerId) || targetServerId <= 0) return null;
+
+  const db = await openDiaryDB();
+  const transaction = db.transaction(STORES.DIARY_LOGS, "readonly");
+  const store = transaction.objectStore(STORES.DIARY_LOGS);
+  let result = null;
+  const completion = watchTransaction(
+    transaction,
+    () => result,
+    "Lỗi khi tìm nhật ký theo serverId trong IndexedDB.",
+  );
+
+  const request = store.openCursor();
+  request.onsuccess = (event) => {
+    const cursor = event.target.result;
+    if (!cursor || result) return;
+    const value = cursor.value;
+    const valueServerId = Number(value?.serverId ?? value?.server_id);
+    if (Number.isInteger(valueServerId) && valueServerId === targetServerId) {
+      result = value;
+      return;
+    }
+    cursor.continue();
+  };
+  request.onerror = () => completion.reject(request.error);
+  return completion.promise;
+}
+
+export async function updateDiaryEntryByServerId(serverId, updates) {
+  const entry = await getDiaryEntryByServerId(serverId);
+  if (!entry) return false;
+  await updateDiaryEntry(entry.id || entry.clientId || entry.client_id, updates);
+  return true;
+}
 
 /**
  * Lấy danh sách nhật ký theo projectId

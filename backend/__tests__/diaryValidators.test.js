@@ -1,4 +1,4 @@
-const { validateCreateDiaryEntry, validateGetDiaryEntries } = require('../utils/diaryValidators');
+const { validateCreateDiaryEntry, validateGetDiaryEntries, validateUpdateDiaryEntry } = require('../utils/diaryValidators');
 
 describe('Diary Validators', () => {
   describe('validateCreateDiaryEntry', () => {
@@ -75,4 +75,29 @@ describe('Diary Validators', () => {
       expect(res.errors).toContain('work_item_id must be a positive integer');
     });
   });
+  describe('validateUpdateDiaryEntry', () => {
+    it('requires version to be a positive integer', () => {
+      expect(validateUpdateDiaryEntry({ content: 'test' })).toContain('version is required and must be a positive integer');
+      expect(validateUpdateDiaryEntry({ content: 'test', version: 0 })).toContain('version must be a positive integer');
+      expect(validateUpdateDiaryEntry({ content: 'test', version: -1 })).toContain('version must be a positive integer');
+      expect(validateUpdateDiaryEntry({ content: 'test', version: 1.5 })).toContain('version must be a positive integer');
+      expect(validateUpdateDiaryEntry({ content: 'test', version: '1' })).toContain('version must be a positive integer');
+    });
+
+    it('requires non-empty content up to 5000 characters', () => {
+      expect(validateUpdateDiaryEntry({ version: 1 })).toContain('content is required and must be a string');
+      expect(validateUpdateDiaryEntry({ version: 1, content: '   ' })).toContain('content must be between 1 and 5000 characters');
+      expect(validateUpdateDiaryEntry({ version: 1, content: 'a'.repeat(5001) })).toContain('content must be between 1 and 5000 characters');
+    });
+
+    it('validates work_item_id when supplied', () => {
+      expect(validateUpdateDiaryEntry({ version: 1, content: 'test', work_item_id: 0 })).toContain('work_item_id must be a positive integer');
+      expect(validateUpdateDiaryEntry({ version: 1, content: 'test', work_item_id: 1.2 })).toContain('work_item_id must be a positive integer');
+    });
+
+    it('accepts a valid update payload', () => {
+      expect(validateUpdateDiaryEntry({ version: 1, content: 'Nội dung hợp lệ', work_item_id: 10 })).toHaveLength(0);
+    });
+  });
+
 });

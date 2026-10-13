@@ -15,7 +15,7 @@ import {
   Tag,
 } from "lucide-react";
 import api from "../lib/api";
-import { updateDiaryEntry, SYNC_STATUS } from "../lib/diaryDb";
+import { updateDiaryEntryByServerId, SYNC_STATUS } from "../lib/diaryDb";
 
 function formatTimestamp(isoStr) {
   if (!isoStr) return "Chưa xác định";
@@ -80,13 +80,24 @@ export default function DiaryConflictDialog({
       // Cập nhật lại IndexedDB nếu bản ghi cục bộ tồn tại
       try {
         if (currentConflict.diary_entry_id) {
-          await updateDiaryEntry(String(currentConflict.diary_entry_id), {
+          const localUpdates = {
             version: resultingVersion,
             serverVersion: resultingVersion,
             syncStatus: SYNC_STATUS.SYNCED,
             syncError: null,
             pendingOperation: null,
-          });
+            conflictId: null,
+          };
+          if (diaryEntry?.content !== undefined) localUpdates.content = diaryEntry.content;
+          if (diaryEntry?.work_item_id !== undefined) {
+            localUpdates.work_item_id = diaryEntry.work_item_id;
+            localUpdates.workItemId = diaryEntry.work_item_id;
+          }
+          if (diaryEntry?.entry_at !== undefined) {
+            localUpdates.entry_at = diaryEntry.entry_at;
+            localUpdates.entryAt = diaryEntry.entry_at;
+          }
+          await updateDiaryEntryByServerId(currentConflict.diary_entry_id, localUpdates);
         }
       } catch (idbErr) {
         console.warn("Không thể cập nhật IndexedDB sau khi giải quyết xung đột:", idbErr);
