@@ -38,7 +38,6 @@ export default function DiaryPage({ user }) {
   const [unlockReason, setUnlockReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
-  // S-32: Quản lý xung đột phiên bản (T-77 / T-78)
   const [conflicts, setConflicts] = useState([]);
   const [showConflictDialog, setShowConflictDialog] = useState(false);
 
@@ -49,19 +48,27 @@ export default function DiaryPage({ user }) {
 
   const fetchConflicts = async () => {
     try {
-      const res = await api.get(`/projects/${projectId}/diary-conflicts?status=pending`);
+      const res = await api.get(
+        `/projects/${projectId}/diary-conflicts?status=pending`
+      );
       setConflicts(res.data?.data || []);
     } catch (err) {
-      console.warn("Không thể tải danh sách xung đột nhật ký:", err?.message || err);
+      console.warn(
+        "Không thể tải danh sách xung đột nhật ký:",
+        err?.message || err
+      );
     }
   };
 
   useEffect(() => {
     fetchConflicts();
+
     const handleSyncUpdated = () => {
       fetchConflicts();
     };
+
     window.addEventListener("diary-sync-updated", handleSyncUpdated);
+
     return () => {
       window.removeEventListener("diary-sync-updated", handleSyncUpdated);
     };
@@ -103,11 +110,13 @@ export default function DiaryPage({ user }) {
     };
   }, []);
 
-  // S-27: chốt/mở sổ nhật ký là quyền của Chỉ huy trưởng (đồng bộ backend
-  // site_log.close_daily / site_log.correct_locked qua ma trận dùng chung).
-  const canLock = user && (user.is_system_admin || can(projectRole, 'site_log.close_daily'));
-  const canUnlock = user && (user.is_system_admin || can(projectRole, 'site_log.correct_locked'));
-  const canResolveConflict = user && (user.is_system_admin || can(projectRole, 'site_log.create'));
+  // S-24: Kỹ sư giám sát chốt/khóa sổ nhật ký ngày đã qua (site_log.close_daily), Ban quản lý mở khóa (site_log.correct_locked).
+  const effectiveRole = projectRole || user?.role;
+  const canLock = user && (user.is_system_admin || can(effectiveRole, 'site_log.close_daily'));
+  const canUnlock = user && (user.is_system_admin || can(effectiveRole, 'site_log.correct_locked'));
+  const canResolveConflict =
+    user &&
+    (user.is_system_admin || can(effectiveRole, 'site_log.create'));
   const isPastDate = dateFilter && dateFilter < todayVN;
   useEffect(() => {
     if (location.state?.openForm) {
@@ -635,15 +644,18 @@ export default function DiaryPage({ user }) {
               <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-white">
                 <AlertTriangle className="size-5" />
               </div>
+
               <div>
                 <span className="font-semibold">
                   Phát hiện {conflicts.length} xung đột phiên bản nhật ký cần xử lý.
                 </span>
+
                 <p className="text-xs text-amber-800">
                   Có bản ghi bị sửa đồng thời hoặc không khớp phiên bản giữa máy chủ và thiết bị.
                 </p>
               </div>
             </div>
+
             <button
               type="button"
               onClick={() => setShowConflictDialog(true)}

@@ -2,32 +2,27 @@
 
 /**
  * Story S-32: T-76 & T-77
- * Thêm version và updated_by cho diary_entries để kiểm soát sửa đồng thời.
- * Tạo bảng diary_entry_conflicts để lưu trữ xung đột hai phiên bản.
+ * T-76: thêm version và updated_by cho diary_entries.
+ * T-77: lưu hai phiên bản khi xảy ra xung đột.
  */
 
 exports.up = (pgm) => {
-  // 1. Thêm version và updated_by cho diary_entries
+  // T-76: thêm version và updated_by
   pgm.sql(`
     ALTER TABLE diary_entries
       ADD COLUMN version INTEGER NOT NULL DEFAULT 1,
       ADD COLUMN updated_by INTEGER REFERENCES users(id) ON DELETE RESTRICT;
   `);
 
-  // 2. Backfill updated_by từ created_by cho các bản ghi cũ
+  // Backfill dữ liệu cũ, nhưng giữ updated_by nullable để tương thích
+  // với các INSERT cũ không truyền updated_by.
   pgm.sql(`
     UPDATE diary_entries
     SET updated_by = created_by
     WHERE updated_by IS NULL;
   `);
 
-  // 3. Đặt constraint NOT NULL cho updated_by sau khi đã backfill
-  pgm.sql(`
-    ALTER TABLE diary_entries
-      ALTER COLUMN updated_by SET NOT NULL;
-  `);
-
-  // 4. Tạo bảng lưu trữ xung đột phiên bản diary_entry_conflicts
+  // T-77: bảng lưu xung đột phiên bản
   pgm.sql(`
     CREATE TABLE diary_entry_conflicts (
       id SERIAL PRIMARY KEY,
@@ -42,8 +37,10 @@ exports.up = (pgm) => {
       client_updated_at TIMESTAMPTZ NULL,
       server_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       source VARCHAR(50) NOT NULL DEFAULT 'offline_sync',
-      status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'resolved')),
-      resolution VARCHAR(20) NULL CHECK (resolution IS NULL OR resolution IN ('server', 'client')),
+      status VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'resolved')),
+      resolution VARCHAR(20) NULL
+        CHECK (resolution IS NULL OR resolution IN ('server', 'client')),
       resolved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       resolved_at TIMESTAMPTZ NULL,
       resolved_version INTEGER NULL,

@@ -51,8 +51,10 @@ const PERMISSIONS = {
   // LỆCH đặc tả gốc (giữ theo quyết định): các route đọc nhật ký / nhật ký ngày
   // hiện mở cho mọi thành viên, nên giữ đọc mở để không đổi hành vi.
   "site_log.view": ALL_MEMBERS,
-  "site_log.close_daily": [CHI_HUY_TRUONG],
-  "site_log.correct_locked": [CHI_HUY_TRUONG],
+  // S-24: Kỹ sư giám sát chốt/khóa sổ nhật ký ngày đã qua.
+  "site_log.close_daily": [KY_SU_GIAM_SAT],
+  // S-24: Ban quản lý mở khóa nhật ký đã khóa (kèm lý do và audit log).
+  "site_log.correct_locked": [BAN_QUAN_LY],
   // TREO.
   "schedule.view_delays": [CHI_HUY_TRUONG],
 

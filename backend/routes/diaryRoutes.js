@@ -877,11 +877,23 @@ router.post(
     }
 
     const entry = await db.query(
-      "SELECT id FROM diary_entries WHERE id = $1 AND project_id = $2",
+      "SELECT id, entry_date, entry_at FROM diary_entries WHERE id = $1 AND project_id = $2",
       [entryId, projectId]
     );
     if (entry.rows.length === 0) {
       return res.status(404).json({ message: "Không tìm thấy nhật ký trong dự án" });
+    }
+
+    const entryRow = entry.rows[0];
+    const entryDate = entryRow.entry_date || (entryRow.entry_at ? new Date(entryRow.entry_at).toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }) : null);
+    if (entryDate) {
+      const lockCheck = await db.query(
+        "SELECT is_locked FROM daily_log_locks WHERE project_id = $1 AND log_date = $2",
+        [projectId, entryDate]
+      );
+      if (lockCheck.rows.length > 0 && lockCheck.rows[0].is_locked) {
+        return res.status(403).json({ message: "Nhật ký của ngày này đã bị khóa, không thể thêm tệp đính kèm." });
+      }
     }
 
     const result = await db.query(
