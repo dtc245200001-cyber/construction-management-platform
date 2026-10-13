@@ -170,8 +170,35 @@ async function syncDiaryEntry(entry, attachments) {
     if (!serverId) {
       throw new Error("Máy chủ không trả về định danh nhật ký đã tạo.");
     }
-    await updateDiaryEntry(clientId, { serverId, server_id: serverId });
+    await updateDiaryEntry(clientId, {
+      serverId,
+      server_id: serverId,
+      version: serverEntry.version || 1,
+      serverVersion: serverEntry.version || 1,
+      pendingOperation: null,
+    });
     notifySyncUpdated();
+  } else if (entry.pendingOperation === "update") {
+    const response = await withRetry(() =>
+      api.put(`/projects/${projectId}/diary-entries/${serverId}`, {
+        work_item_id: workItemId,
+        content: entry.content,
+        version: entry.version || entry.serverVersion || 1,
+        entry_at: entry.entry_at || entry.entryAt || entry.created_at,
+        source: "offline_sync",
+        client_updated_at: entry.localUpdatedAt || entry.updatedAt || new Date().toISOString(),
+      }),
+    );
+    const updated = response?.data;
+    if (updated?.version) {
+      await updateDiaryEntry(clientId, {
+        version: updated.version,
+        serverVersion: updated.version,
+        pendingOperation: null,
+        syncError: null,
+      });
+      notifySyncUpdated();
+    }
   }
 
   for (const attachment of attachments) {
@@ -294,12 +321,22 @@ async function syncEntry(localEntry) {
       isOffline: false,
     });
   } catch (error) {
-    // T-72/S-30: phân loại lỗi. Chỉ server THỰC SỰ TỪ CHỐI vì dữ liệu sai
-    // (400/404/422 có response) mới đánh "failed" vĩnh viễn. Timeout, mất mạng
-    // (không có response) hay 408/429/5xx → nhả claim về "pending" để retry ở
-    // vòng sau theo backoff T-69, giữ nguyên client_id (không sinh UUID mới),
-    // giữ serverId đã có và Blob ảnh.
-    if (isRetryable(error)) {
+    // T-77/T-78: Xử lý xung đột phiên bản (409 DIARY_VERSION_CONFLICT)
+    // Giữ nguyên client content trong IndexedDB, lưu conflictId & serverVersion,
+    // đánh syncStatus = conflict và dừng auto retry mục này.
+    if (
+      error?.response?.status === 409 &&
+      error?.response?.data?.code === "DIARY_VERSION_CONFLICT"
+    ) {
+      await updateDiaryEntry(clientId, {
+        syncStatus: SYNC_STATUS.CONFLICT,
+        conflictId: error.response?.data?.conflict_id ?? error.response?.data?.conflictId,
+        serverVersion: error.response?.data?.server_version ?? error.response?.data?.serverVersion,
+        syncError: error.response?.data?.message || "Xung đột phiên bản với máy chủ",
+        syncStartedAt: null,
+      });
+    } else if (isRetryable(error)) {
+      // T-72/S-30: phân loại lỗi. Timeout, mất mạng hay 408/429/5xx -> nhả claim về pending
       await releaseClaimToPending(clientId, getErrorMessage(error));
     } else {
       await updateDiaryEntry(clientId, {

@@ -179,6 +179,8 @@ app.use("/api/projects", taskRoutes);
 app.use("/api/projects", teamsRoutes);
 const taskLogRoutes = require("./routes/taskLogRoutes");
 app.use("/api/projects", taskLogRoutes);
+const uploadSessionRoutes = require("./routes/uploadSessionRoutes");
+app.use("/api/projects", uploadSessionRoutes);
 const adminRoutes = require("./routes/adminRoutes");
 const { router: publicRoutes, setNewsletterLimiter, setInvitationLimiter } = require("./routes/publicRoutes");
 
