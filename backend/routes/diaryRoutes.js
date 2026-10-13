@@ -481,6 +481,107 @@ router.put(
           updated_by_name: req.user.name,
           attachments: attRes.rows[0]?.attachments || [],
         });
+      } else {
+        // Version mismatch -> PHÁT HIỆN XUNG ĐỘT (T-76 / T-77)
+        // KHÔNG ghi đè bản ghi diary_entries
+        const serverSnapshot = {
+          id: serverEntry.id,
+          project_id: serverEntry.project_id,
+          work_item_id: serverEntry.work_item_id,
+          work_item_name: serverEntry.work_item_name,
+          work_item_code: serverEntry.work_item_code,
+          content: serverEntry.content,
+          entry_at: serverEntry.entry_at,
+          entry_date: serverEntry.entry_date,
+          version: serverEntry.version,
+          created_by: serverEntry.created_by,
+          created_by_name: serverEntry.created_by_name,
+          updated_by: serverEntry.updated_by,
+          updated_by_name: serverEntry.updated_by_name,
+          updated_at: serverEntry.updated_at,
+        };
+
+        const clientSnapshot = {
+          work_item_id: targetWorkItemId,
+          work_item_name: targetWorkItemName,
+          work_item_code: targetWorkItemCode,
+          content: content.trim(),
+          entry_at: entry_at ? new Date(entry_at).toISOString() : serverEntry.entry_at,
+          version: clientVersion,
+          client_updated_at: client_updated_at || new Date().toISOString(),
+          source: source || "offline_sync",
+        };
+
+        // Tránh nhân bản conflict trùng lặp khi retry nhiều lần
+        const existingConflict = await client.query(
+          `SELECT id, created_at FROM diary_entry_conflicts
+           WHERE project_id = $1 AND diary_entry_id = $2 AND status = 'pending'
+             AND client_version = $3 AND (client_snapshot->>'content') = $4
+           LIMIT 1`,
+          [projectId, entryId, clientVersion, clientSnapshot.content]
+        );
+
+        let conflictId;
+        if (existingConflict.rows.length > 0) {
+          conflictId = existingConflict.rows[0].id;
+        } else {
+          const insertConflictRes = await client.query(
+            `INSERT INTO diary_entry_conflicts (
+               project_id, diary_entry_id, client_version, server_version,
+               client_snapshot, server_snapshot, client_updated_by, server_updated_by,
+               client_updated_at, server_updated_at, source, status
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending')
+             RETURNING id`,
+            [
+              projectId,
+              entryId,
+              clientVersion,
+              serverEntry.version,
+              JSON.stringify(clientSnapshot),
+              JSON.stringify(serverSnapshot),
+              req.user.id,
+              serverEntry.updated_by,
+              clientSnapshot.client_updated_at,
+              serverEntry.updated_at,
+              clientSnapshot.source,
+            ]
+          );
+          conflictId = insertConflictRes.rows[0].id;
+        }
+
+        // Cam kết bản ghi conflict vào DB, KHÔNG rollback
+        await client.query("COMMIT");
+
+        try {
+          await logAudit({
+            userId: req.user.id,
+            action: "CREATE_DIARY_CONFLICT",
+            entity: "diary_entry_conflicts",
+            entityId: conflictId,
+            projectId,
+            details: {
+              conflict_id: conflictId,
+              diary_entry_id: entryId,
+              client_version: clientVersion,
+              server_version: serverEntry.version,
+            },
+          });
+        } catch (auditErr) {
+          console.error("Audit error:", auditErr);
+        }
+
+        return res.status(409).json({
+          code: "DIARY_VERSION_CONFLICT",
+          message: "Phát hiện xung đột phiên bản nhật ký thi công.",
+          conflict_id: conflictId,
+          conflictId: conflictId,
+          diary_entry_id: entryId,
+          client_version: clientVersion,
+          server_version: serverEntry.version,
+          serverVersion: serverEntry.version,
+          server_snapshot: serverSnapshot,
+          client_snapshot: clientSnapshot,
+        });
       }
     } catch (err) {
       await client.query("ROLLBACK");
