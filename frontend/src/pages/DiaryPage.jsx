@@ -3,13 +3,14 @@ import { useLocation } from 'react-router-dom';
 import api from '../lib/api';
 import { format, parseISO } from 'date-fns';
 
-import { FileText, Search, Plus, Filter, X, Clock, User, Hash, Lock, Unlock, History, AlertCircle, CloudOff, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { FileText, Search, Plus, Filter, X, Clock, User, Hash, Lock, Unlock, History, AlertCircle, AlertTriangle, CloudOff, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { can } from '../lib/permissions';
 import { getDiaryLogsByProject, getDiaryAttachmentsByLog, isBlob, deleteDiaryEntry } from '../lib/diaryDb';
 import DiaryEntryForm from '../components/DiaryEntryForm';
 import { resolveWorkItemId } from '../utils/diaryUtils';
 import DiaryWeekStrip from '../components/DiaryWeekStrip';
 import DiaryDayCard from '../components/DiaryDayCard';
+import DiaryConflictDialog from '../components/DiaryConflictDialog';
 
 
 export default function DiaryPage({ user }) {
@@ -37,16 +38,48 @@ export default function DiaryPage({ user }) {
   const [unlockReason, setUnlockReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
+  const [conflicts, setConflicts] = useState([]);
+  const [showConflictDialog, setShowConflictDialog] = useState(false);
+
   const [projectRole, setProjectRole] = useState(null);
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== 'undefined' && 'onLine' in navigator ? navigator.onLine : true
   );
+
+  const fetchConflicts = async () => {
+    try {
+      const res = await api.get(
+        `/projects/${projectId}/diary-conflicts?status=pending`
+      );
+      setConflicts(res.data?.data || []);
+    } catch (err) {
+      console.warn(
+        "Không thể tải danh sách xung đột nhật ký:",
+        err?.message || err
+      );
+    }
+  };
+
+  useEffect(() => {
+    fetchConflicts();
+
+    const handleSyncUpdated = () => {
+      fetchConflicts();
+    };
+
+    window.addEventListener("diary-sync-updated", handleSyncUpdated);
+
+    return () => {
+      window.removeEventListener("diary-sync-updated", handleSyncUpdated);
+    };
+  }, [projectId]);
 
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
       fetchEntries();
       fetchLockStatus();
+      fetchConflicts();
     };
     const handleOffline = () => {
       setIsOnline(false);
@@ -81,6 +114,9 @@ export default function DiaryPage({ user }) {
   const effectiveRole = projectRole || user?.role;
   const canLock = user && (user.is_system_admin || can(effectiveRole, 'site_log.close_daily'));
   const canUnlock = user && (user.is_system_admin || can(effectiveRole, 'site_log.correct_locked'));
+  const canResolveConflict =
+    user &&
+    (user.is_system_admin || can(effectiveRole, 'site_log.create'));
   const isPastDate = dateFilter && dateFilter < todayVN;
   useEffect(() => {
     if (location.state?.openForm) {
@@ -599,6 +635,37 @@ export default function DiaryPage({ user }) {
           </div>
         )}
 
+        {conflicts.length > 0 && (
+          <div
+            role="alert"
+            className="bg-amber-50 border border-amber-300 text-amber-900 px-4 py-3 rounded-xl flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-white">
+                <AlertTriangle className="size-5" />
+              </div>
+
+              <div>
+                <span className="font-semibold">
+                  Phát hiện {conflicts.length} xung đột phiên bản nhật ký cần xử lý.
+                </span>
+
+                <p className="text-xs text-amber-800">
+                  Có bản ghi bị sửa đồng thời hoặc không khớp phiên bản giữa máy chủ và thiết bị.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowConflictDialog(true)}
+              className="min-h-[38px] px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+            >
+              Xem và giải quyết xung đột
+            </button>
+          </div>
+        )}
+
         {!isOnline && (
           <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-2xl flex items-center gap-3 shadow-xs shrink-0">
             <div className="size-9 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
@@ -905,6 +972,18 @@ export default function DiaryPage({ user }) {
           </div>
         </div>
       )}
+
+      <DiaryConflictDialog
+        isOpen={showConflictDialog}
+        onClose={() => setShowConflictDialog(false)}
+        conflicts={conflicts}
+        projectId={projectId}
+        canResolve={canResolveConflict}
+        onResolved={() => {
+          fetchConflicts();
+          fetchEntries();
+        }}
+      />
     </div>
   );
 }
