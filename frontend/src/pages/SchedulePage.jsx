@@ -49,21 +49,30 @@ export default function SchedulePage() {
   const offlineMutationMessage = "Cần có mạng để thực hiện thao tác này";
 
   const currentProjectId = localStorage.getItem("currentProjectId") || 1;
+  const fetchSeqRef = React.useRef(0);
+  React.useEffect(() => {
+    setScheduleData([]); setSummary(null); setErrorMessage(""); setIsFromCache(false);
+    setCachedAt(null); setCacheMiss(false); fetchSeqRef.current += 1;
+  }, [currentProjectId]);
 
   const fetchSchedule = async () => {
+    const mySeq = ++fetchSeqRef.current;
+    const myProjectId = currentProjectId;
+    const isStale = () => mySeq !== fetchSeqRef.current || myProjectId !== (localStorage.getItem("currentProjectId") || 1);
     try {
       setLoading(true);
       setErrorMessage("");
 
       const res = await api.get(
-        `/projects/${currentProjectId}/schedule-results`
+        `/projects/${myProjectId}/schedule-results`
       );
 
+      if (isStale()) return;
       const rows = res.data.data || [];
       setScheduleData(rows);
       setSummary(res.data.summary || null);
 
-      await writeSnapshot(currentProjectId, SNAPSHOT_TYPES.CPM, { rows, summary: res.data.summary || null });
+      await writeSnapshot(myProjectId, SNAPSHOT_TYPES.CPM, { rows, summary: res.data.summary || null });
       setIsFromCache(false);
       setCachedAt(null);
       setCacheMiss(false);
@@ -77,7 +86,7 @@ export default function SchedulePage() {
       if (neverCalculated && isOnline) {
         try {
           const calcRes = await api.post(
-            `/projects/${currentProjectId}/schedule/recalculate`
+            `/projects/${myProjectId}/schedule/recalculate`
           );
 
           if (calcRes.status === 202 && calcRes.data?.jobId) {
@@ -89,7 +98,7 @@ export default function SchedulePage() {
             while (jobStatus === 'queued' || jobStatus === 'running') {
               await new Promise(r => setTimeout(r, currentDelay));
               try {
-                const jobRes = await api.get(`/projects/${currentProjectId}/schedule-jobs/${calcRes.data.jobId}`);
+                const jobRes = await api.get(`/projects/${myProjectId}/schedule-jobs/${calcRes.data.jobId}`);
                 jobStatus = jobRes.data.job.status;
                 if (jobStatus === 'failed') {
                   jobErrorDetails = jobRes.data.job.error_details ? JSON.parse(jobRes.data.job.error_details) : { message: 'Lỗi không xác định' };
@@ -107,12 +116,13 @@ export default function SchedulePage() {
           }
 
           const again = await api.get(
-            `/projects/${currentProjectId}/schedule-results`
+            `/projects/${myProjectId}/schedule-results`
           );
 
+          if (isStale()) return;
           setScheduleData(again.data.data || []);
           setSummary(again.data.summary || null);
-          await writeSnapshot(currentProjectId, SNAPSHOT_TYPES.CPM, {
+          await writeSnapshot(myProjectId, SNAPSHOT_TYPES.CPM, {
             rows: again.data.data || [],
             summary: again.data.summary || null,
           });
@@ -127,7 +137,7 @@ export default function SchedulePage() {
       console.error("Lỗi tải tiến độ CPM:", err);
       if (isNetworkError(err)) {
         setIsOnline(false);
-        const snapshot = await readSnapshot(currentProjectId, SNAPSHOT_TYPES.CPM);
+        const snapshot = await readSnapshot(myProjectId, SNAPSHOT_TYPES.CPM);
         if (snapshot?.payload?.rows) {
           setScheduleData(snapshot.payload.rows);
           setSummary(snapshot.payload.summary || null);

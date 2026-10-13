@@ -355,6 +355,9 @@ describe("GanttPage - T-42", () => {
       data: { data: rows, summary: { hasBaseline: false } },
     });
     render(<GanttPage />);
+    await screen.findByRole("button", { name: /Chốt kế hoạch gốc/i });
+    // fetchData gọi /schedule/recalculate ở lần đầu, xóa lịch sử trước khi bấm nút
+    api.post.mockClear();
     await userEvent.click(
       await screen.findByRole("button", { name: /Chốt kế hoạch gốc/i }),
     );

@@ -6,6 +6,16 @@ import { useProjectRole } from "../hooks/useProjectRole";
 // sidebar, route guard, Topbar và mọi trang con (qua usePermission / <Can>).
 export default function PermissionProvider({ projectId, children }) {
   const { role, loading } = useProjectRole(projectId);
-  const value = useMemo(() => ({ role, loading }), [role, loading]);
+  // UX fallback: nếu user là system_admin nhưng GET /projects/:id trả 404 (stale id sau TRUNCATE)
+  // thì DashboardLayout đang heal, nhưng trong lúc chờ reload, tránh hiện 403 cho system_admin.
+  let effectiveRole = role;
+  let effectiveLoading = loading;
+  try {
+    const cachedUser = JSON.parse(localStorage.getItem("cached_auth_user") || "null");
+    if (!loading && !role && cachedUser?.is_system_admin) {
+      effectiveRole = "system_admin";
+    }
+  } catch { /* ignore */ }
+  const value = useMemo(() => ({ role: effectiveRole, loading: effectiveLoading }), [effectiveRole, effectiveLoading]);
   return <PermissionContext.Provider value={value}>{children}</PermissionContext.Provider>;
 }

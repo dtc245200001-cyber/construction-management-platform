@@ -135,12 +135,36 @@ const closeTaskForm = () => {
   setSelectedWorkItem(null);
   setEditingTask(null);
 };
+  const fetchSeqRef = React.useRef(0);
+  // Khi đổi dự án: dọn sạch dữ liệu cũ ngay trước lần render đầu tiên của project mới,
+  // đóng mọi modal/form đang giữ task của project cũ, và tăng sequence để bỏ qua response cũ.
+  React.useEffect(() => {
+    setItems([]);
+    setExpanded(new Set());
+    setMilestones({});
+    setLoadError(null);
+    setCacheMiss(false);
+    setIsFromCache(false);
+    setCachedAt(null);
+    setImportPreview(null);
+    setImportLoading(false);
+    closeTaskForm();
+    setModalConfig(prev => ({ ...prev, isOpen: false, error: "" }));
+    setMilestoneModalConfig(prev => ({ ...prev, isOpen: false, error: "" }));
+    setOpenMenuNodeId(null);
+    fetchSeqRef.current += 1;
+  }, [projectId]);
+
   const fetchWBS = async () => {
+    const mySeq = ++fetchSeqRef.current;
+    const myProjectId = projectId;
+    const isStale = () => mySeq !== fetchSeqRef.current || myProjectId !== (currentProject?.id || localStorage.getItem("currentProjectId") || 1);
     try {
       setLoading(true);
       if (!navigator.onLine) {
         setIsOnline(false);
-        const snapshot = await readSnapshot(projectId, SNAPSHOT_TYPES.WBS);
+        const snapshot = await readSnapshot(myProjectId, SNAPSHOT_TYPES.WBS);
+        if (isStale()) return;
         if (snapshot?.payload?.tree) {
           setItems(buildTree(snapshot.payload.tree));
           const msMap = {};
@@ -156,10 +180,12 @@ const closeTaskForm = () => {
       setCacheMiss(false);
       setLoadError(null);
       setIsOnline(true);
-      const res = await api.get(`/categories/${projectId}/tree/all`);
-      const msRes = await api.get(`/projects/${projectId}/milestones`);
+      const res = await api.get(`/categories/${myProjectId}/tree/all`);
+      const msRes = await api.get(`/projects/${myProjectId}/milestones`);
+      if (isStale()) return;
       const payload = { tree: res.data, milestones: msRes.data };
-      await writeSnapshot(projectId, SNAPSHOT_TYPES.WBS, payload);
+      await writeSnapshot(myProjectId, SNAPSHOT_TYPES.WBS, payload);
+      if (isStale()) return;
       setItems(buildTree(payload.tree));
       const msMap = {};
       (payload.milestones || []).forEach(m => msMap[m.work_item_id] = m);
@@ -177,8 +203,10 @@ const closeTaskForm = () => {
         return;
       }
       setIsOnline(false);
-      const snapshot = await readSnapshot(projectId, SNAPSHOT_TYPES.WBS);
+      const snapshot = await readSnapshot(myProjectId, SNAPSHOT_TYPES.WBS);
+      if (isStale()) return;
       if (!snapshot?.payload?.tree) { setCacheMiss(true); return; }
+      if (isStale()) return;
       setItems(buildTree(snapshot.payload.tree));
       const msMap = {};
       (snapshot.payload.milestones || []).forEach(m => msMap[m.work_item_id] = m);
@@ -187,7 +215,8 @@ const closeTaskForm = () => {
       setCachedAt(snapshot.cachedAt);
       setIsOnline(false);
     } finally {
-      setLoading(false);
+      if (!isStale()) setLoading(false);
+      else setLoading(false);
     }
   };
 
@@ -395,15 +424,53 @@ const closeTaskForm = () => {
   // ─── Nhập Excel: đọc file, dựng lại cây theo đúng cấu trúc file Xuất báo cáo ──
   // File nhập có cùng cột với file xuất (STT, Tên, Loại, Ngày bắt đầu, Số ngày, Ràng buộc).
   // Cây cha-con được dựng lại từ STT dạng "1", "1.1", "1.1.2"... (độ sâu = số dấu chấm).
-  // Ràng buộc chỉ áp dụng giữa các công việc NẰM TRONG CHÍNH FILE này (tham chiếu ra
-  // ngoài file bị bỏ qua, vì STT đó không tồn tại trong lần nhập này).
-  // Ngày bắt đầu trong file KHÔNG được dùng lại — hệ thống luôn tự tính lại theo lịch CPM
-  // của dự án đích sau khi tạo xong tất cả công việc.
+  // Ngày bắt đầu trong file được giữ lại qua scheduling_mode=manual/manual_start_date
+  // (hỗ trợ cả chuỗi dd/MM/yyyy lẫn số serial Excel) để sau nhập khớp đúng file gốc
+  // thay vì dồn hết về ngày nhập. Ràng buộc hỗ trợ STT+loại+lag và báo lỗi rõ dòng
+  // nếu trỏ tới STT không tồn tại trong file.
   const parseSttDepth = (sttRaw) => {
     const stt = String(sttRaw ?? "").trim();
     if (!stt) return null;
     return stt.split(".").length;
   };
+
+  const parseExcelDateToISO = (raw) => {
+    if (raw == null || raw === "") return { iso: null, error: null };
+    if (typeof raw === "number" && Number.isFinite(raw)) {
+      try {
+        const d = XLSX.SSF.parse_date_code(raw);
+        if (!d || !d.y || !d.m || !d.d) return { iso: null, error: "Ngày Excel không hợp lệ" };
+        const y = String(d.y).padStart(4, "0");
+        const m = String(d.m).padStart(2, "0");
+        const day = String(d.d).padStart(2, "0");
+        return { iso: `${y}-${m}-${day}`, error: null };
+      } catch {
+        return { iso: null, error: "Ngày Excel không hợp lệ" };
+      }
+    }
+    const str = String(raw).trim();
+    if (!str) return { iso: null, error: null };
+    // dd/MM/yyyy (xuất báo cáo của hệ thống)
+    let m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) {
+      const dd = Number(m[1]); const mm = Number(m[2]); const yyyy = Number(m[3]);
+      const dt = new Date(yyyy, mm - 1, dd);
+      if (dt.getFullYear() !== yyyy || dt.getMonth() !== mm - 1 || dt.getDate() !== dd) {
+        return { iso: null, error: `Ngày không hợp lệ: ${str}` };
+      }
+      return { iso: `${String(yyyy).padStart(4,"0")}-${String(mm).padStart(2,"0")}-${String(dd).padStart(2,"0")}`, error: null };
+    }
+    // yyyy-MM-dd hoặc ISO
+    m = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return { iso: str, error: null };
+    const d2 = new Date(str);
+    if (!isNaN(d2.getTime())) {
+      return { iso: `${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,"0")}-${String(d2.getDate()).padStart(2,"0")}`, error: null };
+    }
+    return { iso: null, error: `Ngày không hợp lệ: ${str}` };
+  };
+
+  const CONSTRAINT_RE = /^([\d.]+)\s*(FS|SS|FF|SF)?\s*([+-]\d+)?$/i;
 
   const handleImportFileChange = async (e) => {
     if (isReadOnly) { alert(offlineMutationMessage); return; }
@@ -424,7 +491,7 @@ const closeTaskForm = () => {
       });
       collectNames(rolledItems);
 
-      const nodes = []; // { stt, depth, name, type, code, durationDays, constraintRaw, rowNum }
+      const nodes = []; // { stt, depth, name, type, code, durationDays, startDateISO, constraintRaw, rowNum }
       const skipped = [];
 
       raw.forEach((r, i) => {
@@ -457,6 +524,19 @@ const closeTaskForm = () => {
           }
         }
 
+        // Ngày bắt đầu: hỗ trợ cả chuỗi dd/MM/yyyy và số serial Excel. Hạng mục cha (STT nguyên)
+        // có thể để trống; công việc thiếu/ngày lỗi sẽ bị bỏ qua kèm lý do thay vì âm thầm gán ngày hiện tại.
+        const startRaw = r["Ngày bắt đầu"] ?? r["Ngay bat dau"] ?? r["start_date"] ?? "";
+        const { iso: startDateISO, error: startDateError } = parseExcelDateToISO(startRaw);
+        if (isTask && startDateError) {
+          skipped.push({ row: rowNum, reason: startDateError });
+          return;
+        }
+        if (isTask && !startDateISO) {
+          skipped.push({ row: rowNum, reason: "Công việc thiếu 'Ngày bắt đầu'" });
+          return;
+        }
+
         nodes.push({
           stt: String(sttRaw).trim(),
           depth,
@@ -464,6 +544,8 @@ const closeTaskForm = () => {
           type: isTask ? "task" : "category",
           code: String(r["Mã"] ?? r["code"] ?? "").trim(),
           durationDays,
+          startDateISO: startDateISO || null,
+          startDateError,
           constraintRaw: String(r["Ràng buộc"] ?? r["Rang buoc"] ?? "").trim(),
           rowNum,
         });
@@ -569,38 +651,56 @@ const closeTaskForm = () => {
         continue;
       }
       try {
-        const res = await api.post(`/projects/${projectId}/tasks`, {
+        const payload = {
           work_item_id: workItemId,
           name: node.name,
           duration_days: node.durationDays,
-        });
-        node.realId = res.data.id;
-        sttToTaskId.set(node.stt, res.data.id);
+        };
+        if (node.startDateISO) {
+          payload.scheduling_mode = "manual";
+          payload.manual_start_date = node.startDateISO;
+        }
+        const res = await api.post(`/projects/${projectId}/tasks`, payload);
+        // API returns { task: {...} } or { id: ... } depending on version
+        node.realId = res.data?.task?.id ?? res.data?.id ?? res.data?.task_id;
+        if (!node.realId) throw new Error("Không nhận được id công việc từ server");
+        sttToTaskId.set(node.stt, node.realId);
         taskCount++;
       } catch (err) {
         failed.push(`[Công việc] ${node.name}: ${err.response?.data?.message || err.message}`);
       }
     }
 
-    // 3) Tạo lại ràng buộc GIỮA CÁC CÔNG VIỆC TRONG CHÍNH FILE NÀY (bỏ qua tham chiếu ra ngoài file).
+    // 3) Tạo lại ràng buộc GIỮA CÁC CÔNG VIỆC TRONG CHÍNH FILE NÀY.
+    // Hỗ trợ STT+loại(FS/SS/FF/SF)+lag(+N/-N) như "2.3SS", "1.2FS+2"; nhiều ràng buộc cách nhau dấu phẩy.
+    // Nếu ràng buộc trỏ tới STT không tồn tại trong file hoặc sai định dạng -> báo lỗi rõ dòng.
     let dependencyCount = 0;
     for (const node of importPreview.rows) {
       if (node.type !== "task" || !node.realId || !node.constraintRaw) continue;
 
       for (const part of node.constraintRaw.split(",").map((s) => s.trim()).filter(Boolean)) {
-        const m = part.match(/^([\d.]+)\s*(FS|SS|FF|SF)?$/i);
-        if (!m) continue;
+        const m = part.match(CONSTRAINT_RE);
+        if (!m) {
+          failed.push(`[Ràng buộc] Dòng ${node.rowNum} ("${node.name}"): "${part}" sai định dạng`);
+          continue;
+        }
         const predecessorStt = m[1];
         const dependencyType = (m[2] || "FS").toUpperCase();
+        const lagStr = m[3] || null;
         const predecessorId = sttToTaskId.get(predecessorStt);
-        if (!predecessorId) continue; // tham chiếu ra ngoài file nhập này -> bỏ qua
+        if (!predecessorId) {
+          failed.push(`[Ràng buộc] Dòng ${node.rowNum} ("${node.name}"): "${part}" không khớp STT nào trong file`);
+          continue;
+        }
 
         try {
-          await api.post(`/projects/${projectId}/dependencies`, {
+          const depPayload = {
             predecessor_id: predecessorId,
             successor_id: node.realId,
             dependency_type: dependencyType,
-          });
+          };
+          if (lagStr) depPayload.lead_lag_days = Number(lagStr);
+          await api.post(`/projects/${projectId}/dependencies`, depPayload);
           dependencyCount++;
         } catch (err) {
           failed.push(`[Ràng buộc] ${predecessorStt} → ${node.name}: ${err.response?.data?.message || err.message}`);

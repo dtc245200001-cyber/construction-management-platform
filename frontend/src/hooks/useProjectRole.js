@@ -74,6 +74,7 @@ export function useProjectRole(projectId, enabled = true) {
         const status = error?.response?.status;
         if (status === 401 || status === 403 || status === 404) {
           writeCachedRole(projectId, null);
+          // 404: project không còn tồn tại (stale id sau TRUNCATE). DashboardLayout sẽ heal currentProjectId.
           setState({ projectId, role: null, loading: false });
         } else {
           // Lỗi mạng/server tạm thời: chỉ dùng vai trò đã lưu, không tự cấp vai trò mới.

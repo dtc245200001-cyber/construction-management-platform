@@ -66,14 +66,25 @@ export default function GanttPage() {
     }
   };
 
+  const fetchSeqRef = React.useRef(0);
+  React.useEffect(() => {
+    setTasks([]); setDependencies([]); setSummary(null); setScheduleSummary(null);
+    setCalendar(null); setHolidays([]); setError(null); setIsFromCache(false);
+    setCachedAt(null); setCacheMiss(false); setSelectedTaskForProgress(null);
+    setActiveBar(null); fetchSeqRef.current += 1;
+  }, [currentProjectId]);
+
   const fetchData = async () => {
+    const mySeq = ++fetchSeqRef.current;
+    const myProjectId = currentProjectId;
+    const isStale = () => mySeq !== fetchSeqRef.current || myProjectId !== (currentProject?.id || localStorage.getItem("currentProjectId") || 1);
     try {
       if (tasks.length === 0) setLoading(true);
       if (!navigator.onLine) {
-        const snapshot = await readSnapshot(currentProjectId, SNAPSHOT_TYPES.GANTT);
+        const snapshot = await readSnapshot(myProjectId, SNAPSHOT_TYPES.GANTT);
+        if (isStale()) return;
         if (snapshot?.payload?.tasks) {
           const payload = snapshot.payload;
-          setTasks(payload.tasks || []);
           setDependencies(payload.dependencies || []);
           setSummary(payload.summary || null);
           setScheduleSummary(payload.scheduleSummary || null);
@@ -94,7 +105,7 @@ export default function GanttPage() {
       let shouldFetchResults = true;
 
       try {
-        const calcRes = await api.post(`/projects/${currentProjectId}/schedule/recalculate`);
+        const calcRes = await api.post(`/projects/${myProjectId}/schedule/recalculate`);
 
         if (calcRes.status === 202 && calcRes.data?.jobId) {
           setIsPolling(true);
@@ -105,7 +116,7 @@ export default function GanttPage() {
           while (jobStatus === 'queued' || jobStatus === 'running') {
             await new Promise(r => setTimeout(r, currentDelay));
             try {
-              const jobRes = await api.get(`/projects/${currentProjectId}/schedule-jobs/${calcRes.data.jobId}`);
+              const jobRes = await api.get(`/projects/${myProjectId}/schedule-jobs/${calcRes.data.jobId}`);
               jobStatus = jobRes.data.job.status;
               if (jobStatus === 'failed') {
                 jobErrorDetails = jobRes.data.job.error_details ? JSON.parse(jobRes.data.job.error_details) : { message: 'Lỗi không xác định' };
@@ -141,11 +152,12 @@ export default function GanttPage() {
 
       if (shouldFetchResults) {
         const [res, summaryRes, calRes, holRes] = await Promise.all([
-          api.get(`/projects/${currentProjectId}/schedule-results`),
-          api.get(`/projects/${currentProjectId}/schedule-summary`).catch(() => ({ data: null })),
-          api.get(`/projects/${currentProjectId}/calendar`).catch(() => ({ data: { calendar: null } })),
-          api.get(`/projects/${currentProjectId}/holidays`).catch(() => ({ data: { holidays: [] } }))
+          api.get(`/projects/${myProjectId}/schedule-results`),
+          api.get(`/projects/${myProjectId}/schedule-summary`).catch(() => ({ data: null })),
+          api.get(`/projects/${myProjectId}/calendar`).catch(() => ({ data: { calendar: null } })),
+          api.get(`/projects/${myProjectId}/holidays`).catch(() => ({ data: { holidays: [] } }))
         ]);
+        if (isStale()) return;
         setTasks(res.data.data || []);
         setDependencies(res.data.dependencies || []);
         setSummary(res.data.summary || null);
@@ -158,7 +170,7 @@ export default function GanttPage() {
         if (holRes.data?.holidays) {
           setHolidays(holRes.data.holidays);
         }
-        await writeSnapshot(currentProjectId, SNAPSHOT_TYPES.GANTT, {
+        await writeSnapshot(myProjectId, SNAPSHOT_TYPES.GANTT, {
           tasks: res.data.data || [],
           dependencies: res.data.dependencies || [],
           summary: res.data.summary || null,
@@ -174,10 +186,10 @@ export default function GanttPage() {
     } catch (err) {
       if (isNetworkError(err)) {
         setIsOnline(false);
-        const snapshot = await readSnapshot(currentProjectId, SNAPSHOT_TYPES.GANTT);
+        const snapshot = await readSnapshot(myProjectId, SNAPSHOT_TYPES.GANTT);
+        if (isStale()) return;
         if (snapshot?.payload?.tasks) {
           const payload = snapshot.payload;
-          setTasks(payload.tasks || []);
           setDependencies(payload.dependencies || []);
           setSummary(payload.summary || null);
           setScheduleSummary(payload.scheduleSummary || null);
@@ -192,7 +204,7 @@ export default function GanttPage() {
         setError(err.response?.data?.message || "Lỗi tải tiến độ dự án");
       }
     } finally {
-      setLoading(false);
+      if (!isStale()) setLoading(false); else setLoading(false);
       setIsPolling(false);
     }
   };

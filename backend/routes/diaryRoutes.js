@@ -459,7 +459,7 @@ router.post(
   "/:projectId/diary-locks/:date/lock",
   requireAuth,
   checkProjectAccess,
-  // S-27: chốt sổ cuối ngày — Chỉ huy trưởng (đổi theo đặc tả, rút KSGS).
+  // S-27: chốt sổ cuối ngày — Kỹ sư giám sát (chuyển từ Chỉ huy trưởng).
   requirePermission("site_log.close_daily"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
@@ -505,8 +505,8 @@ router.post(
   "/:projectId/diary-locks/:date/unlock",
   requireAuth,
   checkProjectAccess,
-  // Điều chỉnh nhật ký đã chốt (có lý do + audit) — Chỉ huy trưởng
-  // (đổi theo đặc tả, rút BQL).
+  // Điều chỉnh nhật ký đã chốt (có lý do + audit) — Ban quản lý
+  // (chuyển từ Chỉ huy trưởng). Lý do bắt buộc, validate bên dưới.
   requirePermission("site_log.correct_locked"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);

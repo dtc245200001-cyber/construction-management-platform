@@ -48,29 +48,38 @@ describe("permissions matrix (phân quyền 6 vai trò)", () => {
     });
   });
 
-  describe("chốt/mở khóa nhật ký thuộc Chỉ huy trưởng", () => {
-    test("chi_huy_truong chốt + điều chỉnh được nhật ký đã chốt", () => {
-      expect(can(ROLES.CHI_HUY_TRUONG, "site_log.close_daily")).toBe(true);
-      expect(can(ROLES.CHI_HUY_TRUONG, "site_log.correct_locked")).toBe(true);
+  describe("chốt/mở khóa nhật ký (đã chuyển giao)", () => {
+    test("ky_su_giam_sat chốt được nhật ký (site_log.close_daily)", () => {
+      expect(can(ROLES.KY_SU_GIAM_SAT, "site_log.close_daily")).toBe(true);
     });
-    test("ky_su_giam_sat và ban_quan_ly KHÔNG chốt/mở được", () => {
-      expect(can(ROLES.KY_SU_GIAM_SAT, "site_log.close_daily")).toBe(false);
-      expect(can(ROLES.BAN_QUAN_LY, "site_log.close_daily")).toBe(false);
+    test("ban_quan_ly mở khóa được nhật ký đã chốt (site_log.correct_locked)", () => {
+      expect(can(ROLES.BAN_QUAN_LY, "site_log.correct_locked")).toBe(true);
+    });
+    test("chi_huy_truong KHÔNG chốt/mở được sau khi chuyển giao", () => {
+      expect(can(ROLES.CHI_HUY_TRUONG, "site_log.close_daily")).toBe(false);
+      expect(can(ROLES.CHI_HUY_TRUONG, "site_log.correct_locked")).toBe(false);
+    });
+    test("role không được giao không chốt/mở được", () => {
+      expect(can(ROLES.CHI_HUY_TRUONG, "site_log.close_daily")).toBe(false);
       expect(can(ROLES.KY_SU_GIAM_SAT, "site_log.correct_locked")).toBe(false);
-      expect(can(ROLES.BAN_QUAN_LY, "site_log.correct_locked")).toBe(false);
+      expect(can(ROLES.DOI_TRUONG, "site_log.close_daily")).toBe(false);
+      expect(can(ROLES.DOI_TRUONG, "site_log.correct_locked")).toBe(false);
     });
   });
 
-  describe("member.manage giữ cả BQL + CĐT (quyết định giữ hành vi cũ)", () => {
-    test("cả hai role đều quản lý được thành viên", () => {
+  describe("member.manage chỉ Ban quản lý (CĐT chỉ giám sát)", () => {
+    test("chỉ ban_quan_ly quản lý được thành viên", () => {
       expect(can(ROLES.BAN_QUAN_LY, "member.manage")).toBe(true);
-      expect(can(ROLES.CHU_DAU_TU, "member.manage")).toBe(true);
+    });
+    test("chu_dau_tu KHÔNG quản lý thành viên", () => {
+      expect(can(ROLES.CHU_DAU_TU, "member.manage")).toBe(false);
     });
     test("role khác không quản lý được thành viên", () => {
       expect(can(ROLES.CHI_HUY_TRUONG, "member.manage")).toBe(false);
       expect(can(ROLES.DOI_TRUONG, "member.manage")).toBe(false);
       expect(can(ROLES.KE_TOAN, "member.manage")).toBe(false);
       expect(can(ROLES.KY_SU_GIAM_SAT, "member.manage")).toBe(false);
+      expect(can(ROLES.CHU_DAU_TU, "member.manage")).toBe(false);
     });
   });
 

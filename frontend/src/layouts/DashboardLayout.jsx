@@ -179,9 +179,11 @@ function DashboardShell({ user, setUser }) {
   const [openSwitcher, setOpenSwitcher] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     api
       .get("/projects")
       .then((res) => {
+        if (cancelled) return;
         const projs = res.data.projects || [];
         setProjects(projs);
         try {
@@ -194,6 +196,19 @@ function DashboardShell({ user, setUser }) {
           localStorage.setItem("currentProjectId", projs[0].id);
           setCurrentProject(projs[0]);
         }
+        // Healing stale currentProjectId sau TRUNCATE/RESTART IDENTITY: nếu stored id không còn tồn tại trong danh sách mới thì đổi sang project đầu tiên còn lại.
+        if (stored && projs.length > 0 && !projs.some((p) => String(p.id) === String(stored))) {
+          const healedId = String(projs[0].id);
+          try {
+            localStorage.removeItem(`project_role_${stored}`);
+            localStorage.removeItem(`cached_project_${stored}`);
+          } catch { /* ignore */ }
+          localStorage.setItem("currentProjectId", healedId);
+          setCurrentProject(projs[0]);
+          try { localStorage.setItem(`cached_project_${healedId}`, JSON.stringify(projs[0])); } catch { /* ignore */ }
+          if (!cancelled) window.location.reload();
+          return;
+        }
       })
       .catch(console.error);
 
@@ -202,6 +217,7 @@ function DashboardShell({ user, setUser }) {
       api
         .get(`/projects/${activeProjectId}`)
         .then((res) => {
+          if (cancelled) return;
           if (res.data?.project) {
             setCurrentProject(res.data.project);
             try {
@@ -214,8 +230,32 @@ function DashboardShell({ user, setUser }) {
             }
           }
         })
-        .catch((err) => console.error(err));
+        .catch((err) => {
+          if (cancelled) return;
+          const status = err?.response?.status;
+          // Stale id sau TRUNCATE: project không còn tồn tại. Heal bằng cách chọn project đầu tiên còn lại.
+          if (status === 404) {
+            api.get("/projects").then((res2) => {
+              if (cancelled) return;
+              const projs2 = res2.data?.projects || [];
+              if (projs2.length > 0) {
+                const healedId = String(projs2[0].id);
+                try {
+                  localStorage.removeItem(`project_role_${activeProjectId}`);
+                  localStorage.removeItem(`cached_project_${activeProjectId}`);
+                } catch { /* ignore */ }
+                localStorage.setItem("currentProjectId", healedId);
+                setCurrentProject(projs2[0]);
+                try { localStorage.setItem(`cached_project_${healedId}`, JSON.stringify(projs2[0])); } catch { /* ignore */ }
+                window.location.reload();
+              }
+            }).catch(() => console.error(err));
+            return;
+          }
+          console.error(err);
+        });
     }
+    return () => { cancelled = true; };
   }, [currentProjectId]);
 
   const handleSwitchProject = async (id) => {

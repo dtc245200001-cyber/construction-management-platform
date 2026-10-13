@@ -462,6 +462,13 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
       return;
     }
 
+    setMembers([]);
+    setTeams([]);
+    setTasks([]);
+    setSelectedTeamMembers([]);
+    setAssignedTasks([]);
+    setTeamWorkload(null);
+
     fetchMembers();
     fetchTeams();
     fetchTasks();

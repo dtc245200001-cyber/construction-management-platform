@@ -105,6 +105,12 @@ export default function ContractQuantityPage({ user: _user }) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingItem, setDeletingItem] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const fetchSeqRef = React.useRef(0);
+  React.useEffect(() => {
+    setData(null); setError(null); setForbidden(false); setIsFromCache(false); setCachedAt(null); setCacheMiss(false);
+    setDialogOpen(false); setDeleteDialogOpen(false); setEditingItem(null); setDeletingItem(null);
+    fetchSeqRef.current += 1;
+  }, [projectId]);
 
   // Xác định quyền sửa: Chỉ khi đã tải xong vai trò và thuộc chu_dau_tu hoặc ban_quan_ly
   const canEdit = can(projectRole, "contract_quantity.edit") && !isReadOnly;
@@ -121,13 +127,15 @@ export default function ContractQuantityPage({ user: _user }) {
 
   // Lấy dữ liệu khối lượng hợp đồng
   const fetchContractQuantities = useCallback(async () => {
+    const mySeq = ++fetchSeqRef.current; const myProjectId = projectId; const isStale = () => mySeq !== fetchSeqRef.current || myProjectId !== (localStorage.getItem("currentProjectId") || 1);
     setLoading(true);
     setError(null);
     setForbidden(false);
 
     try {
-      const res = await api.get(`/projects/${projectId}/contract-quantities`);
-      await writeSnapshot(projectId, SNAPSHOT_TYPES.CONTRACT_QUANTITIES, res.data);
+      const res = await api.get(`/projects/${myProjectId}/contract-quantities`);
+      if (isStale()) return;
+      await writeSnapshot(myProjectId, SNAPSHOT_TYPES.CONTRACT_QUANTITIES, res.data);
       setData(res.data);
       setIsFromCache(false);
       setCachedAt(null);
@@ -139,7 +147,8 @@ export default function ContractQuantityPage({ user: _user }) {
         setForbidden(true);
       } else if (isNetworkError(err)) {
         setIsOnline(false);
-        const snapshot = await readSnapshot(projectId, SNAPSHOT_TYPES.CONTRACT_QUANTITIES);
+        const snapshot = await readSnapshot(myProjectId, SNAPSHOT_TYPES.CONTRACT_QUANTITIES);
+        if (isStale()) return;
         if (snapshot?.payload !== undefined) {
           setData(snapshot.payload);
           setIsFromCache(true);
