@@ -133,7 +133,14 @@ router.get(
     if (dateErrors.length > 0) return res.status(400).json({ message: dateErrors[0] });
 
     const date = req.params.date;
-    const canEdit = calcCanEdit(req.projectRole);
+
+    // Kiểm tra trạng thái khóa của ngày (S-24)
+    const lockCheck = await db.query(
+      `SELECT is_locked FROM daily_log_locks WHERE project_id = $1 AND log_date = $2::date`,
+      [projectId, date]
+    );
+    const isLocked = lockCheck.rows.length > 0 && Boolean(lockCheck.rows[0].is_locked);
+    const canEdit = !isLocked && calcCanEdit(req.projectRole);
 
     // Đếm số mục nhật ký tự do (diary_entries) của ngày theo giờ VN
     const countRes = await db.query(
