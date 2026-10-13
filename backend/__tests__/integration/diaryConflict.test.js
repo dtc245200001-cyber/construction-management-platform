@@ -1,5 +1,6 @@
 "use strict";
 
+const { randomUUID } = require("crypto");
 const request = require("supertest");
 const app = require("../../app");
 const pool = require("../../config/db");
@@ -109,9 +110,10 @@ describe("Story S-32: Diary Entries Versioning & Conflict Resolution (T-76, T-77
           work_item_id: workItemId,
           content: "Nội dung ban đầu T-76",
           entry_at: "2026-10-13T08:00:00.000Z",
-          client_id: `t76-init-${Date.now()}-${Math.random()}`,
+          client_id: randomUUID(),
         });
       expect(res.status).toBe(201);
+      expect(res.body.id).toBeDefined();
       entryId = res.body.id;
       expect(res.body.version).toBe(1);
     });
@@ -124,7 +126,9 @@ describe("Story S-32: Diary Entries Versioning & Conflict Resolution (T-76, T-77
           content: "Cập nhật không có version",
         });
       expect(res.status).toBe(400);
-      expect(res.body.message).toMatch(/version/i);
+      expect(res.body.errors).toContain(
+        "version is required and must be a positive integer"
+      );
     });
 
     it("Chặn cross-project work_item_id (422)", async () => {
@@ -167,9 +171,10 @@ describe("Story S-32: Diary Entries Versioning & Conflict Resolution (T-76, T-77
           work_item_id: workItemId,
           content: "ORIGINAL_CONTENT_V1",
           entry_at: "2026-10-13T08:00:00.000Z",
-          client_id: `t79-entry-${Date.now()}`,
+          client_id: randomUUID(),
         });
       expect(createRes.status).toBe(201);
+      expect(createRes.body.id).toBeDefined();
       const entryId = createRes.body.id;
       expect(createRes.body.version).toBe(1);
 
@@ -253,18 +258,21 @@ describe("Story S-32: Diary Entries Versioning & Conflict Resolution (T-76, T-77
           work_item_id: workItemId,
           content: "BASE_CONTENT_V1",
           entry_at: "2026-10-13T08:00:00.000Z",
-          client_id: `t78-base-${Date.now()}-${Math.random()}`,
+          client_id: randomUUID(),
         });
+      expect(cRes.status).toBe(201);
+      expect(cRes.body.id).toBeDefined();
       entryId = cRes.body.id;
 
       // Cập nhật lên v2
-      await request(app)
+      const putV2Res = await request(app)
         .put(`/api/projects/${projectId}/diary-entries/${entryId}`)
         .set("Cookie", cookieKySuA)
         .send({
           content: "SERVER_CONTENT_V2",
           version: 1,
         });
+      expect(putV2Res.status).toBe(200);
 
       // Tạo conflict bằng cách gửi request dựa trên v1
       const confRes = await request(app)
@@ -301,9 +309,9 @@ describe("Story S-32: Diary Entries Versioning & Conflict Resolution (T-76, T-77
         .send({ resolution: "server" });
 
       expect(res.status).toBe(200);
-      expect(res.body.status).toBe("resolved");
+      expect(res.body.success).toBe(true);
       expect(res.body.resolution).toBe("server");
-      expect(res.body.resolved_version).toBe(2);
+      expect(res.body.resulting_version).toBe(2);
 
       // Kiểm tra trong DB: nội dung server không đổi, version vẫn là 2
       const entryInDb = await pool.query("SELECT * FROM diary_entries WHERE id = $1", [entryId]);
@@ -323,9 +331,9 @@ describe("Story S-32: Diary Entries Versioning & Conflict Resolution (T-76, T-77
         .send({ resolution: "client" });
 
       expect(res.status).toBe(200);
-      expect(res.body.status).toBe("resolved");
+      expect(res.body.success).toBe(true);
       expect(res.body.resolution).toBe("client");
-      expect(res.body.resolved_version).toBe(3);
+      expect(res.body.resulting_version).toBe(3);
 
       // Kiểm tra trong DB: nội dung chuyển sang client content, version là 3
       const entryInDb = await pool.query("SELECT * FROM diary_entries WHERE id = $1", [entryId]);
