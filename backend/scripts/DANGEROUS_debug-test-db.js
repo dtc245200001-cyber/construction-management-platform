@@ -1,5 +1,15 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env.test') });
+if (!process.env.LOCAL_DATABASE_URL || !/localhost|127\.0\.0\.1/.test(process.env.LOCAL_DATABASE_URL)) {
+  console.error('🚫 GUARD: LOCAL_DATABASE_URL không trỏ localhost — từ chối chạy để tránh TRUNCATE production.');
+  console.error('   Kiểm tra backend/.env.test: LOCAL_DATABASE_URL phải là postgres://...@localhost:5433/construction_db_test');
+  process.exit(1);
+}
 process.env.DATABASE_URL = process.env.LOCAL_DATABASE_URL;
+
+// 🛡️ GUARD: Chặn chạy trên production (check sau khi gán)
+const guardProduction = require('./_production-guard');
+guardProduction('debug-test-db.js');
+
 const pool = require('../config/db');
 
 async function main() {

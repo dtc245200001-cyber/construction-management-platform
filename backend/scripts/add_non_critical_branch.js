@@ -1,4 +1,8 @@
 require('dotenv').config();
+
+// 🛡️ GUARD: Chặn ghi production — chỉ chạy trên localhost/test DB
+try { require('./_production-guard')(__filename.split('/').pop() || 'script.js'); } catch(e) { console.error(e.message); process.exit(1); }
+
 const db = require('../config/db');
 const { calculateAndSaveSchedule } = require('../services/scheduleCalculation');
 

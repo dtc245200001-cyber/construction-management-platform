@@ -1,4 +1,5 @@
 require('dotenv').config({ path: '../.env' });
+try { require('./_production-guard')(require('path').basename(__filename)); } catch(e) { console.error(e.message); process.exit(1); }
 const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 const { calculateAndSaveSchedule } = require('../services/scheduleCalculation');
