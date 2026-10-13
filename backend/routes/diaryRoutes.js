@@ -6,7 +6,11 @@ const requireAuth = require("../middleware/auth");
 const { checkProjectAccess, requirePermission, createProjectRouter } = require("../middleware/projectAccess");
 const asyncHandler = require("../utils/asyncHandler");
 const { parsePositiveInt } = require("../utils/validators");
-const { validateCreateDiaryEntry, validateGetDiaryEntries } = require("../utils/diaryValidators");
+const {
+  validateCreateDiaryEntry,
+  validateGetDiaryEntries,
+  validateUpdateDiaryEntry,
+} = require("../utils/diaryValidators");
 const { logAudit } = require("../utils/auditLogger");
 
 const router = createProjectRouter();
@@ -84,10 +88,12 @@ router.post(
       // KHÔNG kiểm tra bằng SELECT-rồi-INSERT (có race condition).
       const fetchRowById = async (entryId) => {
         const finalRes = await client.query(
-          `SELECT d.*, w.name AS work_item_name, w.code AS work_item_code, u.name AS created_by_name
+          `SELECT d.*, w.name AS work_item_name, w.code AS work_item_code,
+                  u.name AS created_by_name, u2.name AS updated_by_name
            FROM diary_entries d
            JOIN work_items w ON w.id = d.work_item_id
            JOIN users u ON u.id = d.created_by
+           LEFT JOIN users u2 ON u2.id = d.updated_by
            WHERE d.id = $1`,
           [entryId]
         );
@@ -96,8 +102,8 @@ router.post(
 
       try {
         const insertRes = await client.query(
-          `INSERT INTO diary_entries (project_id, work_item_id, content, entry_at, created_by, client_id)
-           VALUES ($1, $2, $3, $4, $5, $6)
+          `INSERT INTO diary_entries (project_id, work_item_id, content, entry_at, created_by, updated_by, version, client_id)
+           VALUES ($1, $2, $3, $4, $5, $5, 1, $6)
            RETURNING *`,
           [projectId, work_item_id, content.trim(), entryAtVal, req.user.id, client_id || null]
         );
@@ -114,10 +120,12 @@ router.post(
         await client.query("ROLLBACK");
         await client.query("BEGIN");
         const existing = await client.query(
-          `SELECT d.*, w.name AS work_item_name, w.code AS work_item_code, u.name AS created_by_name
+          `SELECT d.*, w.name AS work_item_name, w.code AS work_item_code,
+                  u.name AS created_by_name, u2.name AS updated_by_name
            FROM diary_entries d
            JOIN work_items w ON w.id = d.work_item_id
            JOIN users u ON u.id = d.created_by
+           LEFT JOIN users u2 ON u2.id = d.updated_by
            WHERE d.project_id = $1 AND d.client_id = $2`,
           [projectId, client_id]
         );
@@ -198,7 +206,8 @@ router.get(
     const total = parseInt(countRes.rows[0].count, 10);
 
     const dataRes = await db.query(
-      `SELECT d.*, w.name AS work_item_name, w.code AS work_item_code, u.name AS created_by_name,
+      `SELECT d.*, w.name AS work_item_name, w.code AS work_item_code,
+              u.name AS created_by_name, u2.name AS updated_by_name,
               COALESCE((
                 SELECT json_agg(json_build_object(
                   'id', a.id,
@@ -214,6 +223,7 @@ router.get(
        FROM diary_entries d
        JOIN work_items w ON w.id = d.work_item_id
        JOIN users u ON u.id = d.created_by
+       LEFT JOIN users u2 ON u2.id = d.updated_by
        WHERE ${whereClause}
        ORDER BY d.entry_at DESC, d.id DESC
        LIMIT $${paramIndex++} OFFSET $${paramIndex++}`,
@@ -313,6 +323,165 @@ router.delete(
       }
 
       return res.json({ success: true, message: "Đã xóa mục nhật ký thành công" });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  })
+);
+
+/**
+ * @swagger
+ * /api/projects/{projectId}/diary-entries/{entryId}:
+ *   put:
+ *     summary: Cập nhật mục nhật ký kèm kiểm tra version (T-76 / T-77)
+ *     tags: [Diary]
+ */
+router.put(
+  "/:projectId/diary-entries/:entryId",
+  requireAuth,
+  checkProjectAccess,
+  requirePermission("site_log.create"),
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+    const entryId = parsePositiveInt(req.params.entryId);
+    if (!projectId || !entryId) {
+      return res.status(400).json({ message: "Tham số không hợp lệ" });
+    }
+
+    const errors = validateUpdateDiaryEntry(req.body);
+    if (errors.length > 0) {
+      return res.status(400).json({ message: "Dữ liệu không hợp lệ", errors });
+    }
+
+    const { work_item_id, content, entry_at, version: clientVersion, client_updated_at, source } = req.body;
+
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+
+      // 1. SELECT FOR UPDATE để khoá dòng và đọc dữ liệu mới nhất
+      const selectRes = await client.query(
+        `SELECT d.*, w.name AS work_item_name, w.code AS work_item_code,
+                u.name AS created_by_name, u2.name AS updated_by_name
+         FROM diary_entries d
+         JOIN work_items w ON w.id = d.work_item_id
+         JOIN users u ON u.id = d.created_by
+         LEFT JOIN users u2 ON u2.id = d.updated_by
+         WHERE d.id = $1 AND d.project_id = $2
+         FOR UPDATE`,
+        [entryId, projectId]
+      );
+
+      if (selectRes.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Không tìm thấy mục nhật ký" });
+      }
+
+      const serverEntry = selectRes.rows[0];
+
+      // 2. Kiểm tra khoá nhật ký của ngày
+      const targetDate = entry_at
+        ? new Date(entry_at).toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" })
+        : (serverEntry.entry_date || new Date(serverEntry.entry_at).toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }));
+
+      const lockCheck = await client.query(
+        "SELECT is_locked FROM daily_log_locks WHERE project_id = $1 AND log_date = $2",
+        [projectId, targetDate]
+      );
+      if (lockCheck.rows.length > 0 && lockCheck.rows[0].is_locked) {
+        await client.query("ROLLBACK");
+        return res.status(403).json({ message: "Nhật ký của ngày này đã bị khóa, không thể cập nhật." });
+      }
+
+      // 3. Kiểm tra work_item_id nếu có thay đổi
+      let targetWorkItemId = serverEntry.work_item_id;
+      let targetWorkItemName = serverEntry.work_item_name;
+      let targetWorkItemCode = serverEntry.work_item_code;
+      if (work_item_id !== undefined && work_item_id !== null && work_item_id !== serverEntry.work_item_id) {
+        const wiCheck = await client.query(
+          "SELECT id, name, code FROM work_items WHERE id = $1 AND project_id = $2",
+          [work_item_id, projectId]
+        );
+        if (wiCheck.rows.length === 0) {
+          await client.query("ROLLBACK");
+          return res.status(422).json({ code: "INVALID_WORK_ITEM", message: "Hạng mục không tồn tại hoặc không thuộc dự án này" });
+        }
+        targetWorkItemId = wiCheck.rows[0].id;
+        targetWorkItemName = wiCheck.rows[0].name;
+        targetWorkItemCode = wiCheck.rows[0].code;
+      }
+
+      // 4. So sánh phiên bản client vs server
+      if (Number(clientVersion) === Number(serverEntry.version)) {
+        // Cùng version -> Cập nhật thành công, tăng version nguyên tử trong cùng transaction
+        const entryAtVal = entry_at ? new Date(entry_at).toISOString() : serverEntry.entry_at;
+
+        const updateRes = await client.query(
+          `UPDATE diary_entries
+           SET work_item_id = $1,
+               content = $2,
+               entry_at = $3,
+               version = version + 1,
+               updated_by = $4,
+               updated_at = NOW()
+           WHERE id = $5 AND project_id = $6
+           RETURNING *`,
+          [targetWorkItemId, content.trim(), entryAtVal, req.user.id, entryId, projectId]
+        );
+
+        const updatedRow = updateRes.rows[0];
+
+        // Lấy thông tin attachments hiện có
+        const attRes = await client.query(
+          `SELECT COALESCE(
+            json_agg(json_build_object(
+              'id', a.id,
+              'file_name', a.file_name,
+              'file_size', a.file_size,
+              'mime_type', a.mime_type,
+              'created_at', a.created_at,
+              'url', '/api/projects/' || d.project_id || '/diary-entries/' || d.id || '/attachments/' || a.id
+            ) ORDER BY a.id),
+            '[]'::json
+          ) AS attachments
+           FROM diary_entries d
+           LEFT JOIN diary_entry_attachments a ON a.diary_entry_id = d.id
+           WHERE d.id = $1
+           GROUP BY d.id`,
+          [entryId]
+        );
+
+        await client.query("COMMIT");
+
+        try {
+          await logAudit({
+            userId: req.user.id,
+            action: "UPDATE_DIARY_ENTRY",
+            entity: "diary_entries",
+            entityId: entryId,
+            projectId,
+            details: {
+              previous_version: serverEntry.version,
+              new_version: updatedRow.version,
+              work_item_id: targetWorkItemId,
+            },
+          });
+        } catch (auditErr) {
+          console.error("Audit error:", auditErr);
+        }
+
+        return res.status(200).json({
+          ...updatedRow,
+          work_item_name: targetWorkItemName,
+          work_item_code: targetWorkItemCode,
+          created_by_name: serverEntry.created_by_name,
+          updated_by_name: req.user.name,
+          attachments: attRes.rows[0]?.attachments || [],
+        });
+      }
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
