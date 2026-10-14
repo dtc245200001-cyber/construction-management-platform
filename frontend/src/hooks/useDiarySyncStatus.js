@@ -1,5 +1,10 @@
 ﻿import { useCallback, useEffect, useState } from "react";
-import { getDiaryLogsByProject, getDiarySyncStats, SYNC_STATUS } from "../lib/diaryDb";
+import {
+  getDiaryLogsByProject,
+  getDiarySyncStats,
+  SYNC_STATUS,
+  isDiarySyncClaimStale,
+} from "../lib/diaryDb";
 import { requestDiarySync } from "../services/diarySync";
 
 function getProjectId() {
@@ -33,7 +38,9 @@ export default function useDiarySyncStatus() {
 
       const projectLogs = Array.isArray(logs) ? logs : [];
       const syncing = projectLogs.some(
-        (log) => log.syncStatus === SYNC_STATUS.SYNCING,
+        (log) =>
+          log.syncStatus === SYNC_STATUS.SYNCING &&
+          !isDiarySyncClaimStale(log),
       );
       setIsSyncing(syncing);
 

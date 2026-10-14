@@ -22,6 +22,7 @@ import {
   cleanOrphanAttachments,
   getDiaryEntryWithImages,
   getPendingSyncEntries,
+  isDiarySyncClaimStale,
   getDiarySyncStats,
   claimDiaryEntryForSync,
   updateDiaryEntry,
@@ -177,6 +178,23 @@ describe("T65 — IndexedDB Service cho Nhật ký và Ảnh ngoại tuyến", (
       expect(taskLogs.length).toBe(1);
       expect(taskLogs[0].content).toBe("Việc 1");
     });
+
+    it("coi claim syncing thiếu hoặc sai timestamp là stale", () => {
+      expect(isDiarySyncClaimStale({ syncStatus: SYNC_STATUS.SYNCING })).toBe(true);
+      expect(
+        isDiarySyncClaimStale({
+          syncStatus: SYNC_STATUS.SYNCING,
+          syncStartedAt: "not-a-date",
+        }),
+      ).toBe(true);
+      expect(
+        isDiarySyncClaimStale({
+          syncStatus: SYNC_STATUS.SYNCING,
+          syncStartedAt: new Date().toISOString(),
+        }),
+      ).toBe(false);
+    });
+
 
     it("lọc các bản ghi đang chờ đồng bộ (pending hoặc failed)", async () => {
       const e1 = await createDiaryEntry({
