@@ -50,7 +50,7 @@ export default function AcceptancePage({ user }) {
   const [projectRole, setProjectRole] = useState(null);
   const isSupervisor =
     user?.is_system_admin || can(projectRole, "acceptance.create_dossier");
-  // S-39: quyền duyệt (CĐT) và trả lại (BQL hoặc CĐT)
+  // S-38 / T-98: Ban quản lý duyệt; BQL hoặc Chủ đầu tư có thể trả lại
   const canApprove =
     user?.is_system_admin || can(projectRole, "acceptance.review_internal");
   const canReturn =
@@ -89,6 +89,10 @@ export default function AcceptancePage({ user }) {
   const [historyVoucherId, setHistoryVoucherId] = useState(null);
   const [historyLogs, setHistoryLogs] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false);
+  const [approveTarget, setApproveTarget] = useState(null);
+  const [approveError, setApproveError] = useState("");
 
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [returnTarget, setReturnTarget] = useState(null); // voucher being returned
@@ -458,7 +462,7 @@ export default function AcceptancePage({ user }) {
       await api.post(
         `/projects/${projectId}/acceptance-vouchers/${voucher.id}/submit`
       );
-      toast.success("Đã gửi phiếu lên Chủ đầu tư / Ban quản lý để duyệt");
+      toast.success("Đã gửi phiếu lên Ban quản lý để duyệt");
       fetchVouchers();
     } catch (err) {
       const msg = err?.response?.data?.message || "Không thể gửi duyệt phiếu";
@@ -468,19 +472,48 @@ export default function AcceptancePage({ user }) {
     }
   };
 
-  // S-39: duyệt phiếu (pending_review → approved)
-  const handleApprove = async (voucher) => {
+  // S-38 / T-98: mở hộp xác nhận duyệt trong giao diện (không dùng window.confirm).
+  const handleApprove = (voucher) => {
     if (!canApprove || actionLoading) return;
-    if (!window.confirm(`Duyệt phiếu "${voucher.batch_name}"?`)) return;
+    setApproveError("");
+    setApproveTarget(voucher);
+    setApproveDialogOpen(true);
+  };
+
+  // Chỉ thực thi API sau khi Ban quản lý bấm "Xác nhận duyệt" trong dialog.
+  const handleConfirmApprove = async () => {
+    if (!approveTarget || !canApprove || actionLoading) return;
+
     setActionLoading(true);
+    setApproveError("");
     try {
-      await api.post(
-        `/projects/${projectId}/acceptance-vouchers/${voucher.id}/approve`, {}
+      const res = await api.post(
+        `/projects/${projectId}/acceptance-vouchers/${approveTarget.id}/approve`,
+        {}
       );
-      toast.success("Đã duyệt phiếu nghiệm thu");
-      fetchVouchers();
+
+      const approvedVoucher = res?.data?.voucher;
+      setVouchers((current) =>
+        current.map((voucher) =>
+          voucher.id === approveTarget.id
+            ? { ...voucher, ...approvedVoucher, status: "approved" }
+            : voucher
+        )
+      );
+
+      toast.success(res?.data?.message || "Đã duyệt phiếu nghiệm thu");
+      setApproveDialogOpen(false);
+      setApproveTarget(null);
+      await fetchVouchers();
     } catch (err) {
-      const msg = err?.response?.data?.message || "Không thể duyệt phiếu";
+      const status = err?.response?.status;
+      const detail =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        "Không thể duyệt phiếu";
+      const msg = status ? `Duyệt phiếu thất bại (${status}): ${detail}` : detail;
+      setApproveError(msg);
       toast.error(msg);
     } finally {
       setActionLoading(false);
@@ -819,7 +852,7 @@ export default function AcceptancePage({ user }) {
                               title={
                                 v.has_negative_delta
                                   ? "Phiếu có khối lượng âm — không thể gửi duyệt"
-                                  : "Gửi phiếu lên Chủ đầu tư / Ban quản lý"
+                                  : "Gửi phiếu lên Ban quản lý"
                               }
                               className="h-8 px-2.5 text-blue-700 border-blue-200 hover:bg-blue-50"
                             >
@@ -827,7 +860,7 @@ export default function AcceptancePage({ user }) {
                             </Button>
                           )}
 
-                        {/* S-39: Duyệt (CĐT, pending_review) */}
+                        {/* S-38 / T-98: Duyệt (BQL, pending_review) */}
                         {canApprove && v.status === "pending_review" && (
                           <Button
                             variant="outline"
@@ -1456,6 +1489,70 @@ export default function AcceptancePage({ user }) {
               onClick={() => setDetailDialogOpen(false)}
             >
               Đóng
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── DIALOG: XÁC NHẬN DUYỆT PHIẾU ── */}
+      <Dialog
+        open={approveDialogOpen}
+        onOpenChange={(open) => {
+          if (!actionLoading) {
+            setApproveDialogOpen(open);
+            if (!open) {
+              setApproveTarget(null);
+              setApproveError("");
+            }
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Check className="h-5 w-5 text-emerald-600" />
+              Xác nhận duyệt phiếu
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-slate-700">
+              Bạn đang duyệt phiếu{" "}
+              <span className="font-semibold">
+                #{approveTarget?.id} · {approveTarget?.batch_name}
+              </span>
+              .
+            </div>
+            <p className="text-sm text-slate-600">
+              Sau khi duyệt, phiếu chuyển sang trạng thái <strong>Đã duyệt</strong> và
+              không còn được chỉnh sửa như phiếu nháp.
+            </p>
+            {approveError && (
+              <div
+                role="alert"
+                className="rounded-md border border-rose-200 bg-rose-50 p-2.5 text-sm text-rose-700"
+              >
+                {approveError}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={actionLoading}
+              onClick={() => setApproveDialogOpen(false)}
+            >
+              Hủy
+            </Button>
+            <Button
+              type="button"
+              disabled={actionLoading || !approveTarget}
+              onClick={handleConfirmApprove}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {actionLoading ? "Đang duyệt..." : "Xác nhận duyệt"}
             </Button>
           </DialogFooter>
         </DialogContent>
