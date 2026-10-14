@@ -2,6 +2,10 @@
 // Chạy: cd frontend && npm run test:e2e:offline
 import { test, expect } from '@playwright/test';
 
+// Bản production (build + preview) có service worker của VitePWA; request do service worker gửi
+// không đi qua page.route nên server giả/giả lập mạng mất tác dụng. Chặn để test giống bản dev.
+test.use({ serviceWorkers: 'block' });
+
 const PROJECT_ID = 1;
 const ENTRY_COUNT = 20;
 const RUN_ID = `${Date.now()}`; // mỗi lần chạy một tiền tố nội dung riêng -> chạy lặp không đụng nhau
