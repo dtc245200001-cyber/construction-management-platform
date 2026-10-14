@@ -54,6 +54,27 @@ function errorHandler(err, req, res, next) {
 
   // T-85 & T-86: Ánh xạ lỗi cơ sở dữ liệu Postgres cho khối lượng và đơn giá hợp đồng
   if (err.code === "23514") {
+    // S-37: trigger kiểm tra nghiệm thu dùng RAISE EXCEPTION với SQLSTATE 23514
+    // nhưng không gắn tên constraint. Nếu không ánh xạ riêng, production sẽ
+    // biến lỗi nghiệp vụ này thành 500 "Lỗi máy chủ", khiến T-98 không biết
+    // vì sao phiếu không được duyệt. Chỉ công khai các message nghiệp vụ đã biết.
+    const acceptanceMessage = String(err.message || "");
+    const isAcceptanceValidation =
+      acceptanceMessage.includes("không có khối lượng hợp đồng hợp lệ") ||
+      acceptanceMessage.includes("vượt hợp đồng") ||
+      acceptanceMessage.includes("có lũy kế thấp hơn mức đã duyệt") ||
+      acceptanceMessage.includes("Cannot change status of an approved acceptance voucher") ||
+      acceptanceMessage.includes("Cannot modify items of an approved acceptance voucher") ||
+      acceptanceMessage.includes("Cannot add or move items into an approved acceptance voucher") ||
+      acceptanceMessage.includes("Contract quantity cannot be lower than approved quantity");
+
+    if (isAcceptanceValidation) {
+      return res.status(422).json({
+        code: "ACCEPTANCE_CONTRACT_VALIDATION_FAILED",
+        message: acceptanceMessage,
+      });
+    }
+
     if (err.constraint === "work_items_contract_leaf_only") {
       return res.status(422).json({
         message: err.message || "Hạng mục cha không khai khối lượng hợp đồng trực tiếp; hãy khai ở các hạng mục lá bên dưới",
