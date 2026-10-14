@@ -1056,6 +1056,14 @@ router.post(
     if (voucherCheck.rows.length === 0) {
       return res.status(404).json({ message: "Không tìm thấy phiếu nghiệm thu" });
     }
+    if (!["draft", "returned"].includes(voucherCheck.rows[0].status)) {
+      return res.status(409).json({
+        code: "ACCEPTANCE_VOUCHER_LOCKED",
+        message: "Phiếu đã gửi duyệt hoặc đã duyệt không được bổ sung ảnh",
+        current_status: voucherCheck.rows[0].status,
+      });
+    }
+
     // Kiểm tra số lượng ảnh nếu có giới hạn
     if (ACCEPTANCE_MAX_PHOTOS_PER_VOUCHER > 0) {
       const countRes = await db.query(
