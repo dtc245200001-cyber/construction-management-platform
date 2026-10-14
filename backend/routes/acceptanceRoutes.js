@@ -901,7 +901,10 @@ router.post(
         console.error("Audit error:", auditErr);
       }
 
-      return res.json({ voucher: updated.rows[0] });
+      return res.json({
+        message: "Đã duyệt phiếu nghiệm thu",
+        voucher: updated.rows[0],
+      });
     } catch (err) {
       await client.query("ROLLBACK").catch(() => {});
       throw err;

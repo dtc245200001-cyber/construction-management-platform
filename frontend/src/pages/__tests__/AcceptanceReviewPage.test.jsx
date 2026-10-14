@@ -54,17 +54,26 @@ describe("S-38 / T-100 acceptance review UI", () => {
     expect(screen.getAllByRole("button", { name: /Trả lại/i }).length).toBeGreaterThan(0);
   });
 
-  test("bấm Duyệt gọi đúng API và tải lại danh sách", async () => {
+  test("bấm Duyệt mở dialog và chỉ gọi API sau khi xác nhận", async () => {
     mockBaseGet("ban_quan_ly");
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     const user = userEvent.setup();
     api.post.mockResolvedValueOnce({
-      data: { message: "Đã duyệt phiếu nghiệm thu", voucher: { ...pendingVoucher, status: "approved" } },
+      data: {
+        message: "Đã duyệt phiếu nghiệm thu",
+        voucher: { ...pendingVoucher, status: "approved" },
+      },
     });
 
     render(<AcceptancePage user={{ id: 20, name: "Ban quản lý" }} />);
-    const approveButtons = await screen.findAllByRole("button", { name: /Duyệt/i });
+    const approveButtons = await screen.findAllByRole("button", { name: /^Duyệt$/i });
     await user.click(approveButtons[0]);
+
+    expect(
+      await screen.findByRole("heading", { name: /Xác nhận duyệt phiếu/i })
+    ).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: /Xác nhận duyệt/i }));
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith(
@@ -72,6 +81,14 @@ describe("S-38 / T-100 acceptance review UI", () => {
         {}
       );
     });
+  });
+
+  test("Chủ đầu tư không thấy nút Duyệt", async () => {
+    mockBaseGet("chu_dau_tu");
+    render(<AcceptancePage user={{ id: 21, name: "Chủ đầu tư" }} />);
+
+    expect(await screen.findByText("Phiếu chờ duyệt")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Duyệt$/i })).not.toBeInTheDocument();
   });
 
   test("Trả lại bắt buộc nhập lý do và gửi đúng reason", async () => {
