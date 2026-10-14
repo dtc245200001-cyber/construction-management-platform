@@ -4,7 +4,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 
 export default [
-  { ignores: ["dist"] },
+  { ignores: ["dist", "playwright-report", "test-results"] },
   {
     files: ["**/*.{js,jsx}"],
     languageOptions: {
@@ -28,6 +28,14 @@ export default [
         { allowConstantExport: true },
       ],
       "no-unused-vars": "off"
+    },
+  },
+  {
+    // E2E (Playwright) và file cấu hình chạy trên Node nên cần global của Node
+    // (Buffer, process). Phần page.evaluate trong spec vẫn dùng global trình duyệt.
+    files: ["e2e/**/*.js", "playwright.config.js"],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.node },
     },
   },
 ];

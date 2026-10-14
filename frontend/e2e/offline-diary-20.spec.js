@@ -1,6 +1,10 @@
 ﻿// T-83: E2E offline - tạo 20 nhật ký kèm ảnh, reload, bật mạng, xác minh server nhận đủ.
 // Chạy: cd frontend && npm run test:e2e:offline
 import { test, expect } from '@playwright/test';
+import { Buffer } from 'node:buffer';
+// Bản production (build + preview) có service worker của VitePWA; request do service worker gửi
+// không đi qua page.route nên server giả/giả lập mạng mất tác dụng. Chặn để test giống bản dev.
+test.use({ serviceWorkers: 'block' });
 
 const PROJECT_ID = 1;
 const ENTRY_COUNT = 20;
@@ -165,7 +169,16 @@ test('T-83: offline tạo 20 nhật ký + 20 ảnh, reload không mất, online 
     await category.selectOption(optionValue);
 
     await page.locator('textarea').first().fill(`${CONTENT_PREFIX}${i}`);
-    await page.locator('input[type="datetime-local"]').first().fill('2026-10-14T08:00');
+    const entryDateTime = await page.evaluate(() => {
+  const date = new Date(Date.now() - 5 * 60 * 1000);
+  const pad = (n) => String(n).padStart(2, '0');
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate(),
+  )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+});
+
+await page.locator('input[type="datetime-local"]').first().fill(entryDateTime);
     await page.getByTestId('diary-image-input').setInputFiles({
       name: `e2e-${i}.png`,
       mimeType: 'image/png',
