@@ -130,7 +130,22 @@ router.post(
 
       // log audit
       try {
-        await logAudit({ userId: req.user.id, action: "CREATE_DIARY_ENTRY", entity: "diary_entries", entityId: insertedRow.id });
+        await logAudit({
+          userId: req.user.id,
+          action: "CREATE_DIARY_ENTRY",
+          entity: "diary_entries",
+          entityId: insertedRow.id,
+          projectId,
+          details: {
+            old_value: null,
+            new_value: {
+              work_item_id,
+              entry_at: entryAtVal,
+              content_preview: String(content).slice(0, 200),
+            },
+          },
+          ipAddress: req.ip,
+        });
       } catch (e) {
         console.error("Audit log failed:", e);
       }
@@ -383,16 +398,43 @@ router.post(
     const client = await db.connect();
     try {
       await client.query("BEGIN");
+
+      // Lấy trạng thái cũ (nếu đã có row) để ghi vào audit.old_value
+      const prevRes = await client.query(
+        `SELECT id, is_locked, locked_by, locked_at FROM daily_log_locks
+         WHERE project_id = $1 AND log_date = $2 FOR UPDATE`,
+        [projectId, req.params.date]
+      );
+      const prevRow = prevRes.rows[0] || null;
+
       const result = await client.query(
-        `INSERT INTO daily_log_locks (project_id, log_date, locked_by, is_locked, locked_at) 
+        `INSERT INTO daily_log_locks (project_id, log_date, locked_by, is_locked, locked_at)
          VALUES ($1, $2, $3, true, NOW())
-         ON CONFLICT (project_id, log_date) 
-         DO UPDATE SET is_locked = true, locked_by = $3, locked_at = NOW() 
+         ON CONFLICT (project_id, log_date)
+         DO UPDATE SET is_locked = true, locked_by = $3, locked_at = NOW()
          RETURNING *`,
         [projectId, req.params.date, req.user.id]
       );
       await client.query("COMMIT");
-      try { await logAudit({ userId: req.user.id, action: "LOCK_DIARY", entity: "daily_log_locks", entityId: result.rows[0].id, details: { date: req.params.date }}); } catch(e){ console.error("Audit error:", e); }
+      try {
+        await logAudit({
+          userId: req.user.id,
+          action: "LOCK_DIARY",
+          entity: "daily_log_locks",
+          entityId: result.rows[0].id,
+          projectId,
+          details: {
+            date: req.params.date,
+            old_value: prevRow
+              ? { is_locked: prevRow.is_locked, locked_by: prevRow.locked_by }
+              : null,
+            new_value: { is_locked: true, locked_by: req.user.id },
+          },
+          ipAddress: req.ip,
+        });
+      } catch (e) {
+        console.error("Audit error:", e);
+      }
       return res.json(result.rows[0]);
     } catch (error) {
       await client.query("ROLLBACK");
@@ -430,6 +472,15 @@ router.post(
     const client = await db.connect();
     try {
       await client.query("BEGIN");
+
+      // Lấy trạng thái cũ để ghi vào audit.old_value
+      const prevRes = await client.query(
+        `SELECT id, is_locked, locked_by, locked_at FROM daily_log_locks
+         WHERE project_id = $1 AND log_date = $2 FOR UPDATE`,
+        [projectId, req.params.date]
+      );
+      const prevRow = prevRes.rows[0] || null;
+
       const result = await client.query(
         `UPDATE daily_log_locks SET is_locked = false, unlocked_by = $1, unlocked_at = NOW(), unlock_reason = $2
          WHERE project_id = $3 AND log_date = $4 RETURNING *`,
@@ -440,7 +491,26 @@ router.post(
         return res.status(404).json({ message: "Nhật ký chưa được khóa hoặc không tìm thấy trạng thái khóa" });
       }
       await client.query("COMMIT");
-      try { await logAudit({ userId: req.user.id, action: "UNLOCK_DIARY", entity: "daily_log_locks", entityId: result.rows[0].id, details: { date: req.params.date, reason: reason.trim() }}); } catch(e){ console.error("Audit error:", e); }
+      try {
+        await logAudit({
+          userId: req.user.id,
+          action: "UNLOCK_DIARY",
+          entity: "daily_log_locks",
+          entityId: result.rows[0].id,
+          projectId,
+          details: {
+            date: req.params.date,
+            reason: reason.trim(),
+            old_value: prevRow
+              ? { is_locked: prevRow.is_locked, locked_by: prevRow.locked_by }
+              : null,
+            new_value: { is_locked: false, unlocked_by: req.user.id },
+          },
+          ipAddress: req.ip,
+        });
+      } catch (e) {
+        console.error("Audit error:", e);
+      }
       return res.json(result.rows[0]);
     } catch (error) {
       await client.query("ROLLBACK");

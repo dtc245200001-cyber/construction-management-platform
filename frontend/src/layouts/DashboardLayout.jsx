@@ -25,7 +25,8 @@ import {
   Menu,
   Check,
   ChevronsUpDown,
-  Coins
+  Coins,
+  History
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "../components/ui/command";
@@ -41,6 +42,7 @@ const navItems = [
   { label: "Hiện trường & Giao việc", icon: Camera, path: "/field" },
   { label: "Nhật ký thi công", icon: FileText, path: "/diary" },
   { label: "Nghiệm thu khối lượng", icon: CheckSquare, path: "/acceptance" },
+  { label: "Nhật ký thao tác", icon: History, path: "/audit" },
   { label: "Thanh toán & Chi phí", icon: Wallet, path: "/finance" },
   { label: "Thành viên & Tổ đội", icon: Users, path: "/members" },
 ];
@@ -227,7 +229,9 @@ export default function DashboardLayout({ user, setUser }) {
                       item.path === '/warnings' ||
                       item.path === '/calendar' ||
                       item.path === '/field' ||
-                      item.path === '/diary'
+                      item.path === '/diary' ||
+                      item.path === '/acceptance' ||
+                      item.path === '/audit'
                     ) {
                       navigate(item.path);
                     } else {

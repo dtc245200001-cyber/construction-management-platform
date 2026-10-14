@@ -24,6 +24,8 @@ const {
 const asyncHandler = require("../utils/asyncHandler");
 const { parsePositiveInt } = require("../utils/validators");
 const { parseDecimalInput } = require("../utils/decimalInput");
+const { logAudit } = require("../utils/auditLogger");
+const { can } = require("../utils/permissions");
 const {
   computeVoucherItems,
   detectMimeFromBuffer,
@@ -259,6 +261,31 @@ router.post(
 
       await client.query("COMMIT");
 
+      // S-39: audit "ai đã lập phiếu" — ghi sau COMMIT theo pattern fail-open
+      // (audit fail không phá luồng chính). details dùng { old_value, new_value }
+      // để đồng nhất với các sự kiện chuyển trạng thái khác.
+      try {
+        await logAudit({
+          userId: req.user.id,
+          action: "CREATE_ACCEPTANCE_VOUCHER",
+          entity: "acceptance_vouchers",
+          entityId: voucher.id,
+          projectId,
+          details: {
+            old_value: null,
+            new_value: {
+              status: voucher.status,
+              batch_name: voucher.batch_name,
+              item_count: computedItems.length,
+              has_negative_delta: voucher.has_negative_delta,
+            },
+          },
+          ipAddress: req.ip,
+        });
+      } catch (auditErr) {
+        console.error("Audit error:", auditErr);
+      }
+
       // Cảnh báo đợt âm trong response (không phải lỗi — phiếu vẫn lưu được)
       const warnings = [];
       if (hasNegativeDelta) {
@@ -477,6 +504,434 @@ router.get(
       voucher,
       items: itemsRes.rows,
       photos: photosRes.rows,
+    });
+  })
+);
+
+// ─── POST /:projectId/acceptance-vouchers/:voucherId/submit ───────────────────
+// S-39: Kỹ sư giám sát gửi phiếu từ draft/returned sang pending_review.
+// Chặn phiếu có khối lượng âm (has_negative_delta) — xem TODO T-91.
+router.post(
+  "/:projectId/acceptance-vouchers/:voucherId/submit",
+  requireAuth,
+  checkProjectAccess,
+  requirePermission("acceptance.create_dossier"),
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+    const voucherId = parsePositiveInt(req.params.voucherId);
+    if (!projectId || !voucherId) {
+      return res.status(400).json({ message: "ID không hợp lệ" });
+    }
+
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Khoá dòng để tránh 2 thao tác đồng thời trên cùng phiếu.
+      const voucherRes = await client.query(
+        `SELECT id, project_id, batch_name, status, has_negative_delta, created_by
+         FROM acceptance_vouchers
+         WHERE id = $1 AND project_id = $2
+         FOR UPDATE`,
+        [voucherId, projectId]
+      );
+      if (voucherRes.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Không tìm thấy phiếu nghiệm thu" });
+      }
+      const voucher = voucherRes.rows[0];
+
+      if (voucher.has_negative_delta) {
+        await client.query("ROLLBACK");
+        return res.status(422).json({
+          code: "HAS_NEGATIVE_DELTA",
+          message:
+            "Phiếu có hạng mục khối lượng đợt âm — chưa thể gửi duyệt. " +
+            "Vui lòng điều chỉnh hoặc chờ quy tắc xử lý đợt âm.",
+        });
+      }
+
+      if (voucher.status !== "draft" && voucher.status !== "returned") {
+        await client.query("ROLLBACK");
+        return res.status(409).json({
+          code: "INVALID_STATE",
+          message: `Không thể gửi duyệt từ trạng thái "${voucher.status}"`,
+        });
+      }
+
+      const updated = await client.query(
+        `UPDATE acceptance_vouchers
+         SET status = 'pending_review', updated_at = NOW()
+         WHERE id = $1
+         RETURNING id, project_id, batch_name, status, has_negative_delta, created_by, created_at, updated_at`,
+        [voucherId]
+      );
+
+      await client.query("COMMIT");
+
+      try {
+        await logAudit({
+          userId: req.user.id,
+          action: "SUBMIT_ACCEPTANCE_VOUCHER",
+          entity: "acceptance_vouchers",
+          entityId: voucherId,
+          projectId,
+          details: {
+            old_value: { status: voucher.status },
+            new_value: { status: "pending_review" },
+            batch_name: voucher.batch_name,
+          },
+          ipAddress: req.ip,
+        });
+      } catch (auditErr) {
+        console.error("Audit error:", auditErr);
+      }
+
+      return res.json({ voucher: updated.rows[0] });
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  })
+);
+
+// ─── POST /:projectId/acceptance-vouchers/:voucherId/approve ──────────────────
+// S-39: Chủ đầu tư duyệt chính thức (pending_review → approved).
+router.post(
+  "/:projectId/acceptance-vouchers/:voucherId/approve",
+  requireAuth,
+  checkProjectAccess,
+  requirePermission("acceptance.approve_official"),
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+    const voucherId = parsePositiveInt(req.params.voucherId);
+    if (!projectId || !voucherId) {
+      return res.status(400).json({ message: "ID không hợp lệ" });
+    }
+
+    const note = req.body.note ? String(req.body.note).trim().slice(0, 2000) : null;
+
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+
+      const voucherRes = await client.query(
+        `SELECT id, project_id, batch_name, status
+         FROM acceptance_vouchers
+         WHERE id = $1 AND project_id = $2
+         FOR UPDATE`,
+        [voucherId, projectId]
+      );
+      if (voucherRes.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Không tìm thấy phiếu nghiệm thu" });
+      }
+      const voucher = voucherRes.rows[0];
+
+      if (voucher.status !== "pending_review") {
+        await client.query("ROLLBACK");
+        return res.status(409).json({
+          code: "INVALID_STATE",
+          message: `Chỉ duyệt phiếu đang ở trạng thái "pending_review" (hiện: "${voucher.status}")`,
+        });
+      }
+
+      const updated = await client.query(
+        `UPDATE acceptance_vouchers
+         SET status = 'approved',
+             reviewed_by = $1,
+             reviewed_at = NOW(),
+             review_note = $2,
+             updated_at = NOW()
+         WHERE id = $3
+         RETURNING id, project_id, batch_name, status, reviewed_by, reviewed_at, review_note, updated_at`,
+        [req.user.id, note, voucherId]
+      );
+
+      await client.query("COMMIT");
+
+      try {
+        await logAudit({
+          userId: req.user.id,
+          action: "APPROVE_ACCEPTANCE_VOUCHER",
+          entity: "acceptance_vouchers",
+          entityId: voucherId,
+          projectId,
+          details: {
+            old_value: { status: voucher.status },
+            new_value: { status: "approved", review_note: note },
+            batch_name: voucher.batch_name,
+          },
+          ipAddress: req.ip,
+        });
+      } catch (auditErr) {
+        console.error("Audit error:", auditErr);
+      }
+
+      return res.json({ voucher: updated.rows[0] });
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  })
+);
+
+// ─── POST /:projectId/acceptance-vouchers/:voucherId/return ───────────────────
+// S-39: Ban quản lý hoặc Chủ đầu tư trả phiếu (pending_review → returned).
+// Bắt buộc lý do để Chủ đầu tư/KSGS hiểu vì sao phiếu bị trả về.
+router.post(
+  "/:projectId/acceptance-vouchers/:voucherId/return",
+  requireAuth,
+  checkProjectAccess,
+  // Cửa kiểm quyền dạng "mọi thành viên" để vượt defaultDeny của createProjectRouter;
+  // kiểm tra fine-grained (BQL hoặc CĐT) được thực hiện bằng can() trong handler.
+  requirePermission("project.member"),
+  // Trả phiếu: cho phép 2 role — BQL (review_internal) hoặc CĐT (approve_official).
+  // Kiểm tra bằng can() trong handler vì requirePermission chỉ nhận 1 key.
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+    const voucherId = parsePositiveInt(req.params.voucherId);
+    if (!projectId || !voucherId) {
+      return res.status(400).json({ message: "ID không hợp lệ" });
+    }
+
+    const role = req.projectRole;
+    const isAllowed =
+      req.user.is_system_admin ||
+      can(role, "acceptance.review_internal") ||
+      can(role, "acceptance.approve_official");
+    if (!isAllowed) {
+      return res.status(403).json({
+        error: "Vai trò của bạn không có quyền trả lại phiếu nghiệm thu",
+      });
+    }
+
+    const reason = req.body.reason ? String(req.body.reason).trim() : "";
+    if (!reason) {
+      return res.status(400).json({ message: "Phải nhập lý do trả lại phiếu" });
+    }
+    if (reason.length > 2000) {
+      return res.status(400).json({ message: "Lý do trả lại không quá 2000 ký tự" });
+    }
+
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+
+      const voucherRes = await client.query(
+        `SELECT id, project_id, batch_name, status
+         FROM acceptance_vouchers
+         WHERE id = $1 AND project_id = $2
+         FOR UPDATE`,
+        [voucherId, projectId]
+      );
+      if (voucherRes.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Không tìm thấy phiếu nghiệm thu" });
+      }
+      const voucher = voucherRes.rows[0];
+
+      if (voucher.status !== "pending_review") {
+        await client.query("ROLLBACK");
+        return res.status(409).json({
+          code: "INVALID_STATE",
+          message: `Chỉ trả lại phiếu đang ở trạng thái "pending_review" (hiện: "${voucher.status}")`,
+        });
+      }
+
+      const updated = await client.query(
+        `UPDATE acceptance_vouchers
+         SET status = 'returned',
+             reviewed_by = $1,
+             reviewed_at = NOW(),
+             review_note = $2,
+             updated_at = NOW()
+         WHERE id = $3
+         RETURNING id, project_id, batch_name, status, reviewed_by, reviewed_at, review_note, updated_at`,
+        [req.user.id, reason, voucherId]
+      );
+
+      await client.query("COMMIT");
+
+      try {
+        await logAudit({
+          userId: req.user.id,
+          action: "RETURN_ACCEPTANCE_VOUCHER",
+          entity: "acceptance_vouchers",
+          entityId: voucherId,
+          projectId,
+          details: {
+            old_value: { status: voucher.status },
+            new_value: { status: "returned", review_note: reason },
+            batch_name: voucher.batch_name,
+            reason,
+          },
+          ipAddress: req.ip,
+        });
+      } catch (auditErr) {
+        console.error("Audit error:", auditErr);
+      }
+
+      return res.json({ voucher: updated.rows[0] });
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  })
+);
+
+// ─── GET /:projectId/acceptance-vouchers/:voucherId/history ───────────────────
+// S-39: Timeline audit cho 1 phiếu — mọi thành viên dự án xem được.
+router.get(
+  "/:projectId/acceptance-vouchers/:voucherId/history",
+  requireAuth,
+  checkProjectAccess,
+  requirePermission("project.member"),
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+    const voucherId = parsePositiveInt(req.params.voucherId);
+    if (!projectId || !voucherId) {
+      return res.status(400).json({ message: "ID không hợp lệ" });
+    }
+
+    const voucherRes = await db.query(
+      "SELECT id FROM acceptance_vouchers WHERE id = $1 AND project_id = $2",
+      [voucherId, projectId]
+    );
+    if (voucherRes.rows.length === 0) {
+      return res.status(404).json({ message: "Không tìm thấy phiếu nghiệm thu" });
+    }
+
+    const historyRes = await db.query(
+      `SELECT a.id, a.action, a.entity, a.entity_id, a.details, a.ip_address, a.created_at,
+              u.name AS user_name, u.email AS user_email
+       FROM audit_logs a
+       JOIN users u ON u.id = a.user_id
+       WHERE a.entity = 'acceptance_vouchers' AND a.entity_id = $1 AND a.project_id = $2
+       ORDER BY a.created_at DESC, a.id DESC`,
+      [voucherId, projectId]
+    );
+
+    return res.json({ voucher_id: voucherId, logs: historyRes.rows });
+  })
+);
+
+// ─── GET /:projectId/audit-logs — Audit Portal (Chủ đầu tư / Ban quản lý) ─────
+// S-39: Màn hình tổng quan — lọc toàn bộ sự kiện của dự án theo trục thời gian.
+// Chỉ đọc; append-only đảm bảo bởi trigger ở tầng DB.
+const AUDIT_ENTITY_WHITELIST = new Set([
+  "acceptance_vouchers",
+  "acceptance_voucher_items",
+  "acceptance_voucher_photos",
+  "daily_log_locks",
+  "diary_entries",
+  "diary_daily_logs",
+  "task_quantity_reports",
+  "tasks",
+  "work_items",
+  "projects",
+  "users",
+  "invitations",
+  "teams",
+]);
+const AUDIT_ACTION_PATTERN = /^[A-Z][A-Z0-9_]{2,59}$/;
+
+router.get(
+  "/:projectId/audit-logs",
+  requireAuth,
+  checkProjectAccess,
+  requirePermission("audit.view_project"),
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+    if (!projectId) {
+      return res.status(400).json({ message: "projectId không hợp lệ" });
+    }
+
+    res.setHeader("Cache-Control", "no-store");
+
+    // ── Sanitize filter params ────────────────────────────────────────────
+    const { entity, entity_id, action, from, to } = req.query;
+
+    if (entity !== undefined && entity !== "" && !AUDIT_ENTITY_WHITELIST.has(entity)) {
+      return res.status(400).json({ message: `entity không hợp lệ: ${entity}` });
+    }
+
+    let entityId = null;
+    if (entity_id !== undefined && entity_id !== "") {
+      entityId = parsePositiveInt(entity_id);
+      if (!entityId) return res.status(400).json({ message: "entity_id không hợp lệ" });
+    }
+
+    if (action !== undefined && action !== "" && !AUDIT_ACTION_PATTERN.test(action)) {
+      return res.status(400).json({ message: "action không hợp lệ" });
+    }
+
+    if (from !== undefined && from !== "" && isNaN(Date.parse(from))) {
+      return res.status(400).json({ message: "from không phải ngày hợp lệ" });
+    }
+    if (to !== undefined && to !== "" && isNaN(Date.parse(to))) {
+      return res.status(400).json({ message: "to không phải ngày hợp lệ" });
+    }
+
+    const limit = Math.min(parsePositiveInt(req.query.limit) || 50, 200);
+    const offset = parsePositiveInt(req.query.offset) || 0;
+
+    // ── Build WHERE ───────────────────────────────────────────────────────
+    const params = [projectId];
+    const whereParts = ["a.project_id = $1"];
+    let idx = 2;
+
+    if (entity) {
+      whereParts.push(`a.entity = $${idx++}`);
+      params.push(entity);
+    }
+    if (entityId) {
+      whereParts.push(`a.entity_id = $${idx++}`);
+      params.push(entityId);
+    }
+    if (action) {
+      whereParts.push(`a.action = $${idx++}`);
+      params.push(action);
+    }
+    if (from) {
+      whereParts.push(`a.created_at >= $${idx++}`);
+      params.push(from);
+    }
+    if (to) {
+      whereParts.push(`a.created_at <= $${idx++}`);
+      params.push(to);
+    }
+
+    const whereClause = whereParts.join(" AND ");
+
+    const countRes = await db.query(
+      `SELECT COUNT(*)::int AS total FROM audit_logs a WHERE ${whereClause}`,
+      params
+    );
+
+    const dataRes = await db.query(
+      `SELECT a.id, a.user_id, u.name AS user_name, u.email AS user_email,
+              a.action, a.entity, a.entity_id, a.details, a.ip_address, a.created_at
+       FROM audit_logs a
+       LEFT JOIN users u ON u.id = a.user_id
+       WHERE ${whereClause}
+       ORDER BY a.created_at DESC, a.id DESC
+       LIMIT $${idx++} OFFSET $${idx++}`,
+      [...params, limit, offset]
+    );
+
+    return res.json({
+      project_id: projectId,
+      total: countRes.rows[0].total,
+      limit,
+      offset,
+      logs: dataRes.rows,
     });
   })
 );

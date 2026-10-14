@@ -99,6 +99,9 @@ const PERMISSIONS = {
   "acceptance.approve_official": [CHU_DAU_TU],
   // TREO: duyệt hoặc trả lại đề nghị thanh toán.
   "payment.approve": [CHU_DAU_TU],
+  // S-39: Chủ đầu tư / Ban quản lý xem toàn bộ nhật ký thao tác của dự án
+  // (Audit Portal — màn hình tổng quan tra cứu "ai làm gì, khi nào").
+  "audit.view_project": [CHU_DAU_TU, BAN_QUAN_LY],
 
   // ── Kế toán ────────────────────────────────────────────────────────
   // TREO toàn bộ (module ngân sách / chi phí / thanh toán chưa có route).

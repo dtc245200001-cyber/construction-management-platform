@@ -53,6 +53,8 @@ export const PERMISSIONS = {
   "acceptance.view_verified": [ROLES.CHU_DAU_TU],
   "acceptance.approve_official": [ROLES.CHU_DAU_TU],
   "payment.approve": [ROLES.CHU_DAU_TU],
+  // S-39: Audit Portal cho Chủ đầu tư / Ban quản lý.
+  "audit.view_project": [ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY],
 
   // ── Kế toán ────────────────────────────────────────────────────────
   "budget.view": [ROLES.KE_TOAN],

@@ -364,21 +364,21 @@ router.put(
       const ipAddress = req.ip || req.connection?.remoteAddress || null;
 
       await client.query(
-        `INSERT INTO audit_logs (user_id, action, entity, entity_id, details, ip_address)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
+        `INSERT INTO audit_logs (user_id, action, entity, entity_id, project_id, details, ip_address)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
           userId,
           "CONTRACT_QUANTITY_SET",
           "work_items",
           workItemId,
+          projectId,
           JSON.stringify({
-            project_id: projectId,
-            before: {
+            old_value: {
               quantity: beforeItem.quantity,
               unit: beforeItem.unit,
               unit_price: beforeItem.unit_price,
             },
-            after: {
+            new_value: {
               quantity: afterItem.quantity,
               unit: afterItem.unit,
               unit_price: afterItem.unit_price,
@@ -483,21 +483,21 @@ router.delete(
       const ipAddress = req.ip || req.connection?.remoteAddress || null;
 
       await client.query(
-        `INSERT INTO audit_logs (user_id, action, entity, entity_id, details, ip_address)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
+        `INSERT INTO audit_logs (user_id, action, entity, entity_id, project_id, details, ip_address)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
           userId,
           "CONTRACT_QUANTITY_CLEAR",
           "work_items",
           workItemId,
+          projectId,
           JSON.stringify({
-            project_id: projectId,
-            before: {
+            old_value: {
               quantity: beforeItem.quantity,
               unit: beforeItem.unit,
               unit_price: beforeItem.unit_price,
             },
-            after: {
+            new_value: {
               quantity: null,
               unit: null,
               unit_price: null,

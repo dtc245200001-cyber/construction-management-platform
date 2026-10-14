@@ -23,6 +23,7 @@ import {
   RefreshCw,
   Search,
   Info,
+  History,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
@@ -49,6 +50,13 @@ export default function AcceptancePage({ user }) {
   const [projectRole, setProjectRole] = useState(null);
   const isSupervisor =
     user?.is_system_admin || can(projectRole, "acceptance.create_dossier");
+  // S-39: quyền duyệt (CĐT) và trả lại (BQL hoặc CĐT)
+  const canApprove =
+    user?.is_system_admin || can(projectRole, "acceptance.approve_official");
+  const canReturn =
+    user?.is_system_admin ||
+    can(projectRole, "acceptance.review_internal") ||
+    can(projectRole, "acceptance.approve_official");
 
   // Dữ liệu danh sách phiếu
   const [vouchers, setVouchers] = useState([]);
@@ -75,6 +83,17 @@ export default function AcceptancePage({ user }) {
   const [viewingVoucher, setViewingVoucher] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState(null);
+
+  // S-39: dialog lịch sử phiếu + dialog trả lại (reason)
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [historyVoucherId, setHistoryVoucherId] = useState(null);
+  const [historyLogs, setHistoryLogs] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const [returnDialogOpen, setReturnDialogOpen] = useState(false);
+  const [returnTarget, setReturnTarget] = useState(null); // voucher being returned
+  const [returnReason, setReturnReason] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
 
   // 1. Tải vai trò trong dự án
   const fetchMembership = useCallback(async () => {
@@ -407,6 +426,92 @@ export default function AcceptancePage({ user }) {
     }
   };
 
+  // S-39: mở dialog lịch sử phiếu
+  const handleViewHistory = async (voucherId) => {
+    setHistoryVoucherId(voucherId);
+    setHistoryDialogOpen(true);
+    setHistoryLoading(true);
+    setHistoryLogs([]);
+    try {
+      const res = await api.get(
+        `/projects/${projectId}/acceptance-vouchers/${voucherId}/history`
+      );
+      setHistoryLogs(res.data?.logs || []);
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || "Không thể tải lịch sử phiếu"
+      );
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  // S-39: gửi duyệt (draft/returned → pending_review)
+  const handleSubmit = async (voucher) => {
+    if (!window.confirm(`Gửi duyệt phiếu "${voucher.batch_name}"?`)) return;
+    setActionLoading(true);
+    try {
+      await api.post(
+        `/projects/${projectId}/acceptance-vouchers/${voucher.id}/submit`
+      );
+      toast.success("Đã gửi phiếu lên Chủ đầu tư / Ban quản lý để duyệt");
+      fetchVouchers();
+    } catch (err) {
+      const msg = err?.response?.data?.message || "Không thể gửi duyệt phiếu";
+      toast.error(msg);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // S-39: duyệt phiếu (pending_review → approved)
+  const handleApprove = async (voucher) => {
+    if (!window.confirm(`Duyệt chính thức phiếu "${voucher.batch_name}"?`)) return;
+    setActionLoading(true);
+    try {
+      await api.post(
+        `/projects/${projectId}/acceptance-vouchers/${voucher.id}/approve`
+      );
+      toast.success("Đã duyệt phiếu nghiệm thu");
+      fetchVouchers();
+    } catch (err) {
+      const msg = err?.response?.data?.message || "Không thể duyệt phiếu";
+      toast.error(msg);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // S-39: mở dialog trả lại phiếu (bắt buộc lý do)
+  const handleOpenReturn = (voucher) => {
+    setReturnTarget(voucher);
+    setReturnReason("");
+    setReturnDialogOpen(true);
+  };
+
+  const handleConfirmReturn = async () => {
+    if (!returnReason.trim()) {
+      toast.error("Vui lòng nhập lý do trả lại");
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await api.post(
+        `/projects/${projectId}/acceptance-vouchers/${returnTarget.id}/return`,
+        { reason: returnReason.trim() }
+      );
+      toast.success("Đã trả lại phiếu cho Kỹ sư giám sát");
+      setReturnDialogOpen(false);
+      setReturnTarget(null);
+      fetchVouchers();
+    } catch (err) {
+      const msg = err?.response?.data?.message || "Không thể trả lại phiếu";
+      toast.error(msg);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Lọc phiếu theo từ khoá tìm kiếm
   const filteredVouchers = vouchers.filter((v) =>
     (v.batch_name || "").toLowerCase().includes(searchTerm.toLowerCase())
@@ -568,9 +673,9 @@ export default function AcceptancePage({ user }) {
                           Đã duyệt
                         </Badge>
                       )}
-                      {v.status === "rejected" && (
+                      {v.status === "returned" && (
                         <Badge className="bg-rose-100 text-rose-800 border-rose-200">
-                          Từ chối
+                          Bị trả lại
                         </Badge>
                       )}
                     </td>
@@ -610,15 +715,75 @@ export default function AcceptancePage({ user }) {
                       {new Date(v.created_at).toLocaleString("vi-VN")}
                     </td>
                     <td className="py-3 px-4 text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleViewDetail(v.id)}
-                        className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 h-8 px-2.5"
-                      >
-                        <Eye className="h-3.5 w-3.5 mr-1" />
-                        Chi tiết
-                      </Button>
+                      <div className="flex items-center justify-end gap-1 flex-wrap">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleViewDetail(v.id)}
+                          className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 h-8 px-2.5"
+                        >
+                          <Eye className="h-3.5 w-3.5 mr-1" />
+                          Chi tiết
+                        </Button>
+
+                        {/* S-39: Gửi duyệt (KSGS, chỉ draft/returned) */}
+                        {isSupervisor &&
+                          (v.status === "draft" || v.status === "returned") && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleSubmit(v)}
+                              disabled={actionLoading || v.has_negative_delta}
+                              title={
+                                v.has_negative_delta
+                                  ? "Phiếu có khối lượng âm — không thể gửi duyệt"
+                                  : "Gửi phiếu lên Chủ đầu tư / Ban quản lý"
+                              }
+                              className="h-8 px-2.5 text-blue-700 border-blue-200 hover:bg-blue-50"
+                            >
+                              Gửi duyệt
+                            </Button>
+                          )}
+
+                        {/* S-39: Duyệt (CĐT, pending_review) */}
+                        {canApprove && v.status === "pending_review" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleApprove(v)}
+                            disabled={actionLoading}
+                            className="h-8 px-2.5 text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                          >
+                            <Check className="h-3.5 w-3.5 mr-1" />
+                            Duyệt
+                          </Button>
+                        )}
+
+                        {/* S-39: Trả lại (BQL hoặc CĐT, pending_review) */}
+                        {canReturn && v.status === "pending_review" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenReturn(v)}
+                            disabled={actionLoading}
+                            className="h-8 px-2.5 text-rose-700 border-rose-200 hover:bg-rose-50"
+                          >
+                            <X className="h-3.5 w-3.5 mr-1" />
+                            Trả lại
+                          </Button>
+                        )}
+
+                        {/* S-39: Lịch sử phiếu */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleViewHistory(v.id)}
+                          className="text-slate-600 hover:text-slate-800 h-8 px-2"
+                          title="Lịch sử thao tác trên phiếu"
+                        >
+                          <History className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -1205,6 +1370,163 @@ export default function AcceptancePage({ user }) {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* ── DIALOG: LỊCH SỬ PHIẾU (S-39) ── */}
+      <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5 text-emerald-600" />
+              Lịch sử thao tác — Phiếu #{historyVoucherId}
+            </DialogTitle>
+          </DialogHeader>
+
+          {historyLoading ? (
+            <div className="py-12 text-center text-slate-500">
+              <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-emerald-600" />
+              Đang tải lịch sử...
+            </div>
+          ) : historyLogs.length === 0 ? (
+            <div className="py-12 text-center text-slate-500">
+              <History className="h-10 w-10 mx-auto mb-2 text-slate-300" />
+              Chưa có sự kiện nào được ghi lại
+            </div>
+          ) : (
+            <div className="space-y-3 py-2">
+              {historyLogs.map((log) => {
+                const actionLabel =
+                  {
+                    CREATE_ACCEPTANCE_VOUCHER: "Tạo phiếu",
+                    SUBMIT_ACCEPTANCE_VOUCHER: "Gửi duyệt",
+                    APPROVE_ACCEPTANCE_VOUCHER: "Duyệt phiếu",
+                    RETURN_ACCEPTANCE_VOUCHER: "Trả lại phiếu",
+                  }[log.action] || log.action;
+                const colorMap = {
+                  CREATE_ACCEPTANCE_VOUCHER: "bg-slate-100 text-slate-700",
+                  SUBMIT_ACCEPTANCE_VOUCHER: "bg-blue-100 text-blue-800",
+                  APPROVE_ACCEPTANCE_VOUCHER: "bg-emerald-100 text-emerald-800",
+                  RETURN_ACCEPTANCE_VOUCHER: "bg-rose-100 text-rose-800",
+                };
+                const badgeCls =
+                  colorMap[log.action] || "bg-slate-100 text-slate-700";
+                return (
+                  <div
+                    key={log.id}
+                    className="border rounded-lg p-3 bg-slate-50/50"
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <Badge className={badgeCls}>{actionLabel}</Badge>
+                      <span className="text-xs text-slate-500">
+                        {new Date(log.created_at).toLocaleString("vi-VN")}
+                      </span>
+                    </div>
+                    <div className="text-sm text-slate-800">
+                      <strong>{log.user_name || "(hệ thống)"}</strong>
+                      {log.user_email && (
+                        <span className="text-xs text-slate-500 ml-2">
+                          {log.user_email}
+                        </span>
+                      )}
+                    </div>
+                    {log.details && (
+                      <div className="mt-2 text-xs">
+                        {log.details.old_value && log.details.new_value ? (
+                          <div className="flex flex-wrap gap-3 text-slate-600">
+                            <span>
+                              Trạng thái:{" "}
+                              <code className="bg-slate-100 px-1 rounded">
+                                {log.details.old_value.status}
+                              </code>
+                              {" → "}
+                              <code className="bg-emerald-100 px-1 rounded">
+                                {log.details.new_value.status}
+                              </code>
+                            </span>
+                            {log.details.reason && (
+                              <span className="text-rose-700">
+                                Lý do: {log.details.reason}
+                              </span>
+                            )}
+                            {log.details.new_value.review_note && (
+                              <span className="text-slate-600 italic">
+                                Ghi chú: {log.details.new_value.review_note}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <pre className="bg-white border rounded p-2 overflow-auto text-[11px]">
+                            {JSON.stringify(log.details, null, 2)}
+                          </pre>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setHistoryDialogOpen(false)}
+            >
+              Đóng
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── DIALOG: TRẢ LẠI PHIẾU (S-39) ── */}
+      <Dialog open={returnDialogOpen} onOpenChange={setReturnDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <X className="h-5 w-5 text-rose-600" />
+              Trả lại phiếu nghiệm thu
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-slate-600">
+              Phiếu <strong>"{returnTarget?.batch_name}"</strong> sẽ được đưa về
+              trạng thái <em>Bị trả lại</em> để Kỹ sư giám sát chỉnh sửa.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="returnReason" className="font-semibold">
+                Lý do trả lại <span className="text-rose-500">*</span>
+              </Label>
+              <textarea
+                id="returnReason"
+                rows={4}
+                value={returnReason}
+                onChange={(e) => setReturnReason(e.target.value)}
+                maxLength={2000}
+                placeholder="Ví dụ: Số liệu hạng mục cọc ép chưa khớp với báo cáo hiện trường — cần đối chiếu lại..."
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              />
+              <p className="text-xs text-slate-500">
+                Lý do này sẽ được lưu vào nhật ký và hiển thị cho người lập phiếu.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setReturnDialogOpen(false)}
+              disabled={actionLoading}
+            >
+              Huỷ
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmReturn}
+              disabled={actionLoading || !returnReason.trim()}
+            >
+              {actionLoading ? "Đang xử lý..." : "Xác nhận trả lại"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

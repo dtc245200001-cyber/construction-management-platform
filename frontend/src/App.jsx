@@ -37,6 +37,9 @@ import ContractQuantityPage from './pages/ContractQuantityPage';
 // S-36 / T-92
 import AcceptancePage from './pages/AcceptancePage';
 
+// S-39: Audit Portal cho Chủ đầu tư / Ban quản lý
+import AuditPortalPage from './pages/AuditPortalPage';
+
 
 function App() {
   const [user, setUser] = useState(null);
@@ -239,6 +242,11 @@ function App() {
           <Route
             path="/acceptance"
             element={<AcceptancePage user={user} />}
+          />
+
+          <Route
+            path="/audit"
+            element={<AuditPortalPage user={user} />}
           />
 
           <Route
