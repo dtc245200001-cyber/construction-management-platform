@@ -445,12 +445,18 @@ router.put(
       // Khoá dòng hiện có (nếu có) để kiểm tra xung đột phiên bản ngay
       // trong transaction — giữ lock tới lúc upsert nên không còn cửa sổ race.
       const existingRes = await client.query(
-        `SELECT id, updated_at FROM diary_daily_logs
+        `SELECT * FROM diary_daily_logs
          WHERE project_id = $1 AND log_date = $2::date
          FOR UPDATE`,
         [projectId, date]
       );
       const existingRow = existingRes.rows[0] || null;
+      const oldEquipment = existingRow
+        ? (await client.query(
+          "SELECT equipment_type_id, quantity FROM diary_daily_equipment WHERE daily_log_id = $1 ORDER BY equipment_type_id",
+          [existingRow.id]
+        )).rows
+        : [];
 
       // Kiểm tra xung đột phiên bản: client phải gửi đúng updated_at mà nó
       // đã thấy. So sánh tuyệt đối theo mili-giây (lệch dù 1ms cũng là stale).
@@ -576,7 +582,14 @@ router.put(
           action: "UPSERT_DIARY_DAILY_LOG",
           entity: "diary_daily_logs",
           entityId: logId,
-          details: { log_date: date, created: Boolean(log.inserted) },
+          projectId,
+          details: {
+            log_date: date,
+            created: Boolean(log.inserted),
+            old_value: existingRow ? { ...existingRow, equipment: oldEquipment } : null,
+            new_value: { ...log, equipment: eqList },
+          },
+          ipAddress: req.ip,
         });
       } catch (e) {
         console.error("Audit log lỗi:", e);

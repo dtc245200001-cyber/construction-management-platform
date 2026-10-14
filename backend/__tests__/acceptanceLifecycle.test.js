@@ -355,6 +355,21 @@ describe("S-39: Acceptance Voucher Lifecycle & Audit Portal", () => {
   // AUDIT PORTAL — /:projectId/audit-logs
   // ═════════════════════════════════════════════════════════════════════
   describe("GET /:projectId/audit-logs — Audit Portal", () => {
+    test("rejects reversed dates before querying audit data", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "chu_dau_tu" }] });
+      const res = await request(app).get("/api/projects/1/audit-logs?from=2026-10-14&to=2026-10-01");
+      expect(res.status).toBe(400);
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+    });
+
+    test("filters conflict events within the selected project", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] })
+        .mockResolvedValueOnce({ rows: [{ total: 0 }] })
+        .mockResolvedValueOnce({ rows: [] });
+      const res = await request(app).get("/api/projects/12/audit-logs?entity=diary_entry_conflicts");
+      expect(res.status).toBe(200);
+      expect(mockQuery).toHaveBeenLastCalledWith(expect.stringContaining('a.project_id = $1'), [12, 'diary_entry_conflicts', 50, 0]);
+    });
     test("CĐT xem được danh sách audit của dự án", async () => {
       mockQuery.mockResolvedValueOnce({ rows: [{ role: "chu_dau_tu" }] });
       mockQuery.mockResolvedValueOnce({ rows: [{ total: 2 }] });

@@ -831,6 +831,7 @@ const AUDIT_ENTITY_WHITELIST = new Set([
   "acceptance_voucher_photos",
   "daily_log_locks",
   "diary_entries",
+  "diary_entry_conflicts",
   "diary_daily_logs",
   "task_quantity_reports",
   "tasks",
@@ -877,6 +878,9 @@ router.get(
     }
     if (to !== undefined && to !== "" && isNaN(Date.parse(to))) {
       return res.status(400).json({ message: "to không phải ngày hợp lệ" });
+    }
+    if (from && to && Date.parse(from) > Date.parse(to)) {
+      return res.status(400).json({ message: "Từ ngày phải trước hoặc bằng đến ngày" });
     }
 
     const limit = Math.min(parsePositiveInt(req.query.limit) || 50, 200);
