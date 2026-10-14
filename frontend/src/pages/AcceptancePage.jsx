@@ -95,6 +95,10 @@ export default function AcceptancePage({ user }) {
   const [returnReason, setReturnReason] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
+  const canReviewInternal = canReturn;
+  const pendingReviewVouchers = vouchers.filter((v) => v.status === "pending_review");
+  const [reviewError, setReviewError] = useState("");
+
   // 1. Tải vai trò trong dự án
   const fetchMembership = useCallback(async () => {
     try {
@@ -466,11 +470,12 @@ export default function AcceptancePage({ user }) {
 
   // S-39: duyệt phiếu (pending_review → approved)
   const handleApprove = async (voucher) => {
+    if (!canApprove || actionLoading) return;
     if (!window.confirm(`Duyệt chính thức phiếu "${voucher.batch_name}"?`)) return;
     setActionLoading(true);
     try {
       await api.post(
-        `/projects/${projectId}/acceptance-vouchers/${voucher.id}/approve`
+        `/projects/${projectId}/acceptance-vouchers/${voucher.id}/approve`, {}
       );
       toast.success("Đã duyệt phiếu nghiệm thu");
       fetchVouchers();
@@ -484,6 +489,7 @@ export default function AcceptancePage({ user }) {
 
   // S-39: mở dialog trả lại phiếu (bắt buộc lý do)
   const handleOpenReturn = (voucher) => {
+    setReviewError("");
     setReturnTarget(voucher);
     setReturnReason("");
     setReturnDialogOpen(true);
@@ -491,9 +497,10 @@ export default function AcceptancePage({ user }) {
 
   const handleConfirmReturn = async () => {
     if (!returnReason.trim()) {
-      toast.error("Vui lòng nhập lý do trả lại");
+      setReviewError("Bắt buộc nhập lý do trả lại phiếu");
       return;
     }
+    if (!returnTarget || !canReturn || actionLoading) return;
     setActionLoading(true);
     try {
       await api.post(
@@ -568,6 +575,79 @@ export default function AcceptancePage({ user }) {
           )}
         </div>
       </div>
+
+      {canReviewInternal && (
+        <Card className="border-blue-200 bg-blue-50/40 p-4">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <h2 className="font-semibold text-slate-900 flex items-center gap-2">
+                <CheckSquare className="h-4 w-4 text-blue-700" />
+                Phiếu chờ duyệt
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Chủ đầu tư duyệt chính thức; Ban quản lý và Chủ đầu tư có thể trả lại phiếu đang chờ duyệt.
+              </p>
+            </div>
+            <Badge className="bg-blue-100 text-blue-800 border-blue-200">
+              {pendingReviewVouchers.length} phiếu
+            </Badge>
+          </div>
+
+          {pendingReviewVouchers.length === 0 ? (
+            <p className="text-sm text-slate-500 py-2">Không có phiếu nào đang chờ duyệt.</p>
+          ) : (
+            <div className="space-y-2">
+              {pendingReviewVouchers.map((voucher) => (
+                <div
+                  key={`review-${voucher.id}`}
+                  className="flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-lg border border-blue-100 bg-white p-3"
+                >
+                  <div className="min-w-0">
+                    <div className="font-semibold text-sm text-slate-900 truncate">
+                      #{voucher.id} · {voucher.batch_name}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-0.5">
+                      Người lập: {voucher.created_by_name || "—"} · {voucher.item_count || 0} hạng mục
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 shrink-0">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleViewDetail(voucher.id)}
+                    >
+                      <Eye className="h-3.5 w-3.5 mr-1" />
+                      Chi tiết
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={actionLoading}
+                      onClick={() => handleOpenReturn(voucher)}
+                      className="text-rose-700 border-rose-200 hover:bg-rose-50"
+                    >
+                      <X className="h-3.5 w-3.5 mr-1" />
+                      Trả lại
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={actionLoading || !canApprove}
+                      onClick={() => handleApprove(voucher)}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      <Check className="h-3.5 w-3.5 mr-1" />
+                      Duyệt
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* ── THANH TÌM KIẾM & THỐNG KÊ ── */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
@@ -1195,6 +1275,12 @@ export default function AcceptancePage({ user }) {
                   <Badge variant="outline" className="mt-0.5">
                     {viewingVoucher.voucher.status === "draft"
                       ? "Bản nháp"
+                      : viewingVoucher.voucher.status === "pending_review"
+                      ? "Chờ duyệt"
+                      : viewingVoucher.voucher.status === "approved"
+                      ? "Đã duyệt"
+                      : viewingVoucher.voucher.status === "returned"
+                      ? "Đã trả lại"
                       : viewingVoucher.voucher.status}
                   </Badge>
                 </div>
@@ -1208,6 +1294,30 @@ export default function AcceptancePage({ user }) {
                   </span>
                 </div>
               </div>
+
+              {viewingVoucher.voucher.review_note && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                  <div className="font-semibold">
+                    {viewingVoucher.voucher.status === "returned"
+                      ? "Lý do trả lại"
+                      : "Ghi chú xử lý gần nhất"}
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap">{viewingVoucher.voucher.review_note}</p>
+                  {(viewingVoucher.voucher.reviewed_by_name || viewingVoucher.voucher.reviewed_at) && (
+                    <div className="mt-2 text-[11px] text-amber-700">
+                      {viewingVoucher.voucher.reviewed_by_name && (
+                        <span>Người xử lý: {viewingVoucher.voucher.reviewed_by_name}</span>
+                      )}
+                      {viewingVoucher.voucher.reviewed_at && (
+                        <span>
+                          {viewingVoucher.voucher.reviewed_by_name ? " · " : ""}
+                          {new Date(viewingVoucher.voucher.reviewed_at).toLocaleString("vi-VN")}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Cảnh báo đợt âm nếu có */}
               {viewingVoucher.voucher.has_negative_delta && (
@@ -1349,6 +1459,73 @@ export default function AcceptancePage({ user }) {
         </DialogContent>
       </Dialog>
 
+      {/* ── DIALOG: TRẢ LẠI PHIẾU ── */}
+      <Dialog
+        open={returnDialogOpen}
+        onOpenChange={(open) => {
+          if (!actionLoading) {
+            setReturnDialogOpen(open);
+            if (!open) {
+              setReturnTarget(null);
+              setReturnReason("");
+              setReviewError("");
+            }
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Trả lại phiếu nghiệm thu</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="rounded-md bg-slate-50 border p-3 text-sm text-slate-700">
+              Phiếu: <span className="font-semibold">#{returnTarget?.id} · {returnTarget?.batch_name}</span>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="acceptance-return-reason">
+                Lý do trả lại <span className="text-rose-600">*</span>
+              </Label>
+              <textarea
+                id="acceptance-return-reason"
+                value={returnReason}
+                onChange={(event) => setReturnReason(event.target.value)}
+                disabled={actionLoading}
+                maxLength={2000}
+                rows={5}
+                placeholder="Nhập rõ nội dung cần người lập chỉnh sửa..."
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-rose-200 disabled:bg-slate-100"
+              />
+              <div className="text-right text-[11px] text-slate-400">
+                {returnReason.length}/2000
+              </div>
+            </div>
+            {reviewError && (
+              <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-2.5 text-sm text-rose-700">
+                {reviewError}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={actionLoading}
+              onClick={() => setReturnDialogOpen(false)}
+            >
+              Hủy
+            </Button>
+            <Button
+              type="button"
+              disabled={actionLoading}
+              onClick={handleConfirmReturn}
+              className="bg-rose-600 hover:bg-rose-700 text-white"
+            >
+              {actionLoading ? "Đang trả lại..." : "Xác nhận trả lại"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── LIGHTBOX PHÓNG TO ẢNH ── */}
       {previewPhotoUrl && (
         <Dialog open={Boolean(previewPhotoUrl)} onOpenChange={() => setPreviewPhotoUrl(null)}>
@@ -1477,56 +1654,7 @@ export default function AcceptancePage({ user }) {
         </DialogContent>
       </Dialog>
 
-      {/* ── DIALOG: TRẢ LẠI PHIẾU (S-39) ── */}
-      <Dialog open={returnDialogOpen} onOpenChange={setReturnDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <X className="h-5 w-5 text-rose-600" />
-              Trả lại phiếu nghiệm thu
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <p className="text-sm text-slate-600">
-              Phiếu <strong>"{returnTarget?.batch_name}"</strong> sẽ được đưa về
-              trạng thái <em>Bị trả lại</em> để Kỹ sư giám sát chỉnh sửa.
-            </p>
-            <div className="space-y-2">
-              <Label htmlFor="returnReason" className="font-semibold">
-                Lý do trả lại <span className="text-rose-500">*</span>
-              </Label>
-              <textarea
-                id="returnReason"
-                rows={4}
-                value={returnReason}
-                onChange={(e) => setReturnReason(e.target.value)}
-                maxLength={2000}
-                placeholder="Ví dụ: Số liệu hạng mục cọc ép chưa khớp với báo cáo hiện trường — cần đối chiếu lại..."
-                className="w-full border rounded-md px-3 py-2 text-sm"
-              />
-              <p className="text-xs text-slate-500">
-                Lý do này sẽ được lưu vào nhật ký và hiển thị cho người lập phiếu.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setReturnDialogOpen(false)}
-              disabled={actionLoading}
-            >
-              Huỷ
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleConfirmReturn}
-              disabled={actionLoading || !returnReason.trim()}
-            >
-              {actionLoading ? "Đang xử lý..." : "Xác nhận trả lại"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
     </div>
   );
 }

@@ -75,6 +75,28 @@ describe("S-39: Acceptance Voucher Lifecycle & Audit Portal", () => {
   // SUBMIT
   // ═════════════════════════════════════════════════════════════════════
   describe("POST /:voucherId/submit", () => {
+    test("cannot submit another creator's voucher", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "ky_su_giam_sat" }] });
+      mockClient.query.mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ rows: [voucherRow({ created_by: 99 })] })
+        .mockResolvedValueOnce({});
+      const res = await request(app).post("/api/projects/1/acceptance-vouchers/100/submit").send({});
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe("ONLY_CREATOR_CAN_SUBMIT");
+      expect(mockLogAudit).not.toHaveBeenCalled();
+    });
+
+    test("cannot submit a voucher without items", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "ky_su_giam_sat" }] });
+      mockClient.query.mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ rows: [voucherRow()] })
+        .mockResolvedValueOnce({ rows: [{ count: 0 }] })
+        .mockResolvedValueOnce({});
+      const res = await request(app).post("/api/projects/1/acceptance-vouchers/100/submit").send({});
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("EMPTY_ACCEPTANCE_VOUCHER");
+      expect(mockLogAudit).not.toHaveBeenCalled();
+    });
     test("KSGS gửi phiếu draft → pending_review, ghi audit với project_id + old/new", async () => {
       mockQuery.mockResolvedValueOnce({ rows: [{ role: "ky_su_giam_sat" }] });
 
@@ -82,6 +104,7 @@ describe("S-39: Acceptance Voucher Lifecycle & Audit Portal", () => {
       mockClient.query
         .mockResolvedValueOnce({}) // BEGIN
         .mockResolvedValueOnce({ rows: [voucher] }) // SELECT FOR UPDATE
+        .mockResolvedValueOnce({ rows: [{ count: 1 }] })
         .mockResolvedValueOnce({
           rows: [{ ...voucher, status: "pending_review" }],
         }) // UPDATE RETURNING
@@ -144,6 +167,7 @@ describe("S-39: Acceptance Voucher Lifecycle & Audit Portal", () => {
       mockClient.query
         .mockResolvedValueOnce({})
         .mockResolvedValueOnce({ rows: [voucher] })
+        .mockResolvedValueOnce({ rows: [{ count: 1 }] })
         .mockResolvedValueOnce({
           rows: [{ ...voucher, status: "pending_review" }],
         })

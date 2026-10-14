@@ -5,6 +5,7 @@ module.exports = {
     '<rootDir>/__tests__/acceptanceReview.test.js',
     '<rootDir>/__tests__/acceptanceLifecycle.test.js',
     '<rootDir>/__tests__/acceptanceFlow.test.js',
+    '<rootDir>/__tests__/acceptanceReturn.test.js',
     '<rootDir>/__tests__/diaryAudit.test.js',
   ],
 };

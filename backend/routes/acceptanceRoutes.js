@@ -343,12 +343,17 @@ router.get(
          av.has_negative_delta,
          av.created_by,
          u.name AS created_by_name,
+         av.reviewed_by,
+         reviewer.name AS reviewed_by_name,
+         av.reviewed_at,
+         av.review_note,
          av.created_at,
          av.updated_at,
          (SELECT COUNT(*) FROM acceptance_voucher_items avi WHERE avi.voucher_id = av.id)::int AS item_count,
          (SELECT COUNT(*) FROM acceptance_voucher_photos avp WHERE avp.voucher_id = av.id)::int AS photo_count
        FROM acceptance_vouchers av
        JOIN users u ON u.id = av.created_by
+       LEFT JOIN users reviewer ON reviewer.id = av.reviewed_by
        WHERE av.project_id = $1
        ORDER BY av.created_at DESC`,
       [projectId]
@@ -443,9 +448,11 @@ router.get(
     const voucherRes = await db.query(
       `SELECT
          av.*,
-         u.name AS created_by_name
+         u.name AS created_by_name,
+         reviewer.name AS reviewed_by_name
        FROM acceptance_vouchers av
        JOIN users u ON u.id = av.created_by
+       LEFT JOIN users reviewer ON reviewer.id = av.reviewed_by
        WHERE av.id = $1 AND av.project_id = $2`,
       [voucherId, projectId]
     );
@@ -508,9 +515,221 @@ router.get(
   })
 );
 
-// ─── POST /:projectId/acceptance-vouchers/:voucherId/submit ───────────────────
-// S-39: Kỹ sư giám sát gửi phiếu từ draft/returned sang pending_review.
-// Chặn phiếu có khối lượng âm (has_negative_delta) — xem TODO T-91.
+// S-38: Người lập sửa phiếu nháp hoặc phiếu bị trả lại.
+router.put(
+  "/:projectId/acceptance-vouchers/:voucherId",
+  requireAuth,
+  checkProjectAccess,
+  requirePermission("acceptance.update_dossier"),
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+    const voucherId = parsePositiveInt(req.params.voucherId);
+    if (!projectId || !voucherId) {
+      return res.status(400).json({ message: "ID không hợp lệ" });
+    }
+
+    const { batch_name, items } = req.body;
+    if (!batch_name || typeof batch_name !== "string" || batch_name.trim() === "") {
+      return res.status(400).json({ message: "Tên đợt nghiệm thu (batch_name) là bắt buộc" });
+    }
+    if (batch_name.trim().length > 200) {
+      return res.status(400).json({ message: "Tên đợt không được quá 200 ký tự" });
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: "Danh sách hạng mục (items) không được rỗng" });
+    }
+
+    const itemErrors = [];
+    const parsedItems = [];
+    for (let i = 0; i < items.length; i += 1) {
+      const item = items[i];
+      const rowErrors = {};
+      const workItemId = parsePositiveInt(item.work_item_id);
+      if (!workItemId) rowErrors.work_item_id = "work_item_id không hợp lệ";
+
+      const qtyResult = parseDecimalInput(item.cumulative_quantity, {
+        maxIntDigits: 11,
+        maxScale: 3,
+        fieldName: "Luỹ kế",
+      });
+      if (!qtyResult.valid) rowErrors.cumulative_quantity = qtyResult.error;
+
+      if (Object.keys(rowErrors).length > 0) {
+        itemErrors.push({ index: i, errors: rowErrors });
+      } else {
+        parsedItems.push({
+          work_item_id: workItemId,
+          cumulative_quantity: qtyResult.value,
+        });
+      }
+    }
+
+    if (itemErrors.length > 0) {
+      return res.status(400).json({
+        message: "Dữ liệu hạng mục không hợp lệ",
+        item_errors: itemErrors,
+      });
+    }
+
+    const workItemIds = parsedItems.map((item) => item.work_item_id);
+    if (new Set(workItemIds).size !== workItemIds.length) {
+      return res.status(400).json({
+        message: "Danh sách hạng mục có work_item_id trùng lặp",
+      });
+    }
+
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+
+      const voucherRes = await client.query(
+        `SELECT id, project_id, batch_name, status, has_negative_delta, created_by,
+                reviewed_by, reviewed_at, review_note
+         FROM acceptance_vouchers
+         WHERE id = $1 AND project_id = $2
+         FOR UPDATE`,
+        [voucherId, projectId]
+      );
+
+      if (voucherRes.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Không tìm thấy phiếu nghiệm thu" });
+      }
+
+      const voucher = voucherRes.rows[0];
+      if (Number(voucher.created_by) !== Number(req.user.id)) {
+        await client.query("ROLLBACK");
+        return res.status(403).json({
+          code: "ONLY_CREATOR_CAN_EDIT",
+          message: "Chỉ người lập phiếu mới được chỉnh sửa phiếu này",
+        });
+      }
+      if (!["draft", "returned"].includes(voucher.status)) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({
+          code: "ACCEPTANCE_VOUCHER_LOCKED",
+          message: "Chỉ phiếu nháp hoặc phiếu bị trả lại mới được chỉnh sửa",
+          current_status: voucher.status,
+        });
+      }
+
+      const wiCheck = await client.query(
+        `SELECT wi.id, wi.unit,
+                NOT EXISTS (
+                  SELECT 1 FROM work_items child WHERE child.parent_id = wi.id
+                ) AS is_leaf
+         FROM work_items wi
+         WHERE wi.id = ANY($1::int[]) AND wi.project_id = $2`,
+        [workItemIds, projectId]
+      );
+      const foundMap = new Map(wiCheck.rows.map((row) => [row.id, row]));
+      const invalidItems = [];
+      for (const item of parsedItems) {
+        const found = foundMap.get(item.work_item_id);
+        if (!found) {
+          invalidItems.push({
+            work_item_id: item.work_item_id,
+            reason: "Hạng mục không tồn tại hoặc không thuộc dự án này",
+          });
+        } else if (!found.is_leaf) {
+          invalidItems.push({
+            work_item_id: item.work_item_id,
+            reason: "Chỉ được nhập khối lượng cho hạng mục lá (không có con)",
+          });
+        }
+      }
+      if (invalidItems.length > 0) {
+        await client.query("ROLLBACK");
+        return res.status(422).json({
+          message: "Một số hạng mục không hợp lệ",
+          invalid_items: invalidItems,
+        });
+      }
+
+      const computedItems = await computeVoucherItems(
+        client,
+        parsedItems.map((item) => ({
+          ...item,
+          unit: foundMap.get(item.work_item_id)?.unit || null,
+        }))
+      );
+      const hasNegativeDelta = computedItems.some(
+        (item) => parseFloat(item.delta_quantity) < 0
+      );
+
+      await client.query(
+        `UPDATE acceptance_vouchers
+         SET batch_name = $1,
+             has_negative_delta = $2,
+             updated_at = NOW()
+         WHERE id = $3 AND project_id = $4`,
+        [batch_name.trim(), hasNegativeDelta, voucherId, projectId]
+      );
+      await client.query(
+        "DELETE FROM acceptance_voucher_items WHERE voucher_id = $1",
+        [voucherId]
+      );
+      for (const item of computedItems) {
+        await client.query(
+          `INSERT INTO acceptance_voucher_items
+             (voucher_id, work_item_id, cumulative_quantity,
+              prev_approved_cumulative, delta_quantity, unit)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            voucherId,
+            item.work_item_id,
+            item.cumulative_quantity,
+            item.prev_approved_cumulative,
+            item.delta_quantity,
+            item.unit,
+          ]
+        );
+      }
+
+      const updatedRes = await client.query(
+        `SELECT id, project_id, batch_name, status, has_negative_delta,
+                created_by, reviewed_by, reviewed_at, review_note,
+                created_at, updated_at
+         FROM acceptance_vouchers
+         WHERE id = $1 AND project_id = $2`,
+        [voucherId, projectId]
+      );
+
+      await client.query("COMMIT");
+
+      await logAudit({
+        userId: req.user.id,
+        action: "UPDATE_ACCEPTANCE_VOUCHER",
+        entity: "acceptance_vouchers",
+        entityId: voucherId,
+        projectId,
+        details: {
+          old_value: { status: voucher.status, batch_name: voucher.batch_name, has_negative_delta: voucher.has_negative_delta },
+          new_value: { status: voucher.status, batch_name: batch_name.trim(), has_negative_delta: hasNegativeDelta, items: computedItems },
+          status: voucher.status,
+          batch_name: batch_name.trim(),
+          item_count: computedItems.length,
+          has_negative_delta: hasNegativeDelta,
+        },
+        ipAddress: req.ip,
+      });
+
+      return res.json({
+        message: "Đã cập nhật phiếu nghiệm thu",
+        voucher: updatedRes.rows[0],
+        items: computedItems,
+      });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  })
+);
+
+// ─── POST /api/projects/:projectId/acceptance-vouchers/:voucherId/submit ──────
+/** Gửi phiếu nháp hoặc phiếu đã bị trả lại sang trạng thái chờ duyệt. */
 router.post(
   "/:projectId/acceptance-vouchers/:voucherId/submit",
   requireAuth,
@@ -541,6 +760,11 @@ router.post(
       }
       const voucher = voucherRes.rows[0];
 
+      if (Number(voucher.created_by) !== Number(req.user.id)) {
+        await client.query("ROLLBACK");
+        return res.status(403).json({ code: "ONLY_CREATOR_CAN_SUBMIT", message: "Chỉ người lập phiếu mới được gửi duyệt phiếu này" });
+      }
+
       if (voucher.has_negative_delta) {
         await client.query("ROLLBACK");
         return res.status(422).json({
@@ -559,6 +783,13 @@ router.post(
         });
       }
 
+      const itemCount = await client.query(
+        "SELECT COUNT(*)::int AS count FROM acceptance_voucher_items WHERE voucher_id = $1", [voucherId]
+      );
+      if (!itemCount.rows[0] || itemCount.rows[0].count < 1) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ code: "EMPTY_ACCEPTANCE_VOUCHER", message: "Phiếu không có hạng mục để gửi duyệt" });
+      }
       const updated = await client.query(
         `UPDATE acceptance_vouchers
          SET status = 'pending_review', updated_at = NOW()
@@ -572,7 +803,7 @@ router.post(
       try {
         await logAudit({
           userId: req.user.id,
-          action: "SUBMIT_ACCEPTANCE_VOUCHER",
+          action: voucher.status === "returned" ? "RESUBMIT_ACCEPTANCE_VOUCHER" : "SUBMIT_ACCEPTANCE_VOUCHER",
           entity: "acceptance_vouchers",
           entityId: voucherId,
           projectId,
@@ -712,7 +943,7 @@ router.post(
 
     const reason = req.body.reason ? String(req.body.reason).trim() : "";
     if (!reason) {
-      return res.status(400).json({ message: "Phải nhập lý do trả lại phiếu" });
+      return res.status(400).json({ code: "RETURN_REASON_REQUIRED", message: "Phải nhập lý do trả lại phiếu" });
     }
     if (reason.length > 2000) {
       return res.status(400).json({ message: "Lý do trả lại không quá 2000 ký tự" });
@@ -995,7 +1226,6 @@ router.post(
     if (voucherCheck.rows.length === 0) {
       return res.status(404).json({ message: "Không tìm thấy phiếu nghiệm thu" });
     }
-
     // Kiểm tra số lượng ảnh nếu có giới hạn
     if (ACCEPTANCE_MAX_PHOTOS_PER_VOUCHER > 0) {
       const countRes = await db.query(

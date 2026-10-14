@@ -1,5 +1,14 @@
 # S-39 — Kiểm tra bổ sung audit (14/10/2026)
 
+## Cập nhật xử lý xung đột PR #142
+
+- Lấy `origin/main` tại `c207d86`, hợp nhất vào nhánh `fix/s39-ci-audit`; không merge PR vào main.
+- Kết hợp API sửa phiếu của main với audit/lịch sử S-39; giữ kiểm tra người lập và chặn gửi phiếu rỗng, ghi audit gửi lại phiếu. Giao diện giữ danh sách chờ duyệt, thông tin người duyệt và lý do trả lại; chỉ Chủ đầu tư được duyệt chính thức theo permission backend; BQL được trả lại. Loại bỏ dialog trả lại trùng lặp.
+- File đọc thêm: `backend/__tests__/acceptanceReturn.test.js`, `frontend/src/pages/__tests__/AcceptancePage.test.jsx`, `frontend/src/pages/__tests__/AcceptanceReviewPage.test.jsx`; đọc các phiên bản Git của hai file xung đột.
+- File sửa trong lần này: `backend/routes/acceptanceRoutes.js`, `frontend/src/pages/AcceptancePage.jsx`, `backend/__tests__/acceptanceLifecycle.test.js`, `frontend/src/pages/__tests__/AcceptanceReviewPage.test.jsx`, `backend/jest.audit.config.cjs`, báo cáo này. Không tạo file mới; merge tiếp nhận các test nghiệm thu mới từ main.
+- Lệnh: `git fetch origin main`, `git merge --no-commit --no-ff origin/main`, `git show`, `git diff`, `git status`, `rg`, `Get-Content`, script Python chỉnh file nguồn; `node --check backend/routes/acceptanceRoutes.js`; cấu hình Jest mock nêu dưới: **57/57 đạt**; Vitest cho AcceptanceReviewPage, AcceptancePage, AuditPortalPage, FieldPage.history: **13/13 đạt**; ESLint file sửa: đạt; `npm.cmd run build`: đạt; `git diff --check`: đạt. Sau đó `git add`, `git commit`, `git push origin HEAD:refs/heads/fix/s39-ci-audit`.
+- Không kết nối/ghi database thật, không chạy migration, không sửa cấu hình DB/CI/deploy. Kiểm thử dùng mock; các giới hạn audit và cảnh báo build bên dưới vẫn áp dụng. CI GitHub cần được xác nhận riêng sau khi đẩy.
+
 ## Kết quả
 
 - Nhánh đã có audit tạo/gửi/duyệt/trả phiếu nghiệm thu và `projectId` cho khóa/mở sổ. Kiểm thử xác nhận các luồng này.
