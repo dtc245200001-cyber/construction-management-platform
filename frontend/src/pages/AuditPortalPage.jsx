@@ -11,6 +11,8 @@ import {
   ShieldCheck,
   Filter,
   X,
+  Calendar,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -56,6 +58,14 @@ const ENTITY_LABELS = {
   invitations: "Thư mời",
   teams: "Tổ đội",
 };
+
+const CATEGORY_TABS = [
+  { id: "all", label: "Tất cả", entity: "" },
+  { id: "acceptance", label: "📋 Nghiệm thu", entity: "acceptance_vouchers" },
+  { id: "diary", label: "📔 Nhật ký thi công", entity: "diary_entries" },
+  { id: "lock", label: "🔒 Khóa / Mở sổ", entity: "daily_log_locks" },
+  { id: "quantity", label: "📊 Khối lượng", entity: "task_quantity_reports" },
+];
 
 function formatDateTime(iso) {
   if (!iso) return "—";
@@ -148,8 +158,38 @@ export default function AuditPortalPage({ user }) {
   const [entityIdFilter, setEntityIdFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [page, setPage] = useState(0);
   const limit = 50;
+
+  const setQuickRange = (type) => {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const formatYMD = (d) =>
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+    const todayStr = formatYMD(now);
+
+    if (type === "today") {
+      setFromDate(todayStr);
+      setToDate(todayStr);
+    } else if (type === "7days") {
+      const past = new Date(now);
+      past.setDate(past.getDate() - 7);
+      setFromDate(formatYMD(past));
+      setToDate(todayStr);
+    } else if (type === "30days") {
+      const past = new Date(now);
+      past.setDate(past.getDate() - 30);
+      setFromDate(formatYMD(past));
+      setToDate(todayStr);
+    } else if (type === "this_month") {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      setFromDate(formatYMD(startOfMonth));
+      setToDate(todayStr);
+    }
+    setPage(0);
+  };
 
   // 1. Lấy vai trò của user trong project để kiểm tra quyền portal
   const fetchMembership = useCallback(async () => {
@@ -280,71 +320,83 @@ export default function AuditPortalPage({ user }) {
       </div>
 
       {/* Filter bar */}
-      <Card className="p-4">
-        <div className="flex items-center gap-2 mb-3 text-sm font-semibold text-slate-700">
-          <Filter className="h-4 w-4" /> Bộ lọc
-          {hasActiveFilter && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleReset}
-              className="h-7 px-2 text-xs"
-            >
-              <X className="h-3 w-3 mr-1" /> Xoá lọc
-            </Button>
-          )}
+      <Card className="p-4 sm:p-5 shadow-xs border-slate-200">
+        {/* Category Tabs */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-3 mb-4 border-b border-slate-100 no-scrollbar">
+          {CATEGORY_TABS.map((tab) => {
+            const isActive =
+              tab.entity === ""
+                ? entityFilter === ""
+                : entityFilter === tab.entity;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => {
+                  setEntityFilter(tab.entity);
+                  setPage(0);
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium transition-all shrink-0 cursor-pointer ${
+                  isActive
+                    ? "bg-emerald-600 text-white shadow-xs font-semibold"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+
+        {/* Main Filters Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+          {/* 1. Hành động */}
           <div>
-            <label className="text-xs font-medium text-slate-600 block mb-1">
-              Đối tượng
+            <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+              Hành động
             </label>
             <select
-              value={entityFilter}
-              onChange={(e) => {
-                setEntityFilter(e.target.value);
-                setPage(0);
-              }}
-              className="w-full border rounded-md px-2 py-1.5 text-sm"
-            >
-              <option value="">— Tất cả —</option>
-              {Object.entries(ENTITY_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-slate-600 block mb-1">
-              Hành động (ví dụ: LOCK_DIARY)
-            </label>
-            <Input
               value={actionFilter}
               onChange={(e) => {
                 setActionFilter(e.target.value);
                 setPage(0);
               }}
-              placeholder="VD: APPROVE_ACCEPTANCE_VOUCHER"
-              className="text-sm"
-            />
+              className="w-full h-9 border border-slate-200 rounded-md px-2.5 text-xs sm:text-sm bg-white text-slate-800 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+            >
+              <option value="">— Tất cả hành động —</option>
+              <optgroup label="📋 Phiếu nghiệm thu">
+                <option value="APPROVE_ACCEPTANCE_VOUCHER">✅ Duyệt phiếu nghiệm thu</option>
+                <option value="RETURN_ACCEPTANCE_VOUCHER">↩️ Trả lại phiếu nghiệm thu</option>
+                <option value="SUBMIT_ACCEPTANCE_VOUCHER">📤 Gửi duyệt phiếu nghiệm thu</option>
+                <option value="CREATE_ACCEPTANCE_VOUCHER">➕ Tạo phiếu nghiệm thu</option>
+              </optgroup>
+              <optgroup label="📔 Nhật ký & Chốt sổ">
+                <option value="LOCK_DIARY">🔒 Khóa sổ nhật ký ngày</option>
+                <option value="UNLOCK_DIARY">🔓 Mở khóa sổ nhật ký</option>
+                <option value="CREATE_DIARY_ENTRY">📝 Ghi nhật ký thi công</option>
+                <option value="UPDATE_DIARY_ENTRY">✏️ Sửa nhật ký</option>
+                <option value="DELETE_DIARY_ENTRY">🗑️ Xóa nhật ký</option>
+                <option value="UPSERT_DIARY_DAILY_LOG">📋 Cập nhật mục đầu ngày</option>
+                <option value="RESOLVE_DIARY_CONFLICT">⚡ Xử lý xung đột nhật ký</option>
+              </optgroup>
+              <optgroup label="📊 Khối lượng thi công">
+                <option value="CREATE_QUANTITY_REPORT">📈 Báo cáo khối lượng</option>
+                <option value="CONTRACT_QUANTITY_SET">📌 Gán khối lượng hợp đồng</option>
+                <option value="CONTRACT_QUANTITY_CLEAR">❌ Xoá khối lượng hợp đồng</option>
+              </optgroup>
+              <optgroup label="👥 Dự án & Hệ thống">
+                <option value="CREATE_PROJECT">🏗️ Tạo dự án</option>
+                <option value="CREATE_INVITATION">✉️ Gửi lời mời</option>
+                <option value="LOCK_USER">🚫 Khóa tài khoản</option>
+                <option value="UNLOCK_USER">🟢 Mở khóa tài khoản</option>
+              </optgroup>
+            </select>
           </div>
+
+          {/* 2. Từ ngày */}
           <div>
-            <label className="text-xs font-medium text-slate-600 block mb-1">
-              ID đối tượng
-            </label>
-            <Input
-              value={entityIdFilter}
-              onChange={(e) => {
-                setEntityIdFilter(e.target.value);
-                setPage(0);
-              }}
-              placeholder="VD: 102"
-              className="text-sm"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-slate-600 block mb-1">
+            <label className="text-xs font-semibold text-slate-700 flex items-center gap-1 mb-1.5">
+              <Calendar className="h-3.5 w-3.5 text-slate-400" />
               Từ ngày
             </label>
             <Input
@@ -355,11 +407,14 @@ export default function AuditPortalPage({ user }) {
                 setFromDate(e.target.value);
                 setPage(0);
               }}
-              className="text-sm"
+              className="text-xs sm:text-sm h-9"
             />
           </div>
+
+          {/* 3. Đến ngày */}
           <div>
-            <label className="text-xs font-medium text-slate-600 block mb-1">
+            <label className="text-xs font-semibold text-slate-700 flex items-center gap-1 mb-1.5">
+              <Calendar className="h-3.5 w-3.5 text-slate-400" />
               Đến ngày
             </label>
             <Input
@@ -370,10 +425,108 @@ export default function AuditPortalPage({ user }) {
                 setToDate(e.target.value);
                 setPage(0);
               }}
-              className="text-sm"
+              className="text-xs sm:text-sm h-9"
             />
           </div>
+
+          {/* 4. Controls: Nâng cao & Xoá lọc */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="h-9 px-3 text-xs text-slate-600 hover:text-slate-900 border-slate-200"
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" />
+              {showAdvanced ? "Thu gọn" : "Nâng cao"}
+            </Button>
+            {hasActiveFilter && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleReset}
+                className="h-9 px-2.5 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+              >
+                <X className="h-3.5 w-3.5 mr-1" /> Xoá lọc
+              </Button>
+            )}
+          </div>
         </div>
+
+        {/* Quick Date Range Presets */}
+        <div className="flex items-center flex-wrap gap-1.5 sm:gap-2 mt-3 pt-3 border-t border-slate-100">
+          <span className="text-xs text-slate-400 font-medium">Chọn nhanh:</span>
+          <button
+            type="button"
+            onClick={() => setQuickRange("today")}
+            className="px-2.5 py-1 text-xs rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer font-medium"
+          >
+            Hôm nay
+          </button>
+          <button
+            type="button"
+            onClick={() => setQuickRange("7days")}
+            className="px-2.5 py-1 text-xs rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer font-medium"
+          >
+            7 ngày qua
+          </button>
+          <button
+            type="button"
+            onClick={() => setQuickRange("30days")}
+            className="px-2.5 py-1 text-xs rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer font-medium"
+          >
+            30 ngày qua
+          </button>
+          <button
+            type="button"
+            onClick={() => setQuickRange("this_month")}
+            className="px-2.5 py-1 text-xs rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer font-medium"
+          >
+            Tháng này
+          </button>
+        </div>
+
+        {/* Advanced Collapsible Section */}
+        {showAdvanced && (
+          <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50/70 p-3 rounded-xl">
+            <div>
+              <label className="text-xs font-semibold text-slate-600 block mb-1">
+                Đối tượng cụ thể (Kỹ thuật)
+              </label>
+              <select
+                value={entityFilter}
+                onChange={(e) => {
+                  setEntityFilter(e.target.value);
+                  setPage(0);
+                }}
+                className="w-full h-9 border border-slate-200 rounded-md px-2.5 text-xs bg-white text-slate-800 outline-none focus:border-emerald-500"
+              >
+                <option value="">— Tất cả đối tượng —</option>
+                {Object.entries(ENTITY_LABELS).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v} ({k})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 block mb-1">
+                ID đối tượng trong database
+              </label>
+              <Input
+                value={entityIdFilter}
+                onChange={(e) => {
+                  setEntityIdFilter(e.target.value);
+                  setPage(0);
+                }}
+                placeholder="VD: 102"
+                aria-label="ID đối tượng"
+                className="text-xs h-9 bg-white"
+              />
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Table */}
