@@ -1,7 +1,7 @@
 ﻿// T-83: E2E offline - tạo 20 nhật ký kèm ảnh, reload, bật mạng, xác minh server nhận đủ.
 // Chạy: cd frontend && npm run test:e2e:offline
 import { test, expect } from '@playwright/test';
-
+import { Buffer } from 'node:buffer';
 // Bản production (build + preview) có service worker của VitePWA; request do service worker gửi
 // không đi qua page.route nên server giả/giả lập mạng mất tác dụng. Chặn để test giống bản dev.
 test.use({ serviceWorkers: 'block' });
