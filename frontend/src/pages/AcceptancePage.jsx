@@ -95,6 +95,10 @@ export default function AcceptancePage({ user }) {
   const [returnReason, setReturnReason] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
+  const canReviewInternal = canReturn;
+  const pendingReviewVouchers = vouchers.filter((v) => v.status === "pending_review");
+  const [reviewError, setReviewError] = useState("");
+
   // 1. Tải vai trò trong dự án
   const fetchMembership = useCallback(async () => {
     try {
@@ -466,11 +470,12 @@ export default function AcceptancePage({ user }) {
 
   // S-39: duyệt phiếu (pending_review → approved)
   const handleApprove = async (voucher) => {
+    if (!canApprove || actionLoading) return;
     if (!window.confirm(`Duyệt chính thức phiếu "${voucher.batch_name}"?`)) return;
     setActionLoading(true);
     try {
       await api.post(
-        `/projects/${projectId}/acceptance-vouchers/${voucher.id}/approve`
+        `/projects/${projectId}/acceptance-vouchers/${voucher.id}/approve`, {}
       );
       toast.success("Đã duyệt phiếu nghiệm thu");
       fetchVouchers();
@@ -484,6 +489,7 @@ export default function AcceptancePage({ user }) {
 
   // S-39: mở dialog trả lại phiếu (bắt buộc lý do)
   const handleOpenReturn = (voucher) => {
+    setReviewError("");
     setReturnTarget(voucher);
     setReturnReason("");
     setReturnDialogOpen(true);
@@ -491,9 +497,10 @@ export default function AcceptancePage({ user }) {
 
   const handleConfirmReturn = async () => {
     if (!returnReason.trim()) {
-      toast.error("Vui lòng nhập lý do trả lại");
+      setReviewError("Bắt buộc nhập lý do trả lại phiếu");
       return;
     }
+    if (!returnTarget || !canReturn || actionLoading) return;
     setActionLoading(true);
     try {
       await api.post(
@@ -1647,56 +1654,7 @@ export default function AcceptancePage({ user }) {
         </DialogContent>
       </Dialog>
 
-      {/* ── DIALOG: TRẢ LẠI PHIẾU (S-39) ── */}
-      <Dialog open={returnDialogOpen} onOpenChange={setReturnDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <X className="h-5 w-5 text-rose-600" />
-              Trả lại phiếu nghiệm thu
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <p className="text-sm text-slate-600">
-              Phiếu <strong>"{returnTarget?.batch_name}"</strong> sẽ được đưa về
-              trạng thái <em>Bị trả lại</em> để Kỹ sư giám sát chỉnh sửa.
-            </p>
-            <div className="space-y-2">
-              <Label htmlFor="returnReason" className="font-semibold">
-                Lý do trả lại <span className="text-rose-500">*</span>
-              </Label>
-              <textarea
-                id="returnReason"
-                rows={4}
-                value={returnReason}
-                onChange={(e) => setReturnReason(e.target.value)}
-                maxLength={2000}
-                placeholder="Ví dụ: Số liệu hạng mục cọc ép chưa khớp với báo cáo hiện trường — cần đối chiếu lại..."
-                className="w-full border rounded-md px-3 py-2 text-sm"
-              />
-              <p className="text-xs text-slate-500">
-                Lý do này sẽ được lưu vào nhật ký và hiển thị cho người lập phiếu.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setReturnDialogOpen(false)}
-              disabled={actionLoading}
-            >
-              Huỷ
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleConfirmReturn}
-              disabled={actionLoading || !returnReason.trim()}
-            >
-              {actionLoading ? "Đang xử lý..." : "Xác nhận trả lại"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
     </div>
   );
 }

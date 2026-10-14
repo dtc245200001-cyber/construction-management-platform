@@ -24,6 +24,10 @@ const ACTION_LABELS = {
   APPROVE_ACCEPTANCE_VOUCHER: "Duyệt phiếu nghiệm thu",
   RETURN_ACCEPTANCE_VOUCHER: "Trả lại phiếu nghiệm thu",
   CREATE_DIARY_ENTRY: "Ghi nhật ký",
+  UPDATE_DIARY_ENTRY: "Sửa nhật ký",
+  DELETE_DIARY_ENTRY: "Xóa nhật ký",
+  CREATE_DIARY_CONFLICT: "Phát hiện xung đột nhật ký",
+  RESOLVE_DIARY_CONFLICT: "Xử lý xung đột nhật ký",
   UPSERT_DIARY_DAILY_LOG: "Cập nhật nhật ký ngày",
   LOCK_DIARY: "Khóa sổ nhật ký",
   UNLOCK_DIARY: "Mở khóa sổ nhật ký",
@@ -42,6 +46,7 @@ const ENTITY_LABELS = {
   acceptance_voucher_photos: "Ảnh phiếu",
   daily_log_locks: "Khoá nhật ký ngày",
   diary_entries: "Nhật ký thi công",
+  diary_entry_conflicts: "Xung đột nhật ký",
   diary_daily_logs: "Nhật ký ngày",
   task_quantity_reports: "Báo cáo khối lượng",
   tasks: "Công việc",
@@ -56,6 +61,7 @@ function formatDateTime(iso) {
   if (!iso) return "—";
   try {
     return new Date(iso).toLocaleString("vi-VN", {
+      timeZone: "Asia/Ho_Chi_Minh",
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -175,8 +181,8 @@ export default function AuditPortalPage({ user }) {
       if (entityFilter) params.set("entity", entityFilter);
       if (actionFilter) params.set("action", actionFilter.trim().toUpperCase());
       if (entityIdFilter) params.set("entity_id", entityIdFilter.trim());
-      if (fromDate) params.set("from", new Date(fromDate).toISOString());
-      if (toDate) params.set("to", new Date(toDate + "T23:59:59").toISOString());
+      if (fromDate) params.set("from", new Date(fromDate + "T00:00:00+07:00").toISOString());
+      if (toDate) params.set("to", new Date(toDate + "T23:59:59.999+07:00").toISOString());
       params.set("limit", String(limit));
       params.set("offset", String(page * limit));
 
@@ -343,6 +349,7 @@ export default function AuditPortalPage({ user }) {
             </label>
             <Input
               type="date"
+              aria-label="Từ ngày"
               value={fromDate}
               onChange={(e) => {
                 setFromDate(e.target.value);
@@ -357,6 +364,7 @@ export default function AuditPortalPage({ user }) {
             </label>
             <Input
               type="date"
+              aria-label="Đến ngày"
               value={toDate}
               onChange={(e) => {
                 setToDate(e.target.value);

@@ -327,8 +327,10 @@ router.delete(
           action: "DELETE_DIARY_ENTRY",
           entity: "diary_entries",
           entityId: entryId,
+          projectId,
           details: {
-            content: entry.content?.slice(0, 100),
+            old_value: { content: entry.content, work_item_id: entry.work_item_id, entry_at: entry.entry_at, version: entry.version },
+            new_value: null,
             work_item_id: entry.work_item_id,
             date: entryDate,
           },
@@ -479,6 +481,8 @@ router.put(
             entityId: entryId,
             projectId,
             details: {
+              old_value: { content: serverEntry.content, work_item_id: serverEntry.work_item_id, entry_at: serverEntry.entry_at, version: serverEntry.version },
+              new_value: { content: updatedRow.content, work_item_id: updatedRow.work_item_id, entry_at: updatedRow.entry_at, version: updatedRow.version },
               previous_version: serverEntry.version,
               new_version: updatedRow.version,
               work_item_id: targetWorkItemId,
@@ -837,6 +841,8 @@ router.post(
           entityId: conflictId,
           projectId,
           details: {
+            old_value: { content: serverEntry.content, work_item_id: serverEntry.work_item_id, entry_at: serverEntry.entry_at, version: serverEntry.version },
+            new_value: { content: finalEntry.content, work_item_id: finalEntry.work_item_id, entry_at: finalEntry.entry_at, version: finalEntry.version },
             conflict_id: conflictId,
             diary_entry_id: serverEntry.id,
             base_version: conflict.client_version,

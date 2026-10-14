@@ -75,6 +75,28 @@ describe("S-39: Acceptance Voucher Lifecycle & Audit Portal", () => {
   // SUBMIT
   // ═════════════════════════════════════════════════════════════════════
   describe("POST /:voucherId/submit", () => {
+    test("cannot submit another creator's voucher", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "ky_su_giam_sat" }] });
+      mockClient.query.mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ rows: [voucherRow({ created_by: 99 })] })
+        .mockResolvedValueOnce({});
+      const res = await request(app).post("/api/projects/1/acceptance-vouchers/100/submit").send({});
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe("ONLY_CREATOR_CAN_SUBMIT");
+      expect(mockLogAudit).not.toHaveBeenCalled();
+    });
+
+    test("cannot submit a voucher without items", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "ky_su_giam_sat" }] });
+      mockClient.query.mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ rows: [voucherRow()] })
+        .mockResolvedValueOnce({ rows: [{ count: 0 }] })
+        .mockResolvedValueOnce({});
+      const res = await request(app).post("/api/projects/1/acceptance-vouchers/100/submit").send({});
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("EMPTY_ACCEPTANCE_VOUCHER");
+      expect(mockLogAudit).not.toHaveBeenCalled();
+    });
     test("KSGS gửi phiếu draft → pending_review, ghi audit với project_id + old/new", async () => {
       mockQuery.mockResolvedValueOnce({ rows: [{ role: "ky_su_giam_sat" }] });
 
@@ -82,6 +104,7 @@ describe("S-39: Acceptance Voucher Lifecycle & Audit Portal", () => {
       mockClient.query
         .mockResolvedValueOnce({}) // BEGIN
         .mockResolvedValueOnce({ rows: [voucher] }) // SELECT FOR UPDATE
+        .mockResolvedValueOnce({ rows: [{ count: 1 }] })
         .mockResolvedValueOnce({
           rows: [{ ...voucher, status: "pending_review" }],
         }) // UPDATE RETURNING
@@ -144,6 +167,7 @@ describe("S-39: Acceptance Voucher Lifecycle & Audit Portal", () => {
       mockClient.query
         .mockResolvedValueOnce({})
         .mockResolvedValueOnce({ rows: [voucher] })
+        .mockResolvedValueOnce({ rows: [{ count: 1 }] })
         .mockResolvedValueOnce({
           rows: [{ ...voucher, status: "pending_review" }],
         })
@@ -355,6 +379,21 @@ describe("S-39: Acceptance Voucher Lifecycle & Audit Portal", () => {
   // AUDIT PORTAL — /:projectId/audit-logs
   // ═════════════════════════════════════════════════════════════════════
   describe("GET /:projectId/audit-logs — Audit Portal", () => {
+    test("rejects reversed dates before querying audit data", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "chu_dau_tu" }] });
+      const res = await request(app).get("/api/projects/1/audit-logs?from=2026-10-14&to=2026-10-01");
+      expect(res.status).toBe(400);
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+    });
+
+    test("filters conflict events within the selected project", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] })
+        .mockResolvedValueOnce({ rows: [{ total: 0 }] })
+        .mockResolvedValueOnce({ rows: [] });
+      const res = await request(app).get("/api/projects/12/audit-logs?entity=diary_entry_conflicts");
+      expect(res.status).toBe(200);
+      expect(mockQuery).toHaveBeenLastCalledWith(expect.stringContaining('a.project_id = $1'), [12, 'diary_entry_conflicts', 50, 0]);
+    });
     test("CĐT xem được danh sách audit của dự án", async () => {
       mockQuery.mockResolvedValueOnce({ rows: [{ role: "chu_dau_tu" }] });
       mockQuery.mockResolvedValueOnce({ rows: [{ total: 2 }] });
