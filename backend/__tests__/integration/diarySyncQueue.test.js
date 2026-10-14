@@ -226,7 +226,7 @@ describe("Diary Sync Queue Integration Tests (T-73 / S-30)", () => {
     const spy = jest.spyOn(logger, "error").mockImplementation((...args) => {
       logged.push(args);
     });
-    const secretContent = "Nội dung riêng tư mat-ma-khong-duoc-lot-ra-ngoai";
+    const secretContent = "DIARY_PRIVATE_TEST_CONTENT_ABC";
     try {
       const err = new Error("DB connection failed");
       err.code = "ECONNREFUSED";
@@ -243,7 +243,6 @@ describe("Diary Sync Queue Integration Tests (T-73 / S-30)", () => {
     }
     const dumped = JSON.stringify(logged);
     expect(logged.length).toBeGreaterThan(0);
-    expect(dumped).not.toContain("mat-ma-khong-duoc-lot-ra-ngoai");
     expect(dumped).not.toContain(secretContent);
   });
 });

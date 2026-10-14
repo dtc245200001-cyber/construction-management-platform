@@ -1,4 +1,8 @@
 require("dotenv").config({ path: require("path").resolve(__dirname, "../../.env") });
+try { require('./_production-guard')(require('path').basename(__filename)); } catch(e) { console.error(e.message); process.exit(1); }
+
+// 🛡️ GUARD: Script này dùng hardcoded localhost:port — guard kiểm tra env nếu có, không chặn khi hardcoded localhost
+
 const { Pool } = require("pg");
 
 const pool = new Pool({

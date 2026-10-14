@@ -533,13 +533,13 @@ export default function AcceptancePage({ user }) {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
           <Button
             variant="outline"
             size="sm"
             onClick={fetchVouchers}
             disabled={loadingList}
-            className="flex items-center gap-1.5"
+            className="flex-1 sm:flex-initial min-h-[44px] flex items-center justify-center gap-1.5 touch-target"
           >
             <RefreshCw
               className={`h-4 w-4 ${loadingList ? "animate-spin" : ""}`}
@@ -550,17 +550,17 @@ export default function AcceptancePage({ user }) {
           {isSupervisor ? (
             <Button
               onClick={handleOpenCreateModal}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2"
+              className="w-full sm:w-auto min-h-[44px] bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-2 font-bold touch-target shadow-sm"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-5 w-5" />
               Lập phiếu nghiệm thu
             </Button>
           ) : (
             <div
               title="Chỉ Kỹ sư giám sát hoặc Quản trị viên mới có quyền lập phiếu"
-              className="inline-block"
+              className="w-full sm:w-auto"
             >
-              <Button disabled variant="secondary" className="cursor-not-allowed">
+              <Button disabled variant="secondary" className="w-full sm:w-auto min-h-[44px] cursor-not-allowed">
                 <Plus className="h-4 w-4 mr-1.5" />
                 Lập phiếu (Cần quyền Kỹ sư giám sát)
               </Button>
@@ -577,7 +577,7 @@ export default function AcceptancePage({ user }) {
             placeholder="Tìm theo tên đợt nghiệm thu..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9"
+            className="pl-9 min-h-[44px] text-[15px]"
           />
         </div>
 
@@ -609,7 +609,7 @@ export default function AcceptancePage({ user }) {
             variant="outline"
             size="sm"
             onClick={fetchVouchers}
-            className="mt-4"
+            className="mt-4 min-h-[44px] touch-target"
           >
             Thử lại
           </Button>

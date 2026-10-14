@@ -12,11 +12,12 @@
  */
 
 export const DB_NAME = "construction_diary_offline";
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 
 export const STORES = {
   DIARY_LOGS: "diaryLogs",
   DIARY_ATTACHMENTS: "diaryAttachments",
+  OFFLINE_SNAPSHOTS: "offlineSnapshots",
   // Aliases theo quy ước đặc tả
   DIARY_ENTRIES: "diaryLogs",
   DIARY_IMAGES: "diaryAttachments",
@@ -30,6 +31,7 @@ export const SYNC_STATUS = {
   SENDING: "syncing",
   SYNCED: "synced",
   FAILED: "failed",
+  CONFLICT: "conflict",
 };
 
 // Sau khoảng này mà một claim "syncing" vẫn chưa xong (tab crash giữa chừng),
@@ -89,7 +91,7 @@ function watchTransaction(transaction, getResult, fallback) {
   transaction.onabort = () =>
     reject(
       transaction.error ||
-        new Error(`${fallback} Transaction đã rollback.`),
+      new Error(`${fallback} Transaction đã rollback.`),
     );
 
   return { promise, reject, isSettled: () => settled };
@@ -257,6 +259,10 @@ export function openDiaryDB() {
           attachStore.createIndex(idx.name, idx.keyPath, { unique: idx.unique });
         }
       }
+
+      if (!db.objectStoreNames.contains(STORES.OFFLINE_SNAPSHOTS)) {
+        db.createObjectStore(STORES.OFFLINE_SNAPSHOTS, { keyPath: "key" });
+      }
     };
 
     request.onsuccess = () => {
@@ -271,8 +277,24 @@ export function openDiaryDB() {
     };
 
     request.onerror = () => {
+      const err = request.error;
       dbPromise = null;
-      reject(request.error);
+      if (err?.name === "VersionError" && typeof idb.deleteDatabase === "function") {
+        console.warn("Phát hiện xung đột version IndexedDB, tự động đặt lại cơ sở dữ liệu...");
+        try {
+          const delReq = idb.deleteDatabase(DB_NAME);
+          delReq.onsuccess = () => {
+            dbPromise = null;
+            openDiaryDB().then(resolve).catch(reject);
+          };
+          delReq.onerror = () => reject(err);
+          return;
+        } catch {
+          reject(err);
+          return;
+        }
+      }
+      reject(err);
     };
 
     request.onblocked = () => {
@@ -331,20 +353,20 @@ export async function createDiaryEntry(entryData, images = []) {
       sanitized.projectId !== undefined && sanitized.projectId !== null
         ? Number(sanitized.projectId)
         : sanitized.project_id !== undefined && sanitized.project_id !== null
-        ? Number(sanitized.project_id)
-        : null,
+          ? Number(sanitized.project_id)
+          : null,
     taskId:
       sanitized.taskId !== undefined && sanitized.taskId !== null
         ? Number(sanitized.taskId)
         : sanitized.task_id !== undefined && sanitized.task_id !== null
-        ? Number(sanitized.task_id)
-        : null,
+          ? Number(sanitized.task_id)
+          : null,
     workItemId:
       sanitized.workItemId !== undefined
         ? sanitized.workItemId
         : sanitized.work_item_id !== undefined
-        ? sanitized.work_item_id
-        : null,
+          ? sanitized.work_item_id
+          : null,
     categoryId: sanitized.categoryId || sanitized.category_id || null,
     content: (sanitized.content || "").trim(),
     entryAt: sanitized.entryAt || sanitized.entry_at || sanitized.createdAt || now,
@@ -356,6 +378,13 @@ export async function createDiaryEntry(entryData, images = []) {
     syncStatus: sanitized.syncStatus || SYNC_STATUS.PENDING,
     syncError: sanitized.syncError || null,
     createdBy: sanitized.createdBy || sanitized.created_by || sanitized.user_name || null,
+    version: sanitized.version || sanitized.serverVersion || 1,
+    serverVersion: sanitized.serverVersion || sanitized.version || null,
+    pendingOperation:
+      sanitized.pendingOperation !== undefined
+        ? sanitized.pendingOperation
+        : (sanitized.serverId || sanitized.server_id ? null : "create"),
+    conflictId: sanitized.conflictId || null,
   };
 
   const transaction = db.transaction(
@@ -400,8 +429,8 @@ export async function createDiaryEntry(entryData, images = []) {
           imgSanitized.size !== undefined
             ? imgSanitized.size
             : imgSanitized.file_size !== undefined
-            ? imgSanitized.file_size
-            : blob?.size || 0;
+              ? imgSanitized.file_size
+              : blob?.size || 0;
 
         const attachRecord = {
           ...imgSanitized,
@@ -495,8 +524,8 @@ export async function saveDiaryAttachment(attachment) {
     sanitized.size !== undefined
       ? sanitized.size
       : sanitized.file_size !== undefined
-      ? sanitized.file_size
-      : blob?.size || 0;
+        ? sanitized.file_size
+        : blob?.size || 0;
   const logId =
     sanitized.diaryClientId ||
     sanitized.diary_client_id ||
@@ -574,48 +603,48 @@ export async function saveDiaryAttachments(diaryClientId, images) {
 
   try {
     for (const img of images) {
-        const sanitized = sanitizeData(img);
-        const id = sanitized.id || generateUUID();
-        const blob = sanitized.blob || sanitized.file || (isBlob(sanitized) ? sanitized : null);
-        const fileName =
-          sanitized.fileName ||
-          sanitized.file_name ||
-          sanitized.name ||
-          "anh-nhat-ky.jpg";
-        const mimeType =
-          sanitized.mimeType ||
-          sanitized.mime_type ||
-          blob?.type ||
-          "image/jpeg";
-        const size =
-          sanitized.size !== undefined
-            ? sanitized.size
-            : sanitized.file_size !== undefined
+      const sanitized = sanitizeData(img);
+      const id = sanitized.id || generateUUID();
+      const blob = sanitized.blob || sanitized.file || (isBlob(sanitized) ? sanitized : null);
+      const fileName =
+        sanitized.fileName ||
+        sanitized.file_name ||
+        sanitized.name ||
+        "anh-nhat-ky.jpg";
+      const mimeType =
+        sanitized.mimeType ||
+        sanitized.mime_type ||
+        blob?.type ||
+        "image/jpeg";
+      const size =
+        sanitized.size !== undefined
+          ? sanitized.size
+          : sanitized.file_size !== undefined
             ? sanitized.file_size
             : blob?.size || 0;
 
-        const record = {
-          ...sanitized,
-          id,
-          diaryClientId,
-          diary_client_id: diaryClientId,
-          logId: diaryClientId,
-          blob,
-          fileName,
-          file_name: fileName,
-          name: fileName,
-          mimeType,
-          mime_type: mimeType,
-          size,
-          file_size: size,
-          syncStatus: sanitized.syncStatus || SYNC_STATUS.PENDING,
-          createdAt: sanitized.createdAt || now,
-        };
+      const record = {
+        ...sanitized,
+        id,
+        diaryClientId,
+        diary_client_id: diaryClientId,
+        logId: diaryClientId,
+        blob,
+        fileName,
+        file_name: fileName,
+        name: fileName,
+        mimeType,
+        mime_type: mimeType,
+        size,
+        file_size: size,
+        syncStatus: sanitized.syncStatus || SYNC_STATUS.PENDING,
+        createdAt: sanitized.createdAt || now,
+      };
 
-        delete record.previewUrl;
-        if (typeof record.url === "string" && record.url.startsWith("blob:")) {
-          delete record.url;
-        }
+      delete record.previewUrl;
+      if (typeof record.url === "string" && record.url.startsWith("blob:")) {
+        delete record.url;
+      }
 
       const request = store.put(record);
       request.onerror = () => completion.reject(request.error);
@@ -661,6 +690,48 @@ export async function getDiaryEntryById(idOrClientId) {
 }
 
 export const getDiaryLogById = getDiaryEntryById;
+
+/**
+ * Tìm mục nhật ký cục bộ theo id phía server mà không cần tăng DB_VERSION.
+ * IndexedDB đang dùng clientId làm keyPath nên phải quét store khi chỉ có serverId.
+ */
+export async function getDiaryEntryByServerId(serverId) {
+  if (serverId === undefined || serverId === null) return null;
+  const targetServerId = Number(serverId);
+  if (!Number.isInteger(targetServerId) || targetServerId <= 0) return null;
+
+  const db = await openDiaryDB();
+  const transaction = db.transaction(STORES.DIARY_LOGS, "readonly");
+  const store = transaction.objectStore(STORES.DIARY_LOGS);
+  let result = null;
+  const completion = watchTransaction(
+    transaction,
+    () => result,
+    "Lỗi khi tìm nhật ký theo serverId trong IndexedDB.",
+  );
+
+  const request = store.openCursor();
+  request.onsuccess = (event) => {
+    const cursor = event.target.result;
+    if (!cursor || result) return;
+    const value = cursor.value;
+    const valueServerId = Number(value?.serverId ?? value?.server_id);
+    if (Number.isInteger(valueServerId) && valueServerId === targetServerId) {
+      result = value;
+      return;
+    }
+    cursor.continue();
+  };
+  request.onerror = () => completion.reject(request.error);
+  return completion.promise;
+}
+
+export async function updateDiaryEntryByServerId(serverId, updates) {
+  const entry = await getDiaryEntryByServerId(serverId);
+  if (!entry) return false;
+  await updateDiaryEntry(entry.id || entry.clientId || entry.client_id, updates);
+  return true;
+}
 
 /**
  * Lấy danh sách nhật ký theo projectId
@@ -805,6 +876,30 @@ export async function getPendingSyncEntries() {
   };
   request.onerror = () => completion.reject(request.error);
   return completion.promise;
+}
+
+export async function saveOfflineSnapshot(projectId, type, payload) {
+  const db = await openDiaryDB();
+  const key = `${Number(projectId)}:${String(type)}`;
+  const record = { key, projectId: Number(projectId), type: String(type), payload, cachedAt: new Date().toISOString() };
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORES.OFFLINE_SNAPSHOTS, "readwrite");
+    tx.objectStore(STORES.OFFLINE_SNAPSHOTS).put(record);
+    tx.oncomplete = () => resolve(record);
+    tx.onerror = () => reject(tx.error || new Error("Không thể lưu dữ liệu ngoại tuyến."));
+    tx.onabort = () => reject(tx.error || new Error("Không thể lưu dữ liệu ngoại tuyến."));
+  });
+}
+
+export async function getOfflineSnapshot(projectId, type) {
+  const db = await openDiaryDB();
+  const key = `${Number(projectId)}:${String(type)}`;
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORES.OFFLINE_SNAPSHOTS, "readonly");
+    const request = tx.objectStore(STORES.OFFLINE_SNAPSHOTS).get(key);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error || new Error("Không thể đọc dữ liệu ngoại tuyến."));
+  });
 }
 
 /**
@@ -1162,4 +1257,91 @@ export async function cleanOrphanAttachments() {
   };
   logKeysReq.onerror = () => completion.reject(logKeysReq.error);
   return completion.promise;
+}
+
+/**
+ * Thống kê nhật ký và ảnh chưa đồng bộ.
+ * Có thể chạy khi offline vì chỉ đọc dữ liệu trong IndexedDB.
+ */
+export async function getDiarySyncStats() {
+  const db = await openDiaryDB();
+
+  const transaction = db.transaction(
+    [STORES.DIARY_LOGS, STORES.DIARY_ATTACHMENTS],
+    "readonly",
+  );
+
+  const logStore = transaction.objectStore(STORES.DIARY_LOGS);
+  const attachmentStore = transaction.objectStore(
+    STORES.DIARY_ATTACHMENTS,
+  );
+
+  const logsRequest = logStore.getAll();
+  const attachmentsRequest = attachmentStore.getAll();
+
+  return new Promise((resolve, reject) => {
+    let logs;
+    let attachments;
+
+    logsRequest.onsuccess = () => {
+      logs = logsRequest.result || [];
+    };
+
+    attachmentsRequest.onsuccess = () => {
+      attachments = attachmentsRequest.result || [];
+    };
+
+    logsRequest.onerror = () => reject(logsRequest.error);
+    attachmentsRequest.onerror = () =>
+      reject(attachmentsRequest.error);
+
+    transaction.oncomplete = () => {
+      const unsentStatuses = new Set([
+        SYNC_STATUS.PENDING,
+        SYNC_STATUS.SYNCING,
+        SYNC_STATUS.FAILED,
+      ]);
+
+      const unsentLogs = (logs || []).filter((log) =>
+        unsentStatuses.has(log.syncStatus),
+      );
+
+      const unsentLogIds = new Set();
+
+      unsentLogs.forEach((log) => {
+        if (log.clientId) unsentLogIds.add(log.clientId);
+        if (log.id) unsentLogIds.add(log.id);
+      });
+
+      const pendingImages = (attachments || []).filter((image) => {
+        const parentId = image.logId || image.diaryClientId;
+
+        return (
+          parentId &&
+          unsentLogIds.has(parentId) &&
+          image.syncStatus !== SYNC_STATUS.SYNCED
+        );
+      }).length;
+
+      resolve({
+        pendingEntries: unsentLogs.length,
+        pendingImages,
+        totalPending: unsentLogs.length + pendingImages,
+      });
+    };
+
+    transaction.onerror = () => {
+      reject(
+        transaction.error ||
+        new Error("Không thể thống kê hàng đợi đồng bộ nhật ký."),
+      );
+    };
+
+    transaction.onabort = () => {
+      reject(
+        transaction.error ||
+        new Error("Giao dịch thống kê đồng bộ đã bị hủy."),
+      );
+    };
+  });
 }

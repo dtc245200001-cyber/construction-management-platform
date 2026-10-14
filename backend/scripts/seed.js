@@ -1,4 +1,9 @@
 require('dotenv').config();
+
+// 🛡️ GUARD: Chặn chạy trên production
+const guardProduction = require('./_production-guard');
+guardProduction('seed.js');
+
 const { Pool } = require('pg');
 const { ROLES } = require('../utils/constants');
 const logger = require('../utils/logger');

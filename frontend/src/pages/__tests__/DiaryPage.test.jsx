@@ -285,10 +285,10 @@ describe('DiaryPage', () => {
     });
   });
 
-  describe('Chốt / mở sổ nhật ký (S-27, đồng bộ backend)', () => {
+  describe('Chốt / mở sổ nhật ký (S-24, đồng bộ backend)', () => {
     // Render với membership role cho trước và ngày quá khứ (hôm qua) để nút
     // Chốt sổ đủ điều kiện hiển thị (backend chỉ cho chốt ngày đã qua).
-    const renderWithRole = async (membership, dateFilter) => {
+    const renderWithRole = async (membership, dateFilter, isLocked = false) => {
       api.get.mockImplementation((url) => {
         if (url.includes('/projects/') && !url.includes('/diary-entries') && !url.includes('/diary-locks')) {
           return Promise.resolve({ data: { membership } });
@@ -300,7 +300,7 @@ describe('DiaryPage', () => {
           return Promise.resolve({ data: mockEntries });
         }
         if (url.includes('/diary-locks/')) {
-          return Promise.resolve({ data: { is_locked: false } });
+          return Promise.resolve({ data: { is_locked: isLocked } });
         }
         return Promise.reject(new Error('not mocked'));
       });
@@ -316,13 +316,13 @@ describe('DiaryPage', () => {
     // Hôm qua (trừ 1 ngày tuyệt đối — chắc chắn < hôm nay dù múi giờ nào).
     const yesterday = format(new Date(Date.now() - 24 * 60 * 60 * 1000), 'yyyy-MM-dd');
 
-    it('Chỉ huy trưởng thấy nút Chốt sổ ở ngày đã qua', async () => {
-      await renderWithRole('chi_huy_truong', yesterday);
+    it('Kỹ sư giám sát thấy nút Chốt sổ ở ngày đã qua', async () => {
+      await renderWithRole('ky_su_giam_sat', yesterday);
       expect(await screen.findByText('Chốt sổ')).toBeInTheDocument();
     });
 
-    it('Kỹ sư giám sát KHÔNG thấy nút Chốt sổ (đồng bộ site_log.close_daily)', async () => {
-      await renderWithRole('ky_su_giam_sat', yesterday);
+    it('Chỉ huy trưởng KHÔNG thấy nút Chốt sổ', async () => {
+      await renderWithRole('chi_huy_truong', yesterday);
       await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/diary-entries')));
       expect(screen.queryByText('Chốt sổ')).not.toBeInTheDocument();
     });
@@ -331,6 +331,17 @@ describe('DiaryPage', () => {
       await renderWithRole('ban_quan_ly', yesterday);
       await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/diary-entries')));
       expect(screen.queryByText('Chốt sổ')).not.toBeInTheDocument();
+    });
+
+    it('Ban quản lý thấy nút Mở khóa sổ khi ngày đã bị khóa', async () => {
+      await renderWithRole('ban_quan_ly', yesterday, true);
+      expect(await screen.findByText(/Mở khóa sổ/i)).toBeInTheDocument();
+    });
+
+    it('Kỹ sư giám sát KHÔNG thấy nút Mở khóa sổ khi ngày đã bị khóa', async () => {
+      await renderWithRole('ky_su_giam_sat', yesterday, true);
+      await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/diary-entries')));
+      expect(screen.queryByText(/Mở khóa sổ/i)).not.toBeInTheDocument();
     });
   });
 });

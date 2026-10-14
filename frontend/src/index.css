@@ -124,11 +124,22 @@
   --site-warning: #D97706;
   --site-success: #059669;
   --site-baseline: #94A3B8;
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
 
 @layer base {
   * {
     border-color: var(--color-border);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html {
+    height: 100%;
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
@@ -136,6 +147,18 @@
     color: var(--color-foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    min-height: 100%;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
+  }
+
+  /* Chống iOS Safari tự động phóng to màn hình khi bấm vào ô nhập liệu */
+  @media (max-width: 639px) {
+    input, select, textarea {
+      font-size: 16px;
+    }
   }
 }
 
@@ -148,4 +171,25 @@
 
 @utility hero-surface {
   background-image: var(--gradient-hero);
+}
+
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+@utility safe-pb {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 1rem));
+}
+
+@utility safe-pt {
+  padding-top: max(0.75rem, env(safe-area-inset-top, 0.75rem));
 }

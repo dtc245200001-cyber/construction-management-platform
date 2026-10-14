@@ -22,15 +22,46 @@ export default function DiaryDayForm({ projectId, date, existing, onClose, onSuc
 
   useEffect(() => {
     let isMounted = true;
+    const cacheKey = `diary_catalogs_${projectId}`;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      try {
+        const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+        if (cached && (cached.weather_types?.length || cached.equipment_types?.length)) {
+          setCatalogs(cached);
+          setLoading(false);
+          return;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
     api.get(`/projects/${projectId}/diary-catalogs`)
       .then(res => {
         if (isMounted) {
           setCatalogs(res.data);
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify(res.data));
+          } catch {
+            /* ignore */
+          }
           setLoading(false);
         }
       })
       .catch(err => {
         if (isMounted) {
+          if (typeof navigator !== 'undefined' && !navigator.onLine) {
+            try {
+              const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+              if (cached && (cached.weather_types?.length || cached.equipment_types?.length)) {
+                setCatalogs(cached);
+                setLoading(false);
+                return;
+              }
+            } catch {
+              /* ignore */
+            }
+          }
           setGlobalError('Không thể tải danh mục. Vui lòng kiểm tra kết nối mạng.');
           setLoading(false);
         }
@@ -139,7 +170,38 @@ export default function DiaryDayForm({ projectId, date, existing, onClose, onSuc
       onSuccess(res.data);
     } catch (err) {
       if (!err.response) {
-        setGlobalError('Chưa gửi được. Có vẻ bạn đang mất mạng, dữ liệu vẫn được giữ nguyên.');
+        const localDayData = {
+          exists: true,
+          can_edit: true,
+          day: {
+            manpower_count: mp,
+            weather_type_id: wt,
+            weather_label: catalogs.weather_types?.find(w => w.id === wt)?.label || '',
+            weather_is_adverse: catalogs.weather_types?.find(w => w.id === wt)?.is_adverse || false,
+            weather_note: weatherNote.trim() || null,
+            equipment: eqList.map(eq => {
+              const eqType = catalogs.equipment_types?.find(e => e.id === eq.equipment_type_id);
+              return {
+                equipment_type_id: eq.equipment_type_id,
+                quantity: eq.quantity,
+                label: eqType?.label || '',
+                unit: eqType?.unit || ''
+              };
+            }),
+            updated_by_name: 'Tôi (Lưu cục bộ)',
+            updated_at: new Date().toISOString()
+          },
+          entries_count: existing?.entries_count || 0
+        };
+        try {
+          localStorage.setItem(`diary_day_${projectId}_${date}`, JSON.stringify(localDayData));
+        } catch {
+          /* ignore */
+        }
+        setGlobalError('Không có kết nối mạng. Dữ liệu mục đầu ngày đã được lưu trên thiết bị.');
+        setTimeout(() => {
+          onSuccess(localDayData);
+        }, 1200);
       } else if (err.response.status === 409 && err.response.data?.day) {
         setGlobalError('Người khác vừa sửa mục đầu ngày này. Vui lòng tải lại dữ liệu mới.');
         setConflictData(err.response.data.day);

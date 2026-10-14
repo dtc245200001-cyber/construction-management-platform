@@ -338,6 +338,7 @@ describe("TaskLogModal ID Sanitization Tests", () => {
 
     await waitFor(() => {
       expect(api.get).toHaveBeenCalledWith("/projects/13/tasks/5/logs");
+      expect(screen.queryByText(/Đang tải nhật ký/i)).not.toBeInTheDocument();
     });
   });
 

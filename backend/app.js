@@ -6,7 +6,10 @@
 "use strict";
 
 require("dotenv").config({ path: require("path").resolve(__dirname, "../.env") });
-require("dotenv").config({ path: require("path").resolve(__dirname, ".env") });
+require("dotenv").config({
+  path: require("path").resolve(__dirname, ".env"),
+  override: process.env.NODE_ENV !== "test",
+});
 
 const express = require("express");
 const cors = require("cors");
@@ -176,6 +179,8 @@ app.use("/api/projects", taskRoutes);
 app.use("/api/projects", teamsRoutes);
 const taskLogRoutes = require("./routes/taskLogRoutes");
 app.use("/api/projects", taskLogRoutes);
+const uploadSessionRoutes = require("./routes/uploadSessionRoutes");
+app.use("/api/projects", uploadSessionRoutes);
 const adminRoutes = require("./routes/adminRoutes");
 const { router: publicRoutes, setNewsletterLimiter, setInvitationLimiter } = require("./routes/publicRoutes");
 

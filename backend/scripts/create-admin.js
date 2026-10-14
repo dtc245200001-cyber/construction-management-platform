@@ -1,4 +1,5 @@
 const { Pool } = require("pg");
+try { require('./_production-guard')(require('path').basename(__filename)); } catch(e) { console.error(e.message); process.exit(1); }
 const argon2 = require("argon2");
 require("dotenv").config({ path: __dirname + "/../.env" });
 

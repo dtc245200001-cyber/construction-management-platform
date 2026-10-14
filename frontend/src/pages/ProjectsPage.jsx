@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { defaultRouteForRole } from '../config/permissions';
 import api from "../lib/api";
 import {
   Home,
@@ -75,7 +76,10 @@ export default function ProjectsPage({ user, setUser }) {
       await api.post(`/projects/${id}/open`);
       // Update global context/localStorage for current project
       localStorage.setItem('currentProjectId', id);
-      navigate(`/dashboard`);
+      // Trang đầu tiên theo vai trò trong dự án (đội trưởng -> /field, còn lại -> /dashboard).
+      // Nếu chưa biết vai trò thì vào /dashboard; RouteGuard sẽ tự chuyển hướng cho đúng.
+      const opened = projects.find((p) => String(p.id) === String(id));
+      navigate(defaultRouteForRole(opened?.role) || '/dashboard');
     } catch (err) {
       alert("Lỗi khi mở dự án: " + (err.response?.data?.message || err.message));
     }

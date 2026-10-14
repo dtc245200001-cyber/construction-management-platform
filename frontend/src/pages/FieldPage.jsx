@@ -5,6 +5,7 @@ import React, {
 } from "react";
 
 import api from "../lib/api";
+import { can, isValidRole } from "../config/permissions";
 
 import {
   AlertTriangle,
@@ -93,8 +94,12 @@ export default function FieldPage() {
     setProjectRole,
   ] = useState(undefined);
 
+  // Quyền lấy từ config/permissions. Vai trò không xem được "tất cả đội"
+  // (đội trưởng) bị khoá vào đội của mình: không có dropdown đội, không có toggle.
+  const canViewAll = can(projectRole, "field.viewAll");
+  const canReport = can(projectRole, "field.report");
   const isTeamLeader =
-    projectRole === "doi_truong";
+    isValidRole(projectRole) && !canViewAll;
 
   const [team, setTeam] =
     useState(null);
@@ -175,20 +180,41 @@ export default function FieldPage() {
       return;
     }
 
+    try {
+      const cachedRole = localStorage.getItem(`project_role_${currentProjectId}`);
+      if (cachedRole) {
+        setProjectRole(cachedRole);
+      }
+    } catch {
+      /* ignore */
+    }
+
     let cancelled = false;
 
     api
       .get(`/projects/${currentProjectId}`)
       .then((res) => {
         if (!cancelled) {
-          setProjectRole(
-            res.data?.membership ||
-              null
-          );
+          const role = res.data?.membership || null;
+          setProjectRole(role);
+          try {
+            if (role) localStorage.setItem(`project_role_${currentProjectId}`, role);
+          } catch {
+            /* ignore */
+          }
         }
       })
       .catch(() => {
         if (!cancelled) {
+          try {
+            const cachedRole = localStorage.getItem(`project_role_${currentProjectId}`);
+            if (cachedRole) {
+              setProjectRole(cachedRole);
+              return;
+            }
+          } catch {
+            /* ignore */
+          }
           setProjectRole(null);
         }
       });
@@ -232,6 +258,20 @@ export default function FieldPage() {
         return;
       }
 
+      const cacheKey = `field_tasks_${currentProjectId}_${viewAllTeams ? 'all' : (selectedTeamId || 'my')}`;
+
+      // Nạp trước dữ liệu từ bộ nhớ đệm
+      try {
+        const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+        if (cached) {
+          setTeam(cached.team || null);
+          setTasks(cached.tasks || []);
+          setLoading(false);
+        }
+      } catch {
+        /* ignore */
+      }
+
       try {
         setLoading(true);
         setError("");
@@ -264,6 +304,11 @@ export default function FieldPage() {
           setTasks(
             res.data.tasks || []
           );
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify({ team: null, tasks: res.data.tasks || [] }));
+          } catch {
+            /* ignore */
+          }
           return;
         }
 
@@ -287,7 +332,24 @@ export default function FieldPage() {
         setTasks(
           res.data.tasks || []
         );
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify({ team: res.data.team || null, tasks: res.data.tasks || [] }));
+        } catch {
+          /* ignore */
+        }
       } catch (err) {
+        try {
+          const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+          if (cached && Array.isArray(cached.tasks)) {
+            setTeam(cached.team || null);
+            setTasks(cached.tasks);
+            setError("");
+            return;
+          }
+        } catch {
+          /* ignore */
+        }
+
         setTeam(null);
         setTasks([]);
 
@@ -325,6 +387,16 @@ export default function FieldPage() {
       return;
     }
 
+    const cacheKey = `field_teams_${currentProjectId}`;
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+      if (Array.isArray(cached) && cached.length > 0) {
+        setTeams(cached);
+      }
+    } catch {
+      /* ignore */
+    }
+
     let cancelled = false;
 
     async function loadTeams() {
@@ -343,13 +415,24 @@ export default function FieldPage() {
           res.data ||
           [];
 
-        setTeams(
-          Array.isArray(rows)
-            ? rows
-            : []
-        );
+        const teamList = Array.isArray(rows) ? rows : [];
+        setTeams(teamList);
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(teamList));
+        } catch {
+          /* ignore */
+        }
       } catch {
         if (!cancelled) {
+          try {
+            const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+            if (Array.isArray(cached) && cached.length > 0) {
+              setTeams(cached);
+              return;
+            }
+          } catch {
+            /* ignore */
+          }
           setTeams([]);
         }
       }
@@ -541,7 +624,7 @@ export default function FieldPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {!isTeamLeader && (
+          {canViewAll && (
             <div className="flex min-h-12 items-center rounded-xl border border-slate-300 bg-white p-1 text-sm">
               <button
                 type="button"
@@ -813,22 +896,41 @@ export default function FieldPage() {
                 </div>
               </div>
 
+              {/* PROGRESS BAR HOÀN THÀNH */}
+              {planned !== null && planned > 0 && (
+                <div className="mt-3 rounded-xl bg-slate-50 p-3">
+                  <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                    <span>Tiến độ thực hiện:</span>
+                    <span className={task.over_planned ? "text-amber-600 font-bold" : "text-blue-600 font-bold"}>
+                      {Math.round((cumulative / planned) * 100)}%
+                    </span>
+                  </div>
+                  <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ${
+                        task.over_planned ? "bg-amber-500" : "bg-blue-600"
+                      }`}
+                      style={{
+                        width: `${Math.min(100, Math.round((cumulative / planned) * 100))}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* OVER PLAN WARNING */}
 
               {task.over_planned && (
-                <div className="mt-3 flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-xs font-medium text-amber-800">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-
-                  Khối lượng lũy kế đã
-                  vượt khối lượng kế
-                  hoạch.
+                <div className="mt-3 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs font-semibold text-amber-900 shadow-xs">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                  <span>Cảnh báo: Khối lượng lũy kế đã vượt khối lượng kế hoạch ({cumulative}/{planned}).</span>
                 </div>
               )}
 
               {/* REPORT INPUT — chỉ đội trưởng mới báo cáo được;
                   xem tất cả đội là chế độ chỉ đọc. */}
 
-              {!viewAllTeams && (
+              {!viewAllTeams && canReport && (
                 <div className="mt-4">
                   <label className="mb-1.5 block text-sm font-semibold text-slate-700">
                     Khối lượng hoàn
@@ -940,8 +1042,8 @@ export default function FieldPage() {
       ===================================================== */}
 
       {historyTask && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
-          <div className="max-h-[85vh] w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/50 backdrop-blur-xs p-0 sm:p-4">
+          <div className="max-h-[90dvh] w-full max-w-2xl overflow-hidden rounded-t-3xl sm:rounded-2xl bg-white shadow-2xl flex flex-col animate-in slide-in-from-bottom sm:slide-in-from-bottom-0 sm:fade-in">
             {/* MODAL HEADER */}
 
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">

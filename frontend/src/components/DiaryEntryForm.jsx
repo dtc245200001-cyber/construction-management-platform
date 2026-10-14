@@ -7,6 +7,7 @@ import {
   getDiaryEntryById,
   getDiaryEntryWithImages,
   validateImage,
+  isBlob,
 } from "../lib/diaryDb";
 import { requestDiarySync } from "../services/diarySync";
 
@@ -70,20 +71,35 @@ function removeDraftIfMatchesEntry(draftKey, entry) {
 
 export default function DiaryEntryForm({
   projectId,
-
   user,
-
+  projectRole: projectRoleProp = null,
+  initialCategories = [],
   onClose,
-
   onSuccess,
 }) {
-  const canWrite = ALLOWED_ROLES.includes(user?.role);
+  const effectiveRole = projectRoleProp != null ? projectRoleProp : user?.role;
+  const canWrite = ALLOWED_ROLES.includes(effectiveRole);
 
   const draftKey = `diary_draft_${projectId}`;
 
-  const [categories, setCategories] = useState([]);
+  const [categories, setCategories] = useState(
+    Array.isArray(initialCategories) && initialCategories.length > 0
+      ? initialCategories
+      : () => {
+          try {
+            const cached = JSON.parse(
+              localStorage.getItem(`categories_${projectId}`) || "[]"
+            );
+            return Array.isArray(cached) ? cached : [];
+          } catch {
+            return [];
+          }
+        }
+  );
 
-  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [categoriesLoading, setCategoriesLoading] = useState(
+    categories.length === 0
+  );
 
   const [clientId, setClientId] = useState("");
 
@@ -110,6 +126,7 @@ export default function DiaryEntryForm({
   const [selectedImages, setSelectedImages] = useState([]);
   const [imageError, setImageError] = useState("");
   const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
 
   useEffect(() => {
     return () => {
@@ -175,19 +192,31 @@ export default function DiaryEntryForm({
     if (!canWrite) return;
 
     api
-
       .get(`/categories/${projectId}/tree/all`)
-
       .then((res) => {
-        setCategories(res.data || []);
-
+        const data = res.data || [];
+        setCategories(data);
         setCategoriesLoading(false);
+        try {
+          localStorage.setItem(`categories_${projectId}`, JSON.stringify(data));
+        } catch {
+          /* ignore */
+        }
       })
-
       .catch((err) => {
-        console.error(err);
-
+        console.warn("Không thể tải cây hạng mục (có thể đang ngoại tuyến):", err?.message || err);
         setCategoriesLoading(false);
+        // Fallback đọc từ cache nếu hiện tại chưa có
+        try {
+          const cached = JSON.parse(
+            localStorage.getItem(`categories_${projectId}`) || "[]"
+          );
+          if (Array.isArray(cached) && cached.length > 0) {
+            setCategories(cached);
+          }
+        } catch {
+          /* ignore */
+        }
       });
 
     let cancelled = false;
@@ -468,6 +497,47 @@ export default function DiaryEntryForm({
                 ? "Đã lưu trên thiết bị — chờ đồng bộ. Chưa gửi được, nội dung vẫn được giữ."
                 : "Đã lưu trên thiết bị nhưng chưa xác nhận được trạng thái đồng bộ. Dữ liệu vẫn được giữ.",
         });
+        const offlineEntryWithImages = {
+          id: clientUuid,
+          client_id: clientUuid,
+          clientId: clientUuid,
+          projectId: Number(projectId),
+          project_id: Number(projectId),
+          entryType: "diaryEntry",
+          work_item_id: resolvedWorkItemId,
+          workItemId: resolvedWorkItemId,
+          work_item_name:
+            parentCategory?.name ||
+            selectedCategory?.name ||
+            `Hạng mục #${resolvedWorkItemId}`,
+          work_item_code: parentCategory?.code || selectedCategory?.code || "",
+          content: content.trim(),
+          entry_at: new Date(entryAt).toISOString(),
+          entry_date: format(parseISO(entryAt), "yyyy-MM-dd"),
+          created_by_name: user?.name || user?.full_name || user?.email || "Tôi",
+          syncStatus: storedEntry?.syncStatus || "pending",
+          isOffline: true,
+          attachments: imagesToStore.map((img) => {
+            let previewUrl = "";
+            try {
+              if (isBlob(img.blob)) {
+                previewUrl = URL.createObjectURL(img.blob);
+              }
+            } catch {
+              /* ignore */
+            }
+            return {
+              id: img.id,
+              url: previewUrl,
+              fileName: img.fileName,
+              file_name: img.fileName,
+              fileSize: img.size,
+              file_size: img.size,
+              isOffline: true,
+            };
+          }),
+        };
+
         if (startNextEntry) {
           selectedImages.forEach((img) => {
             if (img.previewUrl?.startsWith("blob:")) {
@@ -480,6 +550,9 @@ export default function DiaryEntryForm({
           setEntryAt(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
           setClientId(crypto.randomUUID());
           setErrors({});
+          if (onSuccess) {
+            onSuccess(offlineEntryWithImages);
+          }
         }
       } catch (storageError) {
         console.error("Không thể lưu nhật ký ngoại tuyến:", storageError);
@@ -670,9 +743,9 @@ export default function DiaryEntryForm({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-sm transition-all">
-      <div className="bg-white w-full sm:w-[500px] sm:rounded-2xl rounded-t-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between p-4 border-b border-gray-100 shrink-0">
-          <h2 className="text-lg font-bold text-gray-900">
+      <div className="bg-white w-full sm:max-w-[540px] sm:rounded-2xl rounded-t-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[88vh] safe-pb">
+        <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-100 shrink-0">
+          <h2 className="text-base sm:text-lg font-bold text-gray-900">
             Ghi nhật ký thi công
           </h2>
 
@@ -810,27 +883,48 @@ export default function DiaryEntryForm({
 
           {/* Đính kèm hình ảnh (T67) */}
           <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <label className="text-[13px] font-bold text-gray-700 flex items-center gap-1.5">
                 <ImageIcon className="size-4 text-blue-600" />
                 <span>Hình ảnh đính kèm (tối đa 10 ảnh)</span>
               </label>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={selectedImages.length >= 10}
-                className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 disabled:opacity-50 cursor-pointer"
-              >
-                <Camera className="size-3.5" />
-                <span>+ Thêm ảnh</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => cameraInputRef.current?.click()}
+                  disabled={selectedImages.length >= 10}
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 disabled:opacity-50 cursor-pointer px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors touch-target"
+                  title="Chụp ảnh trực tiếp bằng camera"
+                >
+                  <Camera className="size-3.5" />
+                  <span>Chụp ảnh</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={selectedImages.length >= 10}
+                  className="text-xs font-semibold text-gray-700 hover:text-gray-900 flex items-center gap-1 disabled:opacity-50 cursor-pointer px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors touch-target"
+                  title="Chọn ảnh từ thư viện"
+                >
+                  <span>+ Chọn tệp</span>
+                </button>
+              </div>
             </div>
 
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleImageChange}
+              className="hidden"
+              data-testid="diary-camera-input"
+            />
             <input
               ref={fileInputRef}
               type="file"
               multiple
-              accept="image/jpeg,image/png,image/gif,image/webp"
+              accept="image/jpeg,image/png,image/gif,image/webp,image/*"
               onChange={handleImageChange}
               className="hidden"
               data-testid="diary-image-input"
@@ -885,7 +979,7 @@ export default function DiaryEntryForm({
             >
               {isSubmitting ? (
                 <>Đang lưu...</>
-              ) : submitMessage?.type === "warning" ? (
+              ) : submitMessage?.type === "warning" && content.trim() ? (
                 <>
                   <RotateCcw className="size-5" /> Gửi lại
                 </>

@@ -31,8 +31,10 @@ export const PERMISSIONS = {
   "schedule.manage": [ROLES.CHI_HUY_TRUONG],
   "task.assign": [ROLES.CHI_HUY_TRUONG],
   "site_log.view": ALL_MEMBERS,
-  "site_log.close_daily": [ROLES.CHI_HUY_TRUONG],
-  "site_log.correct_locked": [ROLES.CHI_HUY_TRUONG],
+  // S-24: Kỹ sư giám sát chốt/khóa sổ nhật ký ngày đã qua.
+  "site_log.close_daily": [ROLES.KY_SU_GIAM_SAT],
+  // S-24: Ban quản lý mở khóa nhật ký đã khóa (kèm lý do và audit log).
+  "site_log.correct_locked": [ROLES.BAN_QUAN_LY],
   "schedule.view_delays": [ROLES.CHI_HUY_TRUONG],
 
   // ── Kỹ sư giám sát ─────────────────────────────────────────────────
