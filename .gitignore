@@ -65,3 +65,7 @@ node_modules/
 # Local database backups
 *.dump
 *.sql
+
+# Playwright generated artifacts
+frontend/playwright-report/
+frontend/test-results/
