@@ -23,7 +23,9 @@ import {
   CalendarDays,
   Calendar,
   Coins,
+  History,
 } from "lucide-react";
+
 
 export const ROLES = {
   BAN_QUAN_LY: "ban_quan_ly",
@@ -145,6 +147,14 @@ export const MENU_CONFIG = [
     group: "site",
     roles: [BAN_QUAN_LY, CHI_HUY_TRUONG, KY_SU_GIAM_SAT, CHU_DAU_TU],
   },
+  {
+  key: "audit",
+  label: "Nhật ký thao tác",
+  path: "/audit",
+  icon: History,
+  group: "manage",
+  roles: [BAN_QUAN_LY, CHU_DAU_TU],
+},
   {
     // Chưa có trang thật. Cần xác nhận vai trò.
     key: "finance",
