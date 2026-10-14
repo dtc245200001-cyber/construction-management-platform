@@ -624,8 +624,8 @@ export default function AcceptancePage({ user }) {
                       type="button"
                       variant="outline"
                       size="sm"
-                      disabled={reviewSubmitting}
-                      onClick={() => handleOpenReturnDialog(voucher)}
+                      disabled={actionLoading}
+                      onClick={() => handleOpenReturn(voucher)}
                       className="text-rose-700 border-rose-200 hover:bg-rose-50"
                     >
                       <X className="h-3.5 w-3.5 mr-1" />
@@ -634,8 +634,8 @@ export default function AcceptancePage({ user }) {
                     <Button
                       type="button"
                       size="sm"
-                      disabled={reviewSubmitting}
-                      onClick={() => handleApproveVoucher(voucher)}
+                      disabled={actionLoading}
+                      onClick={() => handleApprove(voucher)}
                       className="bg-emerald-600 hover:bg-emerald-700 text-white"
                     >
                       <Check className="h-3.5 w-3.5 mr-1" />
@@ -1463,10 +1463,10 @@ export default function AcceptancePage({ user }) {
       <Dialog
         open={returnDialogOpen}
         onOpenChange={(open) => {
-          if (!reviewSubmitting) {
+          if (!actionLoading) {
             setReturnDialogOpen(open);
             if (!open) {
-              setReviewTarget(null);
+              setReturnTarget(null);
               setReturnReason("");
               setReviewError("");
             }
@@ -1479,7 +1479,7 @@ export default function AcceptancePage({ user }) {
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="rounded-md bg-slate-50 border p-3 text-sm text-slate-700">
-              Phiếu: <span className="font-semibold">#{reviewTarget?.id} · {reviewTarget?.batch_name}</span>
+              Phiếu: <span className="font-semibold">#{returnTarget?.id} · {returnTarget?.batch_name}</span>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="acceptance-return-reason">
@@ -1489,7 +1489,7 @@ export default function AcceptancePage({ user }) {
                 id="acceptance-return-reason"
                 value={returnReason}
                 onChange={(event) => setReturnReason(event.target.value)}
-                disabled={reviewSubmitting}
+                disabled={actionLoading}
                 maxLength={2000}
                 rows={5}
                 placeholder="Nhập rõ nội dung cần người lập chỉnh sửa..."
@@ -1509,18 +1509,18 @@ export default function AcceptancePage({ user }) {
             <Button
               type="button"
               variant="outline"
-              disabled={reviewSubmitting}
+              disabled={actionLoading}
               onClick={() => setReturnDialogOpen(false)}
             >
               Hủy
             </Button>
             <Button
               type="button"
-              disabled={reviewSubmitting}
-              onClick={handleReturnVoucher}
+              disabled={actionLoading}
+              onClick={handleConfirmReturn}
               className="bg-rose-600 hover:bg-rose-700 text-white"
             >
-              {reviewSubmitting ? "Đang trả lại..." : "Xác nhận trả lại"}
+              {actionLoading ? "Đang trả lại..." : "Xác nhận trả lại"}
             </Button>
           </DialogFooter>
         </DialogContent>
