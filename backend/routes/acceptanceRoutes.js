@@ -481,6 +481,86 @@ router.get(
   })
 );
 
+// ─── POST /api/projects/:projectId/acceptance-vouchers/:voucherId/approve ─────
+/**
+ * T-98 / S-38
+ * Ban quản lý duyệt phiếu đang chờ duyệt. RBAC được kiểm tra hoàn toàn ở backend.
+ */
+router.post(
+  "/:projectId/acceptance-vouchers/:voucherId/approve",
+  requireAuth,
+  checkProjectAccess,
+  requirePermission("acceptance.review_internal"),
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+    const voucherId = parsePositiveInt(req.params.voucherId);
+    if (!projectId || !voucherId) {
+      return res.status(400).json({ message: "ID không hợp lệ" });
+    }
+
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+
+      const voucherRes = await client.query(
+        `SELECT id, project_id, batch_name, status, has_negative_delta, created_by
+         FROM acceptance_vouchers
+         WHERE id = $1 AND project_id = $2
+         FOR UPDATE`,
+        [voucherId, projectId]
+      );
+
+      if (voucherRes.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Không tìm thấy phiếu nghiệm thu" });
+      }
+
+      const voucher = voucherRes.rows[0];
+      if (voucher.status !== "pending_review") {
+        await client.query("ROLLBACK");
+        return res.status(409).json({
+          code: "INVALID_ACCEPTANCE_STATUS",
+          message: "Chỉ phiếu đang chờ duyệt mới được duyệt",
+          current_status: voucher.status,
+        });
+      }
+
+      if (voucher.has_negative_delta) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({
+          code: "NEGATIVE_DELTA_BLOCKED",
+          message: "Phiếu có khối lượng đợt âm chưa thể được duyệt",
+        });
+      }
+
+      const approvedRes = await client.query(
+        `UPDATE acceptance_vouchers
+         SET status = 'approved',
+             reviewed_by = $1,
+             reviewed_at = NOW(),
+             review_note = NULL,
+             updated_at = NOW()
+         WHERE id = $2 AND project_id = $3
+         RETURNING id, project_id, batch_name, status, has_negative_delta,
+                   created_by, reviewed_by, reviewed_at, review_note,
+                   created_at, updated_at`,
+        [req.user.id, voucherId, projectId]
+      );
+
+      await client.query("COMMIT");
+      return res.json({
+        message: "Đã duyệt phiếu nghiệm thu",
+        voucher: approvedRes.rows[0],
+      });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  })
+);
+
 // ─── POST /api/projects/:projectId/acceptance-vouchers/:voucherId/photos ───────
 /**
  * @swagger
