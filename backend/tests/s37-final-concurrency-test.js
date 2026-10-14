@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 require("dotenv").config({ path: ".env.test" });
 
@@ -10,6 +10,72 @@ const pool = new Pool({
 
 const assert = require("node:assert/strict");
 
+async function cleanupTestData(projectId) {
+    if (projectId) {
+      const cleanup = await pool.connect();
+      try {
+        await cleanup.query("BEGIN");
+
+        const db = await cleanup.query(
+          "SELECT current_database() AS name"
+        );
+        if (db.rows[0].name !== "construction_db_test") {
+          throw new Error("Unsafe cleanup database");
+        }
+
+        await cleanup.query(`
+          ALTER TABLE acceptance_voucher_items
+          DISABLE TRIGGER trg_prevent_approved_acceptance_item_changes
+        `);
+
+        await cleanup.query(
+          `DELETE FROM acceptance_voucher_items
+           WHERE voucher_id IN (
+             SELECT id FROM acceptance_vouchers WHERE project_id = $1
+           )`,
+          [projectId]
+        );
+
+        await cleanup.query(
+          "DELETE FROM acceptance_vouchers WHERE project_id = $1",
+          [projectId]
+        );
+
+        await cleanup.query(
+          "DELETE FROM work_items WHERE project_id = $1",
+          [projectId]
+        );
+
+        await cleanup.query(
+          "DELETE FROM projects WHERE id = $1",
+          [projectId]
+        );
+
+        await cleanup.query(`
+          ALTER TABLE acceptance_voucher_items
+          ENABLE TRIGGER trg_prevent_approved_acceptance_item_changes
+        `);
+
+        await cleanup.query(
+          `DELETE FROM users
+           WHERE name = 'S37 Concurrent Test'
+             AND email LIKE 's37-%@example.invalid'
+             AND NOT EXISTS (
+               SELECT 1 FROM acceptance_vouchers
+               WHERE created_by = users.id
+             )`
+        );
+
+        await cleanup.query("COMMIT");
+        console.log("CLEANUP PASS");
+      } catch (err) {
+        await cleanup.query("ROLLBACK");
+        throw err;
+      } finally {
+        cleanup.release();
+      }
+    }
+}
 async function main() {
   const db = await pool.query(
     "SELECT current_database() AS name"
@@ -188,70 +254,7 @@ async function main() {
     console.log("PASS: Contract limit protected");
     console.log("S37 CONCURRENT TEST: PASS");
   } finally {
-    if (projectId) {
-      const cleanup = await pool.connect();
-      try {
-        await cleanup.query("BEGIN");
-
-        const db = await cleanup.query(
-          "SELECT current_database() AS name"
-        );
-        if (db.rows[0].name !== "construction_db_test") {
-          throw new Error("Unsafe cleanup database");
-        }
-
-        await cleanup.query(`
-          ALTER TABLE acceptance_voucher_items
-          DISABLE TRIGGER trg_prevent_approved_acceptance_item_changes
-        `);
-
-        await cleanup.query(
-          `DELETE FROM acceptance_voucher_items
-           WHERE voucher_id IN (
-             SELECT id FROM acceptance_vouchers WHERE project_id = $1
-           )`,
-          [projectId]
-        );
-
-        await cleanup.query(
-          "DELETE FROM acceptance_vouchers WHERE project_id = $1",
-          [projectId]
-        );
-
-        await cleanup.query(
-          "DELETE FROM work_items WHERE project_id = $1",
-          [projectId]
-        );
-
-        await cleanup.query(
-          "DELETE FROM projects WHERE id = $1",
-          [projectId]
-        );
-
-        await cleanup.query(`
-          ALTER TABLE acceptance_voucher_items
-          ENABLE TRIGGER trg_prevent_approved_acceptance_item_changes
-        `);
-
-        await cleanup.query(
-          `DELETE FROM users
-           WHERE name = 'S37 Concurrent Test'
-             AND email LIKE 's37-%@example.invalid'
-             AND NOT EXISTS (
-               SELECT 1 FROM acceptance_vouchers
-               WHERE created_by = users.id
-             )`
-        );
-
-        await cleanup.query("COMMIT");
-        console.log("CLEANUP PASS");
-      } catch (err) {
-        await cleanup.query("ROLLBACK");
-        throw err;
-      } finally {
-        cleanup.release();
-      }
-    }
+    await cleanupTestData(projectId);
   }
 }
 
@@ -261,5 +264,3 @@ main()
     process.exitCode = 1;
   })
   .finally(() => pool.end());
-
-
