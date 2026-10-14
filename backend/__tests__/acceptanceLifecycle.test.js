@@ -122,7 +122,7 @@ describe("S-38 / T-101 acceptance voucher lifecycle", () => {
     expect(res.status).toBe(200);
     expect(voucherState.status).toBe("pending_review");
 
-    // Ban quáº£n lĂ½ tráº£ láº¡i vĂ  báº¯t buá»™c lÆ°u lĂ½ do.
+    // Ban quan ly tra lai va bat buoc luu ly do.
     currentRole = "ban_quan_ly";
     mockCurrentUser = { id: 20, is_system_admin: false };
     res = await request(app)
@@ -150,7 +150,7 @@ describe("S-38 / T-101 acceptance voucher lifecycle", () => {
     expect(res.status).toBe(200);
     expect(voucherState.status).toBe("approved");
 
-    // Sau duyá»‡t: dĂ¹ lĂ  ngÆ°á»i láº­p, API sá»­a pháº£i khĂ³a.
+    // Sau duyet: nguoi lap khong duoc sua phieu da duyet.
     currentRole = "ky_su_giam_sat";
     mockCurrentUser = { id: 10, is_system_admin: false };
     res = await request(app)
