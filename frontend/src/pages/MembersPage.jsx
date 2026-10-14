@@ -2061,7 +2061,7 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
                         </span>
                       ) : hasFailedAttempts(member) ? (
                         <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">
-                          Sai {member.failed_login_attempts}/5 lần
+                          Sai {member.failed_login_attempts}/10 lần
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-site-success/10 px-2.5 py-1 text-xs font-medium text-site-success">

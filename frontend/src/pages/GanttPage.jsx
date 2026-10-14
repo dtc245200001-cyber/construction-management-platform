@@ -389,29 +389,29 @@ export default function GanttPage() {
                 </p>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Chú giải trạng thái công việc (đưa ra ngoài banner, tương phản cao, cuộn ngang được) */}
-        <div className="flex items-center gap-2.5 sm:gap-3 overflow-x-auto no-scrollbar py-0.5">
-          <div className="inline-flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-xs shrink-0">
-            <div className="size-3.5 rounded-[4px] bg-blue-500 border border-blue-600" />
-            <span className="text-xs font-semibold text-slate-700">Không găng</span>
-          </div>
-          <div className="inline-flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-xs shrink-0">
-            <div className="size-3.5 rounded-[4px] bg-red-500 border border-red-600 flex items-center justify-center text-[9px] font-bold text-white">!</div>
-            <span className="text-xs font-semibold text-red-700">Việc găng</span>
-          </div>
-          <div className="inline-flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-xs shrink-0">
-            <div className="size-3.5 rounded-[4px] bg-orange-500 border border-orange-600 flex items-center justify-center text-[9px] font-bold text-white">!</div>
-            <span className="text-xs font-semibold text-orange-700">Găng mới</span>
-          </div>
-          {summary?.hasBaseline && (
-            <div className="inline-flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-xs shrink-0">
-              <span className="inline-block h-1.5 w-4 rounded bg-slate-400" />
-              <span className="text-xs font-semibold text-slate-600">Kế hoạch gốc</span>
+            {/* Chú giải trạng thái công việc (nằm phía bên phải của banner màu xanh) */}
+            <div className="flex items-center flex-wrap gap-2 sm:gap-2.5 sm:justify-end">
+              <div className="inline-flex items-center gap-2 bg-white/15 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/20 text-white shadow-xs shrink-0">
+                <div className="size-3.5 rounded-[4px] bg-blue-400 border border-white/40" />
+                <span className="text-xs font-semibold text-white">Không găng</span>
+              </div>
+              <div className="inline-flex items-center gap-2 bg-white/15 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/20 text-white shadow-xs shrink-0">
+                <div className="size-3.5 rounded-[4px] bg-red-500 border border-white/40 flex items-center justify-center text-[9px] font-bold text-white">!</div>
+                <span className="text-xs font-semibold text-red-100">Việc găng</span>
+              </div>
+              <div className="inline-flex items-center gap-2 bg-white/15 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/20 text-white shadow-xs shrink-0">
+                <div className="size-3.5 rounded-[4px] bg-orange-400 border border-white/40 flex items-center justify-center text-[9px] font-bold text-white">!</div>
+                <span className="text-xs font-semibold text-orange-100">Găng mới</span>
+              </div>
+              {summary?.hasBaseline && (
+                <div className="inline-flex items-center gap-2 bg-white/15 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/20 text-white shadow-xs shrink-0">
+                  <span className="inline-block h-1.5 w-4 rounded bg-white/70" />
+                  <span className="text-xs font-semibold text-white">Kế hoạch gốc</span>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
 
         <OfflineSnapshotBanner isFromCache={isFromCache} cachedAt={cachedAt} cacheMiss={cacheMiss} pageName="Gantt" />

@@ -5,7 +5,7 @@ import { format, parseISO } from 'date-fns';
 
 import { FileText, Search, Plus, Filter, X, Clock, User, Hash, Lock, Unlock, History, AlertCircle, CloudOff, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { can } from '../config/permissions';
-import { getDiaryLogsByProject, getDiaryAttachmentsByLog, isBlob, deleteDiaryEntry } from '../lib/diaryDb';
+import { getDiaryLogsByProject, getDiaryAttachmentsByLog, isBlob, deleteDiaryEntry, isDiarySyncClaimStale } from '../lib/diaryDb';
 import DiaryEntryForm from '../components/DiaryEntryForm';
 import { resolveWorkItemId } from '../utils/diaryUtils';
 import DiaryWeekStrip from '../components/DiaryWeekStrip';
@@ -347,7 +347,9 @@ export default function DiaryPage({ user }) {
           ...entry,
           id: entry.id,
           client_id: entry.client_id,
-          syncStatus: localEntry.syncStatus,
+          syncStatus: localEntry.syncStatus === 'syncing' && isDiarySyncClaimStale(localEntry)
+            ? entry.syncStatus
+            : localEntry.syncStatus,
           isOffline: true,
           attachments: localEntry.attachments,
         };

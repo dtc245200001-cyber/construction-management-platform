@@ -39,6 +39,12 @@ export const SYNC_STATUS = {
 // lần gửi đang chạy (timeout axios 15s + withRetry 2 lần) ở tab khác.
 export const STALE_CLAIM_TIMEOUT_MS = 2 * 60 * 1000;
 
+export function isDiarySyncClaimStale(entry) {
+  if (!entry || entry.syncStatus !== SYNC_STATUS.SYNCING) return false;
+  const startedAt = Date.parse(entry.syncStartedAt || "");
+  return !Number.isFinite(startedAt) || Date.now() - startedAt > STALE_CLAIM_TIMEOUT_MS;
+}
+
 export const ALLOWED_IMAGE_TYPES = [
   "image/jpeg",
   "image/png",
@@ -868,7 +874,7 @@ export async function getPendingSyncEntries() {
       (val.syncStatus === SYNC_STATUS.PENDING ||
         val.syncStatus === SYNC_STATUS.FAILED ||
         (val.syncStatus === SYNC_STATUS.SYNCING &&
-          Date.now() - Date.parse(val.syncStartedAt || 0) > STALE_CLAIM_TIMEOUT_MS))
+          isDiarySyncClaimStale(val)))
     ) {
       results.push(val);
     }
@@ -942,9 +948,7 @@ export async function claimDiaryEntryForSync(clientId) {
     const entry = request.result;
     if (!entry || entry.syncStatus === SYNC_STATUS.SYNCED) return;
 
-    const staleSync =
-      entry.syncStatus === SYNC_STATUS.SYNCING &&
-      Date.now() - Date.parse(entry.syncStartedAt || 0) > STALE_CLAIM_TIMEOUT_MS;
+    const staleSync = isDiarySyncClaimStale(entry);
     if (
       entry.syncStatus !== SYNC_STATUS.PENDING &&
       entry.syncStatus !== SYNC_STATUS.FAILED &&
