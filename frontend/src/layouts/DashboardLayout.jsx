@@ -20,29 +20,65 @@ import {
   X,
   Check,
   ChevronsUpDown,
-  Coins,
-  History
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "../components/ui/command";
 
-const navItems = [
-  { label: "Tổng quan", icon: Home, path: "/dashboard" },
-  { label: "Cơ cấu công việc (WBS)", icon: Network, path: "/wbs" },
-  { label: "Khối lượng hợp đồng", icon: Coins, path: "/contract-quantities" },
-  { label: "Bảng đường găng (CPM)", icon: TrendingUp, path: "/schedule" },
-  { label: "Tiến độ thi công", icon: CalendarDays, path: "/gantt" },
-  { label: "Cảnh báo tiến độ", icon: Bell, path: "/warnings" },
-  { label: "Lịch & Ngày nghỉ", icon: Calendar, path: "/calendar" },
-  { label: "Hiện trường & Giao việc", icon: Camera, path: "/field" },
-  { label: "Nhật ký thi công", icon: FileText, path: "/diary" },
-  { label: "Nghiệm thu khối lượng", icon: CheckSquare, path: "/acceptance" },
-  { label: "Nhật ký thao tác", icon: History, path: "/audit" },
-  { label: "Thanh toán & Chi phí", icon: Wallet, path: "/finance" },
-  { label: "Thành viên & Tổ đội", icon: Users, path: "/members" },
-];
+export default function DashboardLayout(props) {
+  const projectId = safeCurrentProjectId();
+  return (
+    <PermissionProvider key={projectId || "none"} projectId={projectId}>
+      <DashboardShell {...props} />
+    </PermissionProvider>
+  );
+}
 
-export default function DashboardLayout({ user, setUser }) {
+function safeCurrentProjectId() {
+  try {
+    return localStorage.getItem("currentProjectId") || "1";
+  } catch {
+    return "1";
+  }
+}
+
+function getCurrentDateTimeVN() {
+  const now = new Date();
+  const days = [
+    "Chủ Nhật",
+    "Thứ Hai",
+    "Thứ Ba",
+    "Thứ Tư",
+    "Thứ Năm",
+    "Thứ Sáu",
+    "Thứ Bảy",
+  ];
+  const dayOfWeek = days[now.getDay()];
+  const day = String(now.getDate()).padStart(2, "0");
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const year = now.getFullYear();
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  return `${dayOfWeek}, ${day}/${month}/${year} · ${hours}:${minutes}`;
+}
+
+function DashboardShell({ user, setUser }) {
+  const [currentDateTime, setCurrentDateTime] = useState(() => getCurrentDateTimeVN());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentDateTime(getCurrentDateTimeVN());
+    }, 10000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const { role, loading: roleLoading } = usePermission();
+  const menuGroups = useMemo(
+    () => (roleLoading ? [] : getVisibleMenuGroups(role)),
+    [role, roleLoading]
+  );
+
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -442,54 +478,10 @@ export default function DashboardLayout({ user, setUser }) {
                         <span className="truncate">{item.label}</span>
                       )}
                     </button>
-                  </div>
-                </Command>
-              </PopoverContent>
-            </Popover>
-          </div>
-        )}
-
-        <div className="mt-6 flex-1 w-full" style={{ overflowY: 'auto', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-          <nav className="flex flex-col gap-1 w-full">
-            {navItems.map((item) => {
-              const isActive = location.pathname === item.path;
-              return (
-                <button
-                  key={item.label}
-                  title={item.label}
-                  onClick={() => {
-                    if (
-                      item.path === '/dashboard' ||
-                      item.path === '/wbs' ||
-                      item.path === '/contract-quantities' ||
-                      item.path === '/members' ||
-                      item.path === '/schedule' ||
-                      item.path === '/gantt' ||
-                      item.path === '/warnings' ||
-                      item.path === '/calendar' ||
-                      item.path === '/field' ||
-                      item.path === '/diary' ||
-                      item.path === '/acceptance' ||
-                      item.path === '/audit'
-                    ) {
-                      navigate(item.path);
-                    } else {
-                      alert("Tính năng này sẽ được phát triển trong các Sprint tiếp theo.");
-                    }
-                  }}
-                  className={[
-                    "flex items-center gap-3 rounded-xl py-3 text-left text-sm font-medium transition-colors cursor-pointer outline-none",
-                    isSidebarCollapsed ? "justify-center px-0" : "px-3.5",
-                    isActive
-                      ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                      : "text-sidebar-foreground/85 hover:bg-sidebar-accent",
-                  ].join(" ")}
-                >
-                  <item.icon className="size-5 shrink-0" />
-                  {!isSidebarCollapsed && <span className="truncate">{item.label}</span>}
-                </button>
-              )
-            })}
+                  );
+                })}
+              </div>
+            ))}
           </nav>
         </div>
 
