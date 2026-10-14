@@ -39,9 +39,9 @@ function makeApp(user) {
 describe("S-38 / T-98 acceptance approval RBAC", () => {
   beforeEach(() => jest.clearAllMocks());
 
-  test("ban_quan_ly duyệt được phiếu pending_review và trạng thái thành approved", async () => {
+  test("chu_dau_tu duyệt được phiếu pending_review và trạng thái thành approved", async () => {
     const app = makeApp({ id: 20, is_system_admin: false });
-    mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "chu_dau_tu" }] });
     mockClient.query
       .mockResolvedValueOnce({}) // BEGIN
       .mockResolvedValueOnce({
@@ -84,7 +84,7 @@ describe("S-38 / T-98 acceptance approval RBAC", () => {
 
   test("không duyệt lại phiếu không còn ở pending_review", async () => {
     const app = makeApp({ id: 20, is_system_admin: false });
-    mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "chu_dau_tu" }] });
     mockClient.query
       .mockResolvedValueOnce({})
       .mockResolvedValueOnce({
@@ -97,6 +97,6 @@ describe("S-38 / T-98 acceptance approval RBAC", () => {
       .send({});
 
     expect(res.status).toBe(409);
-    expect(res.body.code).toBe("INVALID_ACCEPTANCE_STATUS");
+        expect(res.body.code).toBe("INVALID_STATE");
   });
 });

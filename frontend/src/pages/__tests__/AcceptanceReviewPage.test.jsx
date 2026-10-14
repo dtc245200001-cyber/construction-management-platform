@@ -26,10 +26,10 @@ const pendingVoucher = {
   photo_count: 1,
 };
 
-function mockBaseGet() {
+function mockBaseGet(role = "ban_quan_ly") {
   api.get.mockImplementation((url) => {
     if (url === "/projects/1") {
-      return Promise.resolve({ data: { membership: "ban_quan_ly" } });
+      return Promise.resolve({ data: { membership: role } });
     }
     if (url === "/projects/1/acceptance-vouchers") {
       return Promise.resolve({ data: { vouchers: [pendingVoucher] } });
@@ -55,6 +55,8 @@ describe("S-38 / T-100 acceptance review UI", () => {
   });
 
   test("bấm Duyệt gọi đúng API và tải lại danh sách", async () => {
+    mockBaseGet("chu_dau_tu");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     const user = userEvent.setup();
     api.post.mockResolvedValueOnce({
       data: { message: "Đã duyệt phiếu nghiệm thu", voucher: { ...pendingVoucher, status: "approved" } },
