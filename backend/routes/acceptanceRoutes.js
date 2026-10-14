@@ -829,12 +829,12 @@ router.post(
 );
 
 // ─── POST /:projectId/acceptance-vouchers/:voucherId/approve ──────────────────
-// S-39: Chủ đầu tư duyệt chính thức (pending_review → approved).
+// S-38 / T-98: Ban quản lý duyệt phiếu (pending_review → approved).
 router.post(
   "/:projectId/acceptance-vouchers/:voucherId/approve",
   requireAuth,
   checkProjectAccess,
-  requirePermission("acceptance.approve_official"),
+  requirePermission("acceptance.review_internal"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     const voucherId = parsePositiveInt(req.params.voucherId);

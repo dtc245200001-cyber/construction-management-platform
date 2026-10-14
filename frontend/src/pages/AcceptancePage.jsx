@@ -52,7 +52,7 @@ export default function AcceptancePage({ user }) {
     user?.is_system_admin || can(projectRole, "acceptance.create_dossier");
   // S-39: quyền duyệt (CĐT) và trả lại (BQL hoặc CĐT)
   const canApprove =
-    user?.is_system_admin || can(projectRole, "acceptance.approve_official");
+    user?.is_system_admin || can(projectRole, "acceptance.review_internal");
   const canReturn =
     user?.is_system_admin ||
     can(projectRole, "acceptance.review_internal") ||
@@ -471,7 +471,7 @@ export default function AcceptancePage({ user }) {
   // S-39: duyệt phiếu (pending_review → approved)
   const handleApprove = async (voucher) => {
     if (!canApprove || actionLoading) return;
-    if (!window.confirm(`Duyệt chính thức phiếu "${voucher.batch_name}"?`)) return;
+    if (!window.confirm(`Duyệt phiếu "${voucher.batch_name}"?`)) return;
     setActionLoading(true);
     try {
       await api.post(
@@ -585,7 +585,7 @@ export default function AcceptancePage({ user }) {
                 Phiếu chờ duyệt
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                Chủ đầu tư duyệt chính thức; Ban quản lý và Chủ đầu tư có thể trả lại phiếu đang chờ duyệt.
+                Ban quản lý duyệt phiếu; Ban quản lý và Chủ đầu tư có thể trả lại phiếu đang chờ duyệt.
               </p>
             </div>
             <Badge className="bg-blue-100 text-blue-800 border-blue-200">
@@ -631,16 +631,18 @@ export default function AcceptancePage({ user }) {
                       <X className="h-3.5 w-3.5 mr-1" />
                       Trả lại
                     </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={actionLoading || !canApprove}
-                      onClick={() => handleApprove(voucher)}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                    >
-                      <Check className="h-3.5 w-3.5 mr-1" />
-                      Duyệt
-                    </Button>
+                    {canApprove && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={actionLoading}
+                        onClick={() => handleApprove(voucher)}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                      >
+                        <Check className="h-3.5 w-3.5 mr-1" />
+                        Duyệt
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}

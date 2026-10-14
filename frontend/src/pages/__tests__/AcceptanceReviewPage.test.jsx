@@ -55,7 +55,7 @@ describe("S-38 / T-100 acceptance review UI", () => {
   });
 
   test("bấm Duyệt gọi đúng API và tải lại danh sách", async () => {
-    mockBaseGet("chu_dau_tu");
+    mockBaseGet("ban_quan_ly");
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const user = userEvent.setup();
     api.post.mockResolvedValueOnce({
