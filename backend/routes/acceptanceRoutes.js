@@ -343,12 +343,17 @@ router.get(
          av.has_negative_delta,
          av.created_by,
          u.name AS created_by_name,
+         av.reviewed_by,
+         reviewer.name AS reviewed_by_name,
+         av.reviewed_at,
+         av.review_note,
          av.created_at,
          av.updated_at,
          (SELECT COUNT(*) FROM acceptance_voucher_items avi WHERE avi.voucher_id = av.id)::int AS item_count,
          (SELECT COUNT(*) FROM acceptance_voucher_photos avp WHERE avp.voucher_id = av.id)::int AS photo_count
        FROM acceptance_vouchers av
        JOIN users u ON u.id = av.created_by
+       LEFT JOIN users reviewer ON reviewer.id = av.reviewed_by
        WHERE av.project_id = $1
        ORDER BY av.created_at DESC`,
       [projectId]
@@ -443,9 +448,11 @@ router.get(
     const voucherRes = await db.query(
       `SELECT
          av.*,
-         u.name AS created_by_name
+         u.name AS created_by_name,
+         reviewer.name AS reviewed_by_name
        FROM acceptance_vouchers av
        JOIN users u ON u.id = av.created_by
+       LEFT JOIN users reviewer ON reviewer.id = av.reviewed_by
        WHERE av.id = $1 AND av.project_id = $2`,
       [voucherId, projectId]
     );
@@ -991,7 +998,6 @@ router.post(
     if (voucherCheck.rows.length === 0) {
       return res.status(404).json({ message: "Không tìm thấy phiếu nghiệm thu" });
     }
-
     // Kiểm tra số lượng ảnh nếu có giới hạn
     if (ACCEPTANCE_MAX_PHOTOS_PER_VOUCHER > 0) {
       const countRes = await db.query(
