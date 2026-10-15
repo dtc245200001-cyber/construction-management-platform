@@ -15,6 +15,7 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    api.get.mockResolvedValue({ data: {} });
   });
 
   it('không render gì khi isOpen = false', () => {
@@ -570,6 +571,114 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
           'Hợp lệ'
         );
       });
+    });
+
+    it('hiển thị nhãn Lỗi kiểm tra và thông báo lỗi máy chủ khi API trả về 500, không tự kết luận ảnh không hợp lệ', async () => {
+      api.get.mockRejectedValueOnce({
+        response: {
+          status: 500,
+          data: { message: 'Lỗi máy chủ' },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={206}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Lỗi máy chủ')).toBeInTheDocument();
+      });
+
+      // Nhãn góc trên là "Lỗi kiểm tra", TUYỆT ĐỐI không phải "Không hợp lệ"
+      expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Lỗi kiểm tra');
+      expect(screen.queryByText('Không hợp lệ')).toBeNull();
+      expect(screen.getByTestId('retry-metadata-btn')).toBeInTheDocument();
+    });
+
+    it('hiển thị thông báo quyền hạn khi API trả về 403 với field error', async () => {
+      api.get.mockRejectedValueOnce({
+        response: {
+          status: 403,
+          data: { error: 'Bạn không có quyền truy cập dự án này' },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={207}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Bạn không có quyền truy cập dự án này')).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Khóa cuộn nền và cấu trúc cuộn modal (Modal Scrolling & Layout)', () => {
+    it('khóa cuộn document.body khi modal mở và phục hồi khi đóng', () => {
+      document.body.style.overflow = 'visible';
+
+      const { unmount } = render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={101}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      expect(document.body.style.overflow).toBe('hidden');
+
+      unmount();
+      expect(document.body.style.overflow).toBe('visible');
+    });
+
+    it('modal có vùng nội dung cuộn riêng với min-h-0 và header/footer cố định', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          status: 'none',
+          status_label: 'Ảnh không có siêu dữ liệu gốc',
+          has_gps: false,
+        },
+      });
+
+      const { baseElement } = render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={101}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      const modalDialog = baseElement.querySelector('[role="dialog"]');
+      expect(modalDialog).toBeInTheDocument();
+      expect(modalDialog).toHaveClass('overflow-hidden');
+
+      // Card modal có max-h-[90dvh] và flex-col
+      const card = modalDialog.querySelector('.relative.w-full.max-w-lg');
+      expect(card).toBeInTheDocument();
+      expect(card).toHaveClass('flex-col');
+      expect(card).toHaveClass('max-h-[90dvh]');
+
+      // Vùng cuộn có flex-1 min-h-0 overflow-y-auto
+      const scrollableBody = card.querySelector('.overflow-y-auto');
+      expect(scrollableBody).toBeInTheDocument();
+      expect(scrollableBody).toHaveClass('flex-1');
+      expect(scrollableBody).toHaveClass('min-h-0');
     });
   });
 });

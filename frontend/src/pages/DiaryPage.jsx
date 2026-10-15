@@ -1030,8 +1030,9 @@ export default function DiaryPage({ user }) {
 
       {/* Panel xem siêu dữ liệu ảnh hiện trường (S-40 / T-106) */}
       <PhotoMetadataPanel
-        projectId={projectId}
+        projectId={selectedMetadataPhoto?.project_id || projectId}
         photoId={selectedMetadataPhoto?.id}
+        photo={selectedMetadataPhoto}
         kind="diary"
         isOpen={!!selectedMetadataPhoto}
         onClose={() => setSelectedMetadataPhoto(null)}

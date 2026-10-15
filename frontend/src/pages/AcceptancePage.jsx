@@ -1612,12 +1612,13 @@ export default function AcceptancePage({ user }) {
                               e.stopPropagation();
                               setSelectedMetadataPhoto({
                                 ...photo,
+                                project_id: viewingVoucher?.voucher?.project_id || projectId,
                                 kind: "acceptance",
                                 batch_name: viewingVoucher?.voucher?.batch_name,
                                 uploaded_by_name: viewingVoucher?.voucher?.created_by_name,
                               });
                             }}
-                            className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 hover:underline font-medium block"
+                            className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 hover:underline font-medium block cursor-pointer"
                           >
                             ℹ️ Thông tin ảnh
                           </button>
@@ -1644,7 +1645,7 @@ export default function AcceptancePage({ user }) {
 
       {/* Panel xem chi tiết ảnh hiện trường (S-40 / S-42 / T-106, T-110) */}
       <PhotoMetadataPanel
-        projectId={projectId}
+        projectId={selectedMetadataPhoto?.project_id || viewingVoucher?.voucher?.project_id || projectId}
         photoId={selectedMetadataPhoto?.id}
         photo={selectedMetadataPhoto}
         kind="acceptance"

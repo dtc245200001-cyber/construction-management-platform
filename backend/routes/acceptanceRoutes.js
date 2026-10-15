@@ -35,6 +35,7 @@ const { evaluateGeofence } = require("../utils/geo");
 const {
   inspectPhotoMetadata,
   inspectVoucherPhotoRecord,
+  sanitizeInspectionForRole,
 } = require("../services/photoInspection");
 
 const router = createProjectRouter();
@@ -517,7 +518,7 @@ router.get(
          geofence_distance_m,
          geofence_checked_at,
          exif_metadata,
-         '/api/projects/' || $2 || '/acceptance-vouchers/' || voucher_id || '/photos/' || id AS url
+         CONCAT('/api/projects/', $2::text, '/acceptance-vouchers/', voucher_id, '/photos/', id) AS url
        FROM acceptance_voucher_photos
        WHERE voucher_id = $1
        ORDER BY created_at`,
@@ -536,6 +537,14 @@ router.get(
       error_count: 0,
     };
 
+    const isReviewer = Boolean(
+      can(req.projectRole, "acceptance.review_internal") ||
+      can(req.projectRole, "acceptance.approve_official") ||
+      req.projectRole === "chu_dau_tu" ||
+      req.projectRole === "ban_quan_ly" ||
+      (req.user && req.user.is_system_admin)
+    );
+
     const photos = photosRes.rows.map((p) => {
       const status = p.geofence_status || "no_site_config";
       if (status === "inside") photo_flags.inside++;
@@ -543,11 +552,13 @@ router.get(
       else if (status === "no_gps") photo_flags.no_gps++;
       else photo_flags.no_site_config++;
 
-      const inspection = inspectVoucherPhotoRecord(p, voucher);
-      if (inspection.status === "warning") photo_flags.anomalies_count++;
-      else if (inspection.status === "clean") photo_flags.clean_count++;
-      else if (inspection.status === "incomplete_data") photo_flags.incomplete_count++;
-      else if (inspection.status === "error") photo_flags.error_count++;
+      const inspectionRaw = inspectVoucherPhotoRecord(p, voucher);
+      if (inspectionRaw.status === "warning") photo_flags.anomalies_count++;
+      else if (inspectionRaw.status === "clean") photo_flags.clean_count++;
+      else if (inspectionRaw.status === "incomplete_data") photo_flags.incomplete_count++;
+      else if (inspectionRaw.status === "error") photo_flags.error_count++;
+
+      const inspection = sanitizeInspectionForRole(inspectionRaw, isReviewer);
 
       return {
         ...p,
