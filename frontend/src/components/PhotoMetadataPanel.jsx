@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
 import PropTypes from 'prop-types';
 import api from '../lib/api';
 
@@ -23,11 +23,15 @@ export default function PhotoMetadataPanel({
   kind,
   isOpen,
   onClose,
+  mode,
+  onSwitchMode,
 }) {
   const [metadata, setMetadata] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [isZoomed, setIsZoomed] = useState(false);
+  const [internalMode, setInternalMode] = useState('detail');
+
+  const currentMode = mode || internalMode;
 
   const fetchMetadata = useCallback(() => {
     if (!isOpen || !projectId || !photoId || !kind) {
@@ -67,10 +71,28 @@ export default function PhotoMetadataPanel({
     }
   }, [isOpen]);
 
+  // Đóng modal tức thì khi bấm phím Escape (bắt ở capture phase để ưu tiên xử lý)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' || e.keyCode === 27) {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [isOpen, onClose]);
+
   useEffect(() => {
     if (isOpen) {
       if (photo) {
-        setMetadata((prev) => prev || {
+        setMetadata({
           ...photo,
           inspection: photo.inspection || null,
         });
@@ -79,9 +101,17 @@ export default function PhotoMetadataPanel({
     } else {
       setMetadata(null);
       setError(null);
-      setIsZoomed(false);
+      setInternalMode('detail');
     }
   }, [isOpen, fetchMetadata, photo]);
+
+  const handleImageClick = () => {
+    if (onSwitchMode) {
+      onSwitchMode('preview');
+    } else {
+      setInternalMode('preview');
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -224,26 +254,85 @@ export default function PhotoMetadataPanel({
 
   const statusPill = getStatusPill();
 
-  const modalContent = (
-    <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 overflow-hidden"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="photo-metadata-title"
-      onClick={onClose}
-    >
-      <div
-        className="relative w-full max-w-lg max-h-[90dvh] sm:max-h-[90vh] flex flex-col rounded-2xl bg-white shadow-2xl transition-all border border-slate-200/80 overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Hàng trên cùng cố định: Tiêu đề "Chi tiết ảnh", Nhãn trạng thái và Nút đóng */}
-        <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 shrink-0 bg-white">
-          <h2
-            id="photo-metadata-title"
-            className="text-lg sm:text-xl font-bold tracking-tight text-slate-900"
+  // Chế độ 1: PHÓNG TO ẢNH (Lightbox độc lập qua Radix DialogPrimitive)
+  if (currentMode === 'preview') {
+    return (
+      <DialogPrimitive.Root open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay
+            data-testid="preview-backdrop"
+            className="fixed inset-0 z-[9999] pointer-events-auto bg-black/95 select-none"
+          />
+          <DialogPrimitive.Content
+            aria-describedby={undefined}
+            className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-3 sm:p-4 outline-none bg-transparent select-none"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
           >
-            Chi tiết ảnh
-          </h2>
+            <DialogPrimitive.Title className="sr-only">Phóng to ảnh hiện trường</DialogPrimitive.Title>
+            <div
+              className="relative max-h-[92vh] max-w-[95vw] flex items-center justify-center pointer-events-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {imageUrl ? (
+                <img
+                  src={imageUrl}
+                  alt={fileName}
+                  className="max-h-[85vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
+                />
+              ) : (
+                <div className="text-white/70 text-sm">Không tìm thấy đường dẫn ảnh</div>
+              )}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClose();
+                }}
+                data-testid="close-preview-btn"
+                className="absolute -top-3 -right-3 sm:top-2 sm:right-2 rounded-full bg-white/20 hover:bg-white/40 p-2 text-white transition cursor-pointer"
+                aria-label="Đóng phóng to ảnh"
+              >
+                ✕
+              </button>
+            </div>
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      </DialogPrimitive.Root>
+    );
+  }
+
+  // Chế độ 2: CHI TIẾT ẢNH (EXIF, Thông tin tệp, Cảnh báo)
+  return (
+    <DialogPrimitive.Root open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay
+          className="fixed inset-0 z-[9999] pointer-events-auto bg-black/60"
+        />
+        <DialogPrimitive.Content
+          aria-describedby={undefined}
+          className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-3 sm:p-4 overflow-hidden outline-none bg-transparent"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+        >
+          <div
+            className="relative w-full max-w-lg max-h-[90dvh] sm:max-h-[90vh] flex flex-col rounded-2xl bg-white shadow-2xl transition-all border border-slate-200/80 overflow-hidden pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Hàng trên cùng cố định: Tiêu đề "Chi tiết ảnh", Nhãn trạng thái và Nút đóng */}
+            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 shrink-0 bg-white">
+              <DialogPrimitive.Title asChild>
+                <h2
+                  id="photo-metadata-title"
+                  className="text-lg sm:text-xl font-bold tracking-tight text-slate-900"
+                >
+                  Chi tiết ảnh
+                </h2>
+              </DialogPrimitive.Title>
           <div className="flex items-center gap-2">
             <span
               data-testid="inspection-status-badge"
@@ -253,7 +342,11 @@ export default function PhotoMetadataPanel({
             </span>
             <button
               type="button"
-              onClick={onClose}
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
               data-testid="close-x-btn"
               className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition cursor-pointer"
               aria-label="Đóng"
@@ -272,7 +365,7 @@ export default function PhotoMetadataPanel({
                 src={imageUrl}
                 alt={fileName}
                 className="w-full max-h-[220px] sm:max-h-[280px] object-cover sm:object-contain mx-auto transition-transform cursor-pointer"
-                onClick={() => setIsZoomed(true)}
+                onClick={handleImageClick}
                 onError={(e) => {
                   e.target.style.display = 'none';
                 }}
@@ -673,43 +766,22 @@ export default function PhotoMetadataPanel({
           </span>
           <button
             type="button"
-            onClick={onClose}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
             data-testid="close-panel-btn"
             className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 transition cursor-pointer"
           >
             Đóng
           </button>
         </div>
-      </div>
-
-      {/* Modal phóng to ảnh (Lightbox) nếu người dùng bấm vào ảnh */}
-      {isZoomed && imageUrl && (
-        <div
-          className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/90 p-4"
-          onClick={() => setIsZoomed(false)}
-        >
-          <img
-            src={imageUrl}
-            alt={fileName}
-            className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
-          />
-          <button
-            type="button"
-            onClick={() => setIsZoomed(false)}
-            className="absolute top-4 right-4 rounded-full bg-white/20 p-2 text-white hover:bg-white/40 transition"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-    </div>
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
-
-  // Render modal vào document.body qua createPortal để luôn nổi trên cùng
-  if (typeof document !== 'undefined') {
-    return createPortal(modalContent, document.body);
-  }
-  return modalContent;
 }
 
 PhotoMetadataPanel.propTypes = {
@@ -719,4 +791,6 @@ PhotoMetadataPanel.propTypes = {
   kind: PropTypes.oneOf(['diary', 'acceptance']).isRequired,
   isOpen: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
+  mode: PropTypes.oneOf(['detail', 'preview']),
+  onSwitchMode: PropTypes.func,
 };

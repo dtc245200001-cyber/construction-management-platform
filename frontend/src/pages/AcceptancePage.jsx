@@ -84,8 +84,46 @@ export default function AcceptancePage({ user }) {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [viewingVoucher, setViewingVoucher] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [previewPhotoUrl, setPreviewPhotoUrl] = useState(null);
-  const [selectedMetadataPhoto, setSelectedMetadataPhoto] = useState(null);
+
+  // Quản lý modal ảnh theo máy trạng thái rõ ràng: 'closed' | 'detail' | 'preview'
+  // Đảm bảo tại một thời điểm chỉ mở tối đa 1 modal ảnh (không chồng lấn nhiều overlay)
+  const [photoModal, setPhotoModal] = useState({
+    status: "closed", // 'closed' | 'detail' | 'preview'
+    photo: null,
+  });
+
+  const handleOpenPhotoDetail = (photo) => {
+    setPhotoModal({
+      status: "detail",
+      photo: {
+        ...photo,
+        project_id: viewingVoucher?.voucher?.project_id || projectId,
+        kind: "acceptance",
+        batch_name: viewingVoucher?.voucher?.batch_name,
+        uploaded_by_name: viewingVoucher?.voucher?.created_by_name,
+      },
+    });
+  };
+
+  const handleOpenPhotoPreview = (photo) => {
+    setPhotoModal({
+      status: "preview",
+      photo: {
+        ...photo,
+        project_id: viewingVoucher?.voucher?.project_id || projectId,
+        kind: "acceptance",
+        batch_name: viewingVoucher?.voucher?.batch_name,
+        uploaded_by_name: viewingVoucher?.voucher?.created_by_name,
+      },
+    });
+  };
+
+  const handleClosePhotoModal = () => {
+    setPhotoModal({
+      status: "closed",
+      photo: null,
+    });
+  };
 
   // S-39: dialog lịch sử phiếu + dialog trả lại (reason)
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
@@ -1295,7 +1333,16 @@ export default function AcceptancePage({ user }) {
       </Dialog>
 
       {/* ── DIALOG: CHI TIẾT PHIẾU NGHIỆM THU ── */}
-      <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
+      <Dialog
+        open={detailDialogOpen}
+        onOpenChange={(open) => {
+          setDetailDialogOpen(open);
+          if (!open) {
+            handleClosePhotoModal();
+            setViewingVoucher(null);
+          }
+        }}
+      >
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl text-slate-900">
@@ -1513,7 +1560,7 @@ export default function AcceptancePage({ user }) {
                     {viewingVoucher.photos.map((photo) => (
                       <div
                         key={photo.id}
-                        onClick={() => setPreviewPhotoUrl(photo.url)}
+                        onClick={() => handleOpenPhotoPreview(photo)}
                         className="cursor-pointer group border rounded-lg overflow-hidden bg-slate-50 hover:shadow-md transition"
                       >
                         <div className="aspect-video relative overflow-hidden bg-slate-200">
@@ -1610,13 +1657,7 @@ export default function AcceptancePage({ user }) {
                             data-testid={`photo-meta-btn-${photo.id}`}
                             onClick={(e) => {
                               e.stopPropagation();
-                              setSelectedMetadataPhoto({
-                                ...photo,
-                                project_id: viewingVoucher?.voucher?.project_id || projectId,
-                                kind: "acceptance",
-                                batch_name: viewingVoucher?.voucher?.batch_name,
-                                uploaded_by_name: viewingVoucher?.voucher?.created_by_name,
-                              });
+                              handleOpenPhotoDetail(photo);
                             }}
                             className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 hover:underline font-medium block cursor-pointer"
                           >
@@ -1643,14 +1684,18 @@ export default function AcceptancePage({ user }) {
         </DialogContent>
       </Dialog>
 
-      {/* Panel xem chi tiết ảnh hiện trường (S-40 / S-42 / T-106, T-110) */}
+      {/* Panel xem chi tiết ảnh hiện trường / Phóng to ảnh (S-40 / S-42 / T-106, T-110) */}
       <PhotoMetadataPanel
-        projectId={selectedMetadataPhoto?.project_id || viewingVoucher?.voucher?.project_id || projectId}
-        photoId={selectedMetadataPhoto?.id}
-        photo={selectedMetadataPhoto}
+        projectId={photoModal.photo?.project_id || viewingVoucher?.voucher?.project_id || projectId}
+        photoId={photoModal.photo?.id}
+        photo={photoModal.photo}
         kind="acceptance"
-        isOpen={!!selectedMetadataPhoto}
-        onClose={() => setSelectedMetadataPhoto(null)}
+        isOpen={photoModal.status !== "closed"}
+        mode={photoModal.status}
+        onSwitchMode={(newMode) =>
+          setPhotoModal((prev) => ({ ...prev, status: newMode }))
+        }
+        onClose={handleClosePhotoModal}
       />
 
       {/* ── DIALOG: XÁC NHẬN DUYỆT PHIẾU ── */}
@@ -1800,27 +1845,6 @@ export default function AcceptancePage({ user }) {
         </DialogContent>
       </Dialog>
 
-      {/* ── LIGHTBOX PHÓNG TO ẢNH ── */}
-      {previewPhotoUrl && (
-        <Dialog open={Boolean(previewPhotoUrl)} onOpenChange={() => setPreviewPhotoUrl(null)}>
-          <DialogContent className="max-w-4xl p-2 bg-black/95 border-none">
-            <div className="relative flex items-center justify-center min-h-[400px]">
-              <img
-                src={previewPhotoUrl}
-                alt="Phóng to ảnh hiện trường"
-                className="max-h-[80vh] max-w-full object-contain rounded"
-              />
-              <button
-                type="button"
-                onClick={() => setPreviewPhotoUrl(null)}
-                className="absolute top-2 right-2 bg-white/20 hover:bg-white/40 text-white rounded-full p-1.5"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
 
       {/* ── DIALOG: LỊCH SỬ PHIẾU (S-39) ── */}
       <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
