@@ -1850,9 +1850,10 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByTestId('inspection-status-badge')).not.toHaveTextContent('Dữ liệu đầy đủ');
+        expect(screen.getByTestId('retry-metadata-btn')).toBeInTheDocument();
+        expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Cần tải lại');
       });
-      expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Cần tải lại');
+      expect(screen.getByTestId('inspection-status-badge')).not.toHaveTextContent('Dữ liệu đầy đủ');
     });
 
     // 15. Đảm bảo các cảnh báo được hiển thị đúng cho người duyệt.
