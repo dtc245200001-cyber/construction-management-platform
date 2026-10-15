@@ -341,7 +341,7 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent(
-          '✓ Hợp lệ / Bình thường'
+          'Hợp lệ'
         );
       });
 
@@ -414,7 +414,7 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent(
-          '⚠️ Cần xác minh (2 dấu hiệu)'
+          'Cần xác minh'
         );
       });
 
@@ -477,7 +477,7 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent(
-          'ℹ️ Dữ liệu không đầy đủ'
+          'Không đủ dữ liệu'
         );
       });
 
@@ -522,7 +522,7 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent(
-          '❌ Lỗi kiểm tra tệp'
+          'Lỗi kiểm tra'
         );
       });
 
@@ -567,7 +567,7 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent(
-          '✓ Hợp lệ / Bình thường'
+          'Hợp lệ'
         );
       });
     });

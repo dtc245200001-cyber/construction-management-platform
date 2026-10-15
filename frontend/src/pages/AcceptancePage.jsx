@@ -1610,7 +1610,12 @@ export default function AcceptancePage({ user }) {
                             data-testid={`photo-meta-btn-${photo.id}`}
                             onClick={(e) => {
                               e.stopPropagation();
-                              setSelectedMetadataPhoto({ id: photo.id, kind: "acceptance" });
+                              setSelectedMetadataPhoto({
+                                ...photo,
+                                kind: "acceptance",
+                                batch_name: viewingVoucher?.voucher?.batch_name,
+                                uploaded_by_name: viewingVoucher?.voucher?.created_by_name,
+                              });
                             }}
                             className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 hover:underline font-medium block"
                           >
@@ -1637,10 +1642,11 @@ export default function AcceptancePage({ user }) {
         </DialogContent>
       </Dialog>
 
-      {/* Panel xem siêu dữ liệu ảnh hiện trường (S-40 / T-106) */}
+      {/* Panel xem chi tiết ảnh hiện trường (S-40 / S-42 / T-106, T-110) */}
       <PhotoMetadataPanel
         projectId={projectId}
         photoId={selectedMetadataPhoto?.id}
+        photo={selectedMetadataPhoto}
         kind="acceptance"
         isOpen={!!selectedMetadataPhoto}
         onClose={() => setSelectedMetadataPhoto(null)}

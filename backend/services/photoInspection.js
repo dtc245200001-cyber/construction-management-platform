@@ -351,6 +351,11 @@ async function inspectPhotoMetadata({
         'ExifImageHeight',
         'ImageWidth',
         'ImageHeight',
+        'ISO',
+        'FNumber',
+        'ExposureTime',
+        'ShutterSpeedValue',
+        'ApertureValue',
       ],
       tiff: true,
       xmp: true,
@@ -420,6 +425,17 @@ async function inspectPhotoMetadata({
     make: finalMake,
     model: finalModel,
     software,
+    iso: parsedExif?.ISO ? String(parsedExif.ISO) : (clientFallback?.iso || null),
+    aperture: parsedExif?.FNumber
+      ? `f/${parsedExif.FNumber}`
+      : parsedExif?.ApertureValue
+      ? `f/${parsedExif.ApertureValue}`
+      : null,
+    shutter_speed: parsedExif?.ExposureTime
+      ? parsedExif.ExposureTime < 1
+        ? `1/${Math.round(1 / parsedExif.ExposureTime)}s`
+        : `${parsedExif.ExposureTime}s`
+      : null,
     captured_at: finalCapturedAt ? finalCapturedAt.toISOString() : null,
     captured_at_source: capturedAt ? 'provided' : parsedExif?.DateTimeOriginal ? 'exif' : null,
     gps_latitude: null,
@@ -543,12 +559,20 @@ function inspectVoucherPhotoRecord(photoRow, voucherRow = null) {
   }
 
   // Nếu bản ghi đã có kết quả kiểm tra được lưu sẵn trong exif_metadata
+  let savedInspection = photoRow.exif_metadata;
+  if (typeof savedInspection === 'string') {
+    try {
+      savedInspection = JSON.parse(savedInspection);
+    } catch {
+      savedInspection = null;
+    }
+  }
   if (
-    photoRow.exif_metadata &&
-    typeof photoRow.exif_metadata === 'object' &&
-    photoRow.exif_metadata.status
+    savedInspection &&
+    typeof savedInspection === 'object' &&
+    savedInspection.status
   ) {
-    return photoRow.exif_metadata;
+    return savedInspection;
   }
 
   const warnings = [];
