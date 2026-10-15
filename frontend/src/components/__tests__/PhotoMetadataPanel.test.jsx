@@ -45,7 +45,8 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
     expect(screen.getByText('Đang đọc siêu dữ liệu...')).toBeInTheDocument();
   });
 
-  it('hiển thị lỗi khi API thất bại', async () => {
+  it('ghi log lỗi khi API thất bại và không hiển thị hộp thông báo màu đỏ trong modal', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     api.get.mockRejectedValueOnce({
       response: { data: { message: 'Không tìm thấy ảnh trong dự án' } },
     });
@@ -60,8 +61,16 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Không tìm thấy ảnh trong dự án')).toBeInTheDocument();
+      expect(api.get).toHaveBeenCalled();
     });
+    expect(screen.queryByText('Không tìm thấy ảnh trong dự án')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('retry-metadata-btn')).not.toBeInTheDocument();
+    expect(screen.queryByText('Cần tải lại')).not.toBeInTheDocument();
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'Lỗi khi tải thông tin ảnh:',
+      expect.anything()
+    );
+    consoleSpy.mockRestore();
   });
 
   it('hiển thị toạ độ thô và link Google Maps khi người dùng có quyền photo.view_gps', async () => {
@@ -527,7 +536,7 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       expect(screen.getByTestId('photo-aspect-ratio')).toHaveTextContent('16:9');
     });
 
-    it('5 & 6. API lỗi hiển thị thông báo lỗi, nút Thử lại gọi API thật và cập nhật dữ liệu mới', async () => {
+    it('5 & 6. API lỗi không hiển thị hộp thông báo màu đỏ và nhãn Cần tải lại, khi tải lại hiển thị dữ liệu chuẩn', async () => {
       // Lần 1: API lỗi 500
       api.get.mockRejectedValueOnce({
         response: {
@@ -536,7 +545,7 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
         },
       });
 
-      render(
+      const { rerender } = render(
         <PhotoMetadataPanel
           projectId={1}
           photoId={305}
@@ -547,16 +556,17 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByTestId('retry-metadata-btn')).toBeInTheDocument();
+        expect(api.get).toHaveBeenCalled();
       });
-      // Tuyệt đối không hiển thị "Lỗi máy chủ" hoặc "Lỗi kiểm tra" trong modal Chi tiết ảnh
+      // Tuyệt đối không hiển thị "Lỗi máy chủ", "Lỗi kiểm tra", hộp đỏ và nhãn "Cần tải lại"
       expect(screen.queryByText('Lỗi máy chủ')).not.toBeInTheDocument();
       expect(screen.queryByText('Lỗi kiểm tra')).not.toBeInTheDocument();
-      expect(screen.getByText('Không thể tải thông tin tệp. Vui lòng bấm thử lại.')).toBeInTheDocument();
-      expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Cần tải lại');
-      const retryBtn = screen.getByTestId('retry-metadata-btn');
+      expect(screen.queryByText('Không thể tải thông tin tệp. Vui lòng bấm thử lại.')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('retry-metadata-btn')).not.toBeInTheDocument();
+      expect(screen.queryByText('Cần tải lại')).not.toBeInTheDocument();
+      expect(screen.getByTestId('close-x-btn')).toBeInTheDocument();
 
-      // Lần 2: Người dùng bấm "Thử lại", API trả về thành công
+      // Lần 2: Mở ảnh hợp lệ, API trả về thành công
       api.get.mockResolvedValueOnce({
         data: {
           file_name: 'recovered.jpg',
@@ -573,7 +583,15 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
         },
       });
 
-      fireEvent.click(retryBtn);
+      rerender(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={306}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
 
       await waitFor(() => {
         expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Dữ liệu đầy đủ');
@@ -813,10 +831,10 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       ).toBeInTheDocument();
     });
 
-    it('cho phép thử lại khi API lỗi bằng nút thử lại (retry)', async () => {
+    it('khi API lỗi, không hiển thị hộp thông báo màu đỏ và nhãn Cần tải lại, cập nhật dữ liệu khi đổi ảnh thành công', async () => {
       api.get.mockRejectedValueOnce(new Error('Mất kết nối máy chủ'));
 
-      render(
+      const { rerender } = render(
         <PhotoMetadataPanel
           projectId={1}
           photoId={205}
@@ -827,10 +845,13 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByTestId('retry-metadata-btn')).toBeInTheDocument();
+        expect(api.get).toHaveBeenCalled();
       });
 
-      // Lần thứ 2: API thành công
+      expect(screen.queryByTestId('retry-metadata-btn')).not.toBeInTheDocument();
+      expect(screen.queryByText('Cần tải lại')).not.toBeInTheDocument();
+
+      // Lần thứ 2: API thành công khi đổi ảnh
       api.get.mockResolvedValueOnce({
         data: {
           status: 'none',
@@ -844,7 +865,15 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
         },
       });
 
-      fireEvent.click(screen.getByTestId('retry-metadata-btn'));
+      rerender(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={2052}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
 
       await waitFor(() => {
         expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent(
@@ -872,19 +901,22 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByTestId('retry-metadata-btn')).toBeInTheDocument();
+        expect(api.get).toHaveBeenCalled();
       });
 
-      // Tuyệt đối không hiển thị "Lỗi máy chủ", "Lỗi kiểm tra" hay "Chưa có cấu hình tâm"
+      // Tuyệt đối không hiển thị "Lỗi máy chủ", "Lỗi kiểm tra", "Chưa có cấu hình tâm", "Cần tải lại", hay hộp đỏ
       expect(screen.queryByText('Lỗi máy chủ')).not.toBeInTheDocument();
       expect(screen.queryByText('Lỗi kiểm tra')).not.toBeInTheDocument();
       expect(screen.queryByText(/Chưa có cấu hình tâm/i)).not.toBeInTheDocument();
-      expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Cần tải lại');
+      expect(screen.queryByText('Cần tải lại')).not.toBeInTheDocument();
       expect(screen.queryByText('Không hợp lệ')).toBeNull();
-      expect(screen.getByTestId('retry-metadata-btn')).toBeInTheDocument();
+      expect(screen.queryByText('Dữ liệu đầy đủ')).toBeNull();
+      expect(screen.queryByTestId('retry-metadata-btn')).not.toBeInTheDocument();
+      expect(screen.getByTestId('close-x-btn')).toBeInTheDocument();
     });
 
-    it('hiển thị thông báo quyền hạn khi API trả về 403 với field error', async () => {
+    it('khi API trả về 403 ghi log lỗi và không hiển thị hộp thông báo màu đỏ trong modal', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       api.get.mockRejectedValueOnce({
         response: {
           status: 403,
@@ -903,8 +935,17 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByText('Bạn không có quyền truy cập dự án này')).toBeInTheDocument();
+        expect(api.get).toHaveBeenCalled();
       });
+
+      expect(screen.queryByText('Bạn không có quyền truy cập dự án này')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('retry-metadata-btn')).not.toBeInTheDocument();
+      expect(screen.queryByText('Cần tải lại')).not.toBeInTheDocument();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'Lỗi khi tải thông tin ảnh:',
+        expect.anything()
+      );
+      consoleSpy.mockRestore();
     });
   });
 
@@ -1103,13 +1144,14 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByTestId('retry-metadata-btn')).toBeInTheDocument();
+        expect(api.get).toHaveBeenCalled();
       });
 
-      // Tuyệt đối không hiển thị "Lỗi máy chủ" hoặc "Lỗi kiểm tra"
+      // Tuyệt đối không hiển thị "Lỗi máy chủ" hoặc "Lỗi kiểm tra", không hiển thị hộp đỏ và nhãn Cần tải lại
       expect(screen.queryByText('Lỗi máy chủ')).not.toBeInTheDocument();
       expect(screen.queryByText('Lỗi kiểm tra')).not.toBeInTheDocument();
-      expect(screen.getByText('Không thể tải thông tin tệp. Vui lòng bấm thử lại.')).toBeInTheDocument();
+      expect(screen.queryByText('Không thể tải thông tin tệp. Vui lòng bấm thử lại.')).not.toBeInTheDocument();
+      expect(screen.queryByText('Cần tải lại')).not.toBeInTheDocument();
 
       // Nút X và Đóng vẫn hoạt động hoàn toàn bình thường
       const closeX = screen.getByTestId('close-x-btn');
@@ -1326,7 +1368,7 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       expect(screen.getByText(/Đối chiếu nhật ký thi công/)).toBeInTheDocument();
     });
 
-    it('12. Nút "Thử lại" khi API kiểm tra thất bại: gọi lại hàm fetchMetadata', async () => {
+    it('12. khi API kiểm tra thất bại, không hiển thị hộp đỏ và Cần tải lại, tải lại thành công khi mở ảnh mới', async () => {
       api.get
         .mockRejectedValueOnce({
           response: { status: 500, data: { message: 'Lỗi kết nối máy chủ' } },
@@ -1335,11 +1377,12 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
           data: {
             file_name: 'retry_success.jpg',
             status: 'clean',
+            data_status: 'full_data',
             inspection: { status: 'clean' },
           },
         });
 
-      render(
+      const { rerender } = render(
         <PhotoMetadataPanel
           projectId={1}
           photoId={103}
@@ -1350,15 +1393,24 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByText('Lỗi kết nối máy chủ')).toBeInTheDocument();
+        expect(api.get).toHaveBeenCalledTimes(1);
       });
 
-      expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Cần tải lại');
+      expect(screen.queryByText('Lỗi kết nối máy chủ')).not.toBeInTheDocument();
+      expect(screen.queryByText('Cần tải lại')).not.toBeInTheDocument();
       expect(screen.queryByText('Lỗi kiểm tra')).not.toBeInTheDocument();
       expect(screen.queryByText('Lỗi máy chủ')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('retry-metadata-btn')).not.toBeInTheDocument();
 
-      const retryBtn = screen.getByTestId('retry-metadata-btn');
-      fireEvent.click(retryBtn);
+      rerender(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={104}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledTimes(2);
@@ -1772,13 +1824,13 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       expect(screen.getByText('Tệp ảnh bị hỏng hoặc không đọc được')).toBeInTheDocument();
     });
 
-    // 12. API lỗi, thử lại và tải lại dữ liệu.
-    it('12. API lỗi, thử lại và tải lại dữ liệu thành công', async () => {
+    // 12. API lỗi, không hiển thị hộp đỏ và nhãn Cần tải lại, tải lại dữ liệu khi đổi ảnh thành công
+    it('12. API lỗi, không hiển thị hộp đỏ và nhãn Cần tải lại, tải lại dữ liệu khi đổi ảnh thành công', async () => {
       api.get.mockRejectedValueOnce({
         response: { status: 500, data: { message: 'Lỗi máy chủ' } },
       });
 
-      render(
+      const { rerender } = render(
         <PhotoMetadataPanel
           projectId={1}
           photoId={712}
@@ -1789,8 +1841,10 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByTestId('retry-metadata-btn')).toBeInTheDocument();
+        expect(api.get).toHaveBeenCalled();
       });
+      expect(screen.queryByTestId('retry-metadata-btn')).not.toBeInTheDocument();
+      expect(screen.queryByText('Cần tải lại')).not.toBeInTheDocument();
 
       api.get.mockResolvedValueOnce({
         data: {
@@ -1800,7 +1854,15 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
         },
       });
 
-      fireEvent.click(screen.getByTestId('retry-metadata-btn'));
+      rerender(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={7122}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
 
       await waitFor(() => {
         expect(screen.getByText('success_reload.jpg')).toBeInTheDocument();
@@ -1824,13 +1886,15 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByTestId('retry-metadata-btn')).toBeInTheDocument();
+        expect(api.get).toHaveBeenCalled();
       });
 
       expect(screen.queryByText('Lỗi máy chủ')).not.toBeInTheDocument();
       expect(screen.queryByText('Lỗi kiểm tra')).not.toBeInTheDocument();
       expect(screen.queryByText(/Chưa có cấu hình tâm/i)).not.toBeInTheDocument();
       expect(screen.queryByText(/Đối chiếu phạm vi công trường/i)).not.toBeInTheDocument();
+      expect(screen.queryByTestId('retry-metadata-btn')).not.toBeInTheDocument();
+      expect(screen.queryByText('Cần tải lại')).not.toBeInTheDocument();
     });
 
     // 14. Đảm bảo lỗi kỹ thuật không bị hiểu nhầm thành dữ liệu đầy đủ.
@@ -1850,10 +1914,13 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByTestId('retry-metadata-btn')).toBeInTheDocument();
-        expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Cần tải lại');
+        expect(api.get).toHaveBeenCalled();
       });
-      expect(screen.getByTestId('inspection-status-badge')).not.toHaveTextContent('Dữ liệu đầy đủ');
+      expect(screen.queryByTestId('retry-metadata-btn')).not.toBeInTheDocument();
+      expect(screen.queryByText('Cần tải lại')).not.toBeInTheDocument();
+      expect(screen.queryByText('Dữ liệu đầy đủ')).not.toBeInTheDocument();
+      expect(screen.getByText('Chi tiết ảnh')).toBeInTheDocument();
+      expect(screen.getByTestId('close-x-btn')).toBeInTheDocument();
     });
 
     // 15. Đảm bảo các cảnh báo được hiển thị đúng cho người duyệt.
