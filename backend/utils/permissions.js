@@ -144,6 +144,12 @@ const PERMISSIONS = {
   // Ghi mục đầu ngày (nhân lực, thiết bị, thời tiết — route PUT /diary-days):
   // thay cho WRITE_ROLES, cố ý KHÔNG gồm doi_truong (giữ hành vi legacy).
   "site_log.create_daily": [KY_SU_GIAM_SAT, CHI_HUY_TRUONG, BAN_QUAN_LY],
+
+  // ── S-40 / T-106: Siêu dữ liệu ảnh hiện trường và quyền riêng tư vị trí ──
+  // Mọi thành viên dự án xem được thông tin thời điểm chụp và trạng thái GPS
+  "photo.view_metadata": ALL_MEMBERS,
+  // Bảo vệ vị trí người lao động: chỉ Chủ đầu tư và Ban quản lý được xem toạ độ thô
+  "photo.view_gps": [CHU_DAU_TU, BAN_QUAN_LY],
 };
 
 // Tên tiếng Việt hiển thị trong message 403.

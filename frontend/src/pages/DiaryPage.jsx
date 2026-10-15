@@ -11,6 +11,7 @@ import { resolveWorkItemId } from '../utils/diaryUtils';
 import DiaryWeekStrip from '../components/DiaryWeekStrip';
 import DiaryDayCard from '../components/DiaryDayCard';
 import DiaryConflictDialog from '../components/DiaryConflictDialog';
+import PhotoMetadataPanel from '../components/PhotoMetadataPanel';
 
 
 export default function DiaryPage({ user }) {
@@ -40,6 +41,7 @@ export default function DiaryPage({ user }) {
 
   const [conflicts, setConflicts] = useState([]);
   const [showConflictDialog, setShowConflictDialog] = useState(false);
+  const [selectedMetadataPhoto, setSelectedMetadataPhoto] = useState(null);
 
   const [projectRole, setProjectRole] = useState(null);
   const [isOnline, setIsOnline] = useState(
@@ -857,23 +859,21 @@ export default function DiaryPage({ user }) {
                         {entry.attachments.map((att) => {
                           const displayUrl = getAttachmentUrl(att.url);
                           return (
-                            <button
-                              type="button"
+                            <div
                               key={att.id}
-                              onClick={() => {
-                                if (displayUrl) {
-                                  window.open(displayUrl, '_blank');
-                                }
-                              }}
-                              className="relative group size-20 sm:size-24 rounded-xl overflow-hidden border border-gray-200 bg-gray-50 shadow-sm cursor-pointer hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              title={`Bấm để xem ảnh: ${att.file_name || att.fileName}`}
+                              className="relative group size-20 sm:size-24 rounded-xl overflow-hidden border border-gray-200 bg-gray-50 shadow-sm hover:border-blue-400"
                             >
                               <img
                                 src={displayUrl}
                                 alt={att.file_name || att.fileName}
                                 crossOrigin="use-credentials"
-                                className="size-full object-cover group-hover:scale-105 transition-transform"
+                                className="size-full object-cover cursor-pointer group-hover:scale-105 transition-transform"
                                 loading="lazy"
+                                onClick={() => {
+                                  if (displayUrl) {
+                                    window.open(displayUrl, '_blank');
+                                  }
+                                }}
                                 onError={(e) => {
                                   e.target.style.display = 'none';
                                   if (e.target.nextSibling) {
@@ -881,15 +881,28 @@ export default function DiaryPage({ user }) {
                                   }
                                 }}
                               />
-                            <div className="hidden size-full items-center justify-center bg-gray-100 text-gray-400 text-[10px] p-1 text-center font-medium">
-                              Lỗi tải ảnh
+                              <div className="hidden size-full items-center justify-center bg-gray-100 text-gray-400 text-[10px] p-1 text-center font-medium">
+                                Lỗi tải ảnh
+                              </div>
+                              {/* Nút xem thông tin ảnh hiện trường (S-40 / T-106) */}
+                              <button
+                                type="button"
+                                data-testid={`diary-photo-meta-btn-${att.id}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedMetadataPhoto({ id: att.id, kind: 'diary' });
+                                }}
+                                className="absolute top-1 right-1 bg-black/60 hover:bg-black/80 text-white rounded-full size-5 flex items-center justify-center text-[10px] font-bold shadow transition cursor-pointer"
+                                title="Xem thông tin ảnh (EXIF/GPS)"
+                              >
+                                ℹ
+                              </button>
+                              {att.isOffline && (
+                                <span className="absolute bottom-1 right-1 bg-black/60 backdrop-blur-xs text-white text-[9px] px-1 py-0.5 rounded font-medium">
+                                  Offline
+                                </span>
+                              )}
                             </div>
-                            {att.isOffline && (
-                              <span className="absolute bottom-1 right-1 bg-black/60 backdrop-blur-xs text-white text-[9px] px-1 py-0.5 rounded font-medium">
-                                Offline
-                              </span>
-                            )}
-                            </button>
                           );
                         })}
                       </div>
@@ -1013,6 +1026,15 @@ export default function DiaryPage({ user }) {
           fetchConflicts();
           fetchEntries();
         }}
+      />
+
+      {/* Panel xem siêu dữ liệu ảnh hiện trường (S-40 / T-106) */}
+      <PhotoMetadataPanel
+        projectId={projectId}
+        photoId={selectedMetadataPhoto?.id}
+        kind="diary"
+        isOpen={!!selectedMetadataPhoto}
+        onClose={() => setSelectedMetadataPhoto(null)}
       />
     </div>
   );

@@ -203,6 +203,8 @@ const contractQuantityRoutes = require("./routes/contractQuantityRoutes");
 app.use("/api/projects", contractQuantityRoutes);
 const acceptanceRoutes = require("./routes/acceptanceRoutes");
 app.use("/api/projects", acceptanceRoutes);
+const photoMetadataRoutes = require("./routes/photoMetadataRoutes");
+app.use("/api/projects", photoMetadataRoutes);
 
 // â”€â”€â”€ ERROR HANDLERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(notFoundHandler);

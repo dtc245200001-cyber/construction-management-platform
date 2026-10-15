@@ -12,6 +12,7 @@ const {
   validateUpdateDiaryEntry,
 } = require("../utils/diaryValidators");
 const { logAudit } = require("../utils/auditLogger");
+const { extractPhotoMetadata } = require("../services/photoMetadata");
 
 const router = createProjectRouter();
 const diaryImageUpload = multer({
@@ -917,12 +918,23 @@ router.post(
       }
     }
 
+    // Trích xuất EXIF và chuẩn hoá metadata ảnh hiện trường (S-40 / T-105)
+    // KHÔNG log toạ độ thô ra file log
+    const photoMeta = await extractPhotoMetadata(
+      req.file.buffer,
+      req.file.mimetype,
+      req.body
+    );
+
     const result = await db.query(
       `INSERT INTO diary_entry_attachments
-         (diary_entry_id, client_id, file_name, file_size, mime_type, file_data)
-       VALUES ($1, $2, $3, $4, $5, $6)
+         (diary_entry_id, client_id, file_name, file_size, mime_type, file_data,
+          captured_at, captured_at_source, gps_latitude, gps_longitude, gps_accuracy_m, metadata_status, metadata_source)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        ON CONFLICT (diary_entry_id, client_id) DO NOTHING
-       RETURNING id, file_name, file_size, mime_type, created_at`,
+       RETURNING id, file_name, file_size, mime_type, created_at,
+                 captured_at, captured_at_source, metadata_status, metadata_source,
+                 (gps_latitude IS NOT NULL) AS has_gps`,
       [
         entryId,
         clientId,
@@ -930,6 +942,13 @@ router.post(
         req.file.size,
         req.file.mimetype,
         req.file.buffer,
+        photoMeta.captured_at,
+        photoMeta.captured_at_source,
+        photoMeta.gps_latitude,
+        photoMeta.gps_longitude,
+        photoMeta.gps_accuracy_m,
+        photoMeta.metadata_status,
+        photoMeta.metadata_source,
       ]
     );
 
@@ -937,7 +956,9 @@ router.post(
       result.rows[0] ||
       (
         await db.query(
-          `SELECT id, file_name, file_size, mime_type, created_at
+          `SELECT id, file_name, file_size, mime_type, created_at,
+                  captured_at, captured_at_source, metadata_status, metadata_source,
+                  (gps_latitude IS NOT NULL) AS has_gps
            FROM diary_entry_attachments
            WHERE diary_entry_id = $1 AND client_id = $2`,
           [entryId, clientId]

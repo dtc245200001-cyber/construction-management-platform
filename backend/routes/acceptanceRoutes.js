@@ -30,6 +30,7 @@ const {
   computeVoucherItems,
   detectMimeFromBuffer,
 } = require("../utils/acceptanceHelpers");
+const { extractPhotoMetadata } = require("../services/photoMetadata");
 
 const router = createProjectRouter();
 
@@ -1250,27 +1251,13 @@ router.post(
       }
     }
 
-    // Trích xuất EXIF nếu có (giữ nguyên siêu dữ liệu gốc cho E-07)
+    // Trích xuất EXIF và chuẩn hoá metadata ảnh hiện trường (S-40 / T-105)
     // KHÔNG log toạ độ thô ra file log
-    let exifMetadata = null;
-    try {
-      // exif-parser là optional: nếu chưa cài thì bỏ qua, không chặn upload.
-      // Để cài: cd backend && npm install exif-parser
-      // eslint-disable-next-line
-      const ExifParser = require("exif-parser");
-      const parser = ExifParser.create(req.file.buffer);
-      parser.enableSimpleValues(true);
-      const exifResult = parser.parse();
-      if (exifResult && exifResult.tags) {
-        exifMetadata = {
-          // Lưu đầy đủ vào DB (E-07 sẽ đọc qua API)
-          tags: exifResult.tags,
-          imageSize: exifResult.imageSize,
-        };
-      }
-    } catch (_e) {
-      // exif-parser chưa cài hoặc EXIF parse thất bại — bỏ qua, không chặn upload
-    }
+    const photoMeta = await extractPhotoMetadata(
+      req.file.buffer,
+      detectedMime,
+      req.body
+    );
 
     const caption = req.body.caption
       ? String(req.body.caption).trim().slice(0, 500)
@@ -1278,18 +1265,28 @@ router.post(
 
     const insertRes = await db.query(
       `INSERT INTO acceptance_voucher_photos
-         (voucher_id, file_name, file_size, mime_type, file_data, exif_metadata, caption, uploaded_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING id, file_name, file_size, mime_type, caption, uploaded_by, created_at`,
+         (voucher_id, file_name, file_size, mime_type, file_data, exif_metadata, caption, uploaded_by,
+          captured_at, captured_at_source, gps_latitude, gps_longitude, gps_accuracy_m, metadata_status, metadata_source)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+       RETURNING id, file_name, file_size, mime_type, caption, uploaded_by, created_at,
+                 captured_at, captured_at_source, metadata_status, metadata_source,
+                 (gps_latitude IS NOT NULL) AS has_gps`,
       [
         voucherId,
         req.file.originalname,
         req.file.size,
         detectedMime,
         req.file.buffer,
-        exifMetadata ? JSON.stringify(exifMetadata) : null,
+        null,
         caption,
         req.user.id,
+        photoMeta.captured_at,
+        photoMeta.captured_at_source,
+        photoMeta.gps_latitude,
+        photoMeta.gps_longitude,
+        photoMeta.gps_accuracy_m,
+        photoMeta.metadata_status,
+        photoMeta.metadata_source,
       ]
     );
 
