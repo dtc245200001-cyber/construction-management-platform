@@ -90,4 +90,23 @@ describe("permissions matrix (phân quyền 6 vai trò)", () => {
       expect(can(ROLES.BAN_QUAN_LY, "quantity.report")).toBe(false);
     });
   });
+
+  describe("S-40: phân quyền siêu dữ liệu ảnh và quyền riêng tư vị trí GPS", () => {
+    test("mọi thành viên dự án (cả 6 role) đều được xem photo.view_metadata", () => {
+      for (const role of Object.values(ROLES)) {
+        expect(can(role, "photo.view_metadata")).toBe(true);
+      }
+    });
+
+    test("chỉ chu_dau_tu và ban_quan_ly được xem toạ độ thô (photo.view_gps)", () => {
+      expect(can(ROLES.CHU_DAU_TU, "photo.view_gps")).toBe(true);
+      expect(can(ROLES.BAN_QUAN_LY, "photo.view_gps")).toBe(true);
+
+      // Các vai trò khác không được xem toạ độ thô để bảo vệ vị trí người lao động
+      expect(can(ROLES.KY_SU_GIAM_SAT, "photo.view_gps")).toBe(false);
+      expect(can(ROLES.CHI_HUY_TRUONG, "photo.view_gps")).toBe(false);
+      expect(can(ROLES.DOI_TRUONG, "photo.view_gps")).toBe(false);
+      expect(can(ROLES.KE_TOAN, "photo.view_gps")).toBe(false);
+    });
+  });
 });

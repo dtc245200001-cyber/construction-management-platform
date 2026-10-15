@@ -38,6 +38,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from "../components/ui/dialog";
+import PhotoMetadataPanel from "../components/PhotoMetadataPanel";
+import { extractClientExif } from "../utils/imageCompressor";
 
 const ALLOWED_PHOTO_EXTS = [".jpg", ".jpeg", ".png", ".webp", ".heic"];
 const MAX_PHOTO_SIZE_MB = 10;
@@ -83,6 +85,7 @@ export default function AcceptancePage({ user }) {
   const [viewingVoucher, setViewingVoucher] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState(null);
+  const [selectedMetadataPhoto, setSelectedMetadataPhoto] = useState(null);
 
   // S-39: dialog lịch sử phiếu + dialog trả lại (reason)
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
@@ -229,7 +232,7 @@ export default function AcceptancePage({ user }) {
   };
 
   // Xử lý chọn ảnh đính kèm
-  const handlePhotoSelect = (e) => {
+  const handlePhotoSelect = async (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
@@ -245,11 +248,16 @@ export default function AcceptancePage({ user }) {
       }
 
       const previewUrl = URL.createObjectURL(file);
+      const exifData = await extractClientExif(file);
       newPhotos.push({
         file,
         previewUrl,
         caption: "",
         error,
+        exif_captured_at: exifData?.exif_captured_at,
+        exif_latitude: exifData?.exif_latitude,
+        exif_longitude: exifData?.exif_longitude,
+        exif_accuracy_m: exifData?.exif_accuracy_m,
       });
     }
 
@@ -387,6 +395,18 @@ export default function AcceptancePage({ user }) {
           formData.append("photo", photoItem.file);
           if (photoItem.caption) {
             formData.append("caption", photoItem.caption);
+          }
+          if (photoItem.exif_captured_at) {
+            formData.append("exif_captured_at", photoItem.exif_captured_at);
+          }
+          if (photoItem.exif_latitude !== undefined && photoItem.exif_latitude !== null) {
+            formData.append("exif_latitude", String(photoItem.exif_latitude));
+          }
+          if (photoItem.exif_longitude !== undefined && photoItem.exif_longitude !== null) {
+            formData.append("exif_longitude", String(photoItem.exif_longitude));
+          }
+          if (photoItem.exif_accuracy_m !== undefined && photoItem.exif_accuracy_m !== null) {
+            formData.append("exif_accuracy_m", String(photoItem.exif_accuracy_m));
           }
           await api.post(
             `/projects/${projectId}/acceptance-vouchers/${voucherId}/photos`,
@@ -1473,6 +1493,17 @@ export default function AcceptancePage({ user }) {
                               {photo.caption}
                             </p>
                           )}
+                          <button
+                            type="button"
+                            data-testid={`photo-meta-btn-${photo.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedMetadataPhoto({ id: photo.id, kind: "acceptance" });
+                            }}
+                            className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                          >
+                            ℹ️ Thông tin ảnh
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -1493,6 +1524,15 @@ export default function AcceptancePage({ user }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Panel xem siêu dữ liệu ảnh hiện trường (S-40 / T-106) */}
+      <PhotoMetadataPanel
+        projectId={projectId}
+        photoId={selectedMetadataPhoto?.id}
+        kind="acceptance"
+        isOpen={!!selectedMetadataPhoto}
+        onClose={() => setSelectedMetadataPhoto(null)}
+      />
 
       {/* ── DIALOG: XÁC NHẬN DUYỆT PHIẾU ── */}
       <Dialog

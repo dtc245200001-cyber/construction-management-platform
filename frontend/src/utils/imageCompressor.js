@@ -4,6 +4,8 @@
  * Tuân thủ nghiêm ngặt giới hạn MAX_COMPRESSED_IMAGE_BYTES = 1_048_576 bytes.
  */
 
+import exifr from "exifr";
+
 export const MAX_COMPRESSED_IMAGE_BYTES = 1_048_576; // 1 MB (1.048.576 bytes)
 export const ALLOWED_MIME_TYPES = [
   "image/jpeg",
@@ -14,6 +16,99 @@ export const ALLOWED_MIME_TYPES = [
 
 const INITIAL_MAX_DIMENSION = 1920;
 const MAX_COMPRESSION_ATTEMPTS = 6;
+
+/**
+ * Trích xuất siêu dữ liệu EXIF/GPS từ file ảnh gốc tại client trước khi nén (Story S-40 / T-106)
+ * @param {File|Blob} file
+ * @returns {Promise<{ exif_captured_at: string|null, exif_latitude: number|null, exif_longitude: number|null, exif_accuracy_m: number|null }|null>}
+ */
+export async function extractClientExif(file) {
+  if (!file) return null;
+  try {
+    const parsed = await exifr.parse(file, {
+      pick: [
+        "DateTimeOriginal",
+        "OffsetTimeOriginal",
+        "GPSLatitude",
+        "GPSLongitude",
+        "GPSLatitudeRef",
+        "GPSLongitudeRef",
+        "GPSHPositioningError",
+      ],
+      tiff: true,
+      xmp: true,
+      exif: true,
+      gps: true,
+      silentErrors: true,
+    });
+
+    if (!parsed) return null;
+
+    let capturedAt = null;
+    if (parsed.DateTimeOriginal) {
+      if (parsed.DateTimeOriginal instanceof Date && !isNaN(parsed.DateTimeOriginal.getTime())) {
+        capturedAt = parsed.DateTimeOriginal.toISOString();
+      } else if (typeof parsed.DateTimeOriginal === "string") {
+        const raw = parsed.DateTimeOriginal.trim();
+        const match = raw.match(
+          /^(\d{4})[:-](\d{2})[:-](\d{2})[T ](\d{2}):(\d{2}):(\d{2})/
+        );
+        if (match) {
+          const isoStr = `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}+07:00`;
+          const d = new Date(isoStr);
+          if (!isNaN(d.getTime())) capturedAt = d.toISOString();
+        }
+      }
+    }
+
+    let lat = null;
+    let lon = null;
+    if (typeof parsed.latitude === "number") {
+      lat = parsed.latitude;
+    } else if (typeof parsed.GPSLatitude === "number") {
+      lat = parsed.GPSLatitude;
+      if (parsed.GPSLatitudeRef === "S" && lat > 0) lat = -lat;
+    }
+
+    if (typeof parsed.longitude === "number") {
+      lon = parsed.longitude;
+    } else if (typeof parsed.GPSLongitude === "number") {
+      lon = parsed.GPSLongitude;
+      if (parsed.GPSLongitudeRef === "W" && lon > 0) lon = -lon;
+    }
+
+    if (lat !== null && lon !== null) {
+      if (Math.abs(lat) < 1e-7 && Math.abs(lon) < 1e-7) {
+        lat = null;
+        lon = null;
+      } else if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+        lat = null;
+        lon = null;
+      } else {
+        lat = Number(lat.toFixed(6));
+        lon = Number(lon.toFixed(6));
+      }
+    } else {
+      lat = null;
+      lon = null;
+    }
+
+    let acc = null;
+    if (parsed.GPSHPositioningError && !isNaN(parsed.GPSHPositioningError)) {
+      const a = Number(parsed.GPSHPositioningError);
+      if (a > 0 && a <= 10000) acc = Number(a.toFixed(2));
+    }
+
+    return {
+      exif_captured_at: capturedAt,
+      exif_latitude: lat,
+      exif_longitude: lon,
+      exif_accuracy_m: acc,
+    };
+  } catch (_e) {
+    return null;
+  }
+}
 
 /**
  * Kiểm tra xem kích thước file có nhỏ hơn giới hạn 1 MB hay không
@@ -71,6 +166,9 @@ export async function compressImage(file, options = {}) {
     );
   }
 
+  // Trích xuất siêu dữ liệu EXIF/GPS của ảnh gốc trước khi nén qua canvas (Story S-40 / T-106)
+  const exifMetadata = await extractClientExif(file);
+
   // 2. Xử lý ảnh GIF (ảnh động không nén qua canvas để tránh mất animation)
   if (file.type === "image/gif") {
     if (file.size >= maxSizeBytes) {
@@ -85,6 +183,11 @@ export async function compressImage(file, options = {}) {
       compressedSize: file.size,
       compressionRatio: 0,
       previewUrl,
+      metadata: exifMetadata,
+      exif_captured_at: exifMetadata?.exif_captured_at,
+      exif_latitude: exifMetadata?.exif_latitude,
+      exif_longitude: exifMetadata?.exif_longitude,
+      exif_accuracy_m: exifMetadata?.exif_accuracy_m,
     };
   }
 
@@ -199,6 +302,14 @@ export async function compressImage(file, options = {}) {
             lastModified: Date.now(),
           });
 
+          if (exifMetadata) {
+            compressedFile.exif_captured_at = exifMetadata.exif_captured_at;
+            compressedFile.exif_latitude = exifMetadata.exif_latitude;
+            compressedFile.exif_longitude = exifMetadata.exif_longitude;
+            compressedFile.exif_accuracy_m = exifMetadata.exif_accuracy_m;
+            compressedFile.metadata = exifMetadata;
+          }
+
           const originalSize = file.size;
           const compressedSize = compressedFile.size;
           const compressionRatio =
@@ -219,6 +330,11 @@ export async function compressImage(file, options = {}) {
             compressedSize,
             compressionRatio,
             previewUrl,
+            metadata: exifMetadata,
+            exif_captured_at: exifMetadata?.exif_captured_at,
+            exif_latitude: exifMetadata?.exif_latitude,
+            exif_longitude: exifMetadata?.exif_longitude,
+            exif_accuracy_m: exifMetadata?.exif_accuracy_m,
           });
         } catch (err) {
           reject(err);
@@ -239,7 +355,7 @@ export async function compressImage(file, options = {}) {
  *
  * @param {FileList|File[]} files
  * @param {number} [maxCount=10]
- * @returns {Promise<Array<{ id: string, name: string, file: File|null, originalSize: number, compressedSize: number, compressionRatio: number, previewUrl: string|null, error: string|null, status: 'ready'|'error' }>>}
+ * @returns {Promise<Array<{ id: string, name: string, file: File|null, originalSize: number, compressedSize: number, compressionRatio: number, previewUrl: string|null, error: string|null, status: 'ready'|'error', metadata?: Object }>>}
  */
 export async function processAndCompressImages(files, maxCount = 10) {
   const fileArray = Array.from(files || []).slice(0, maxCount);
@@ -259,6 +375,11 @@ export async function processAndCompressImages(files, maxCount = 10) {
         compressedSize: result.compressedSize,
         compressionRatio: result.compressionRatio,
         previewUrl: result.previewUrl,
+        metadata: result.metadata,
+        exif_captured_at: result.exif_captured_at,
+        exif_latitude: result.exif_latitude,
+        exif_longitude: result.exif_longitude,
+        exif_accuracy_m: result.exif_accuracy_m,
         error: null,
         status: "ready",
       });

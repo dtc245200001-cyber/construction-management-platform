@@ -129,6 +129,20 @@ async function uploadDiaryAttachment(projectId, serverId, attachment) {
   );
   formData.append("client_id", attachment.id);
 
+  // Đính kèm metadata EXIF nếu có (S-40 / T-105 / T-106)
+  if (attachment.exif_captured_at) {
+    formData.append("exif_captured_at", attachment.exif_captured_at);
+  }
+  if (attachment.exif_latitude !== undefined && attachment.exif_latitude !== null) {
+    formData.append("exif_latitude", String(attachment.exif_latitude));
+  }
+  if (attachment.exif_longitude !== undefined && attachment.exif_longitude !== null) {
+    formData.append("exif_longitude", String(attachment.exif_longitude));
+  }
+  if (attachment.exif_accuracy_m !== undefined && attachment.exif_accuracy_m !== null) {
+    formData.append("exif_accuracy_m", String(attachment.exif_accuracy_m));
+  }
+
   const response = await withRetry(() =>
     api.post(
       `/projects/${projectId}/diary-entries/${serverId}/attachments`,
