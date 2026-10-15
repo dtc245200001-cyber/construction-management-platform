@@ -81,7 +81,7 @@ router.get(
                dea.created_at AS uploaded_at,
                de.created_at AS entry_created_at,
                de.entry_date,
-               u.full_name AS uploaded_by_name,
+               u.name AS uploaded_by_name,
                CONCAT('/api/projects/', $2::text, '/diary/attachments/', dea.id) AS url
         FROM diary_entry_attachments dea
         JOIN diary_entries de ON dea.diary_entry_id = de.id
@@ -100,7 +100,7 @@ router.get(
                av.created_at AS voucher_created_at,
                av.batch_name,
                av.id AS voucher_id,
-               u.full_name AS uploaded_by_name,
+               u.name AS uploaded_by_name,
                CONCAT('/api/projects/', $2::text, '/acceptance-vouchers/', avp.voucher_id, '/photos/', avp.id) AS url
         FROM acceptance_voucher_photos avp
         JOIN acceptance_vouchers av ON avp.voucher_id = av.id

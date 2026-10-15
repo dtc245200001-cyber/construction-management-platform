@@ -337,5 +337,58 @@ describe("photoMetadataRoutes Unit Tests (S-40 / T-106)", () => {
       expect(res.body.inspection).toBeDefined();
       expect(res.body.inspection.status).toBe("incomplete_data");
     });
+
+    test("Đảm bảo câu truy vấn SQL dùng u.name và KHÔNG dùng u.full_name gây lỗi PostgreSQL", async () => {
+      mockCurrentProjectRole = "ban_quan_ly";
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 401,
+            voucher_id: 10,
+            file_name: "test-query.jpg",
+            uploaded_by_name: "Nguyễn Văn B",
+            metadata_status: "complete",
+          },
+        ],
+      });
+
+      await request(app).get("/api/projects/1/photo-metadata/acceptance/401");
+      const executedSql = mockQuery.mock.calls[0][0];
+      expect(executedSql).toContain("u.name AS uploaded_by_name");
+      expect(executedSql).not.toContain("u.full_name");
+    });
+
+    test("Hỗ trợ ảnh WebP (như download.webp) và trả về cấu trúc thống nhất", async () => {
+      mockCurrentProjectRole = "ban_quan_ly";
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 402,
+            voucher_id: 10,
+            file_name: "download.webp",
+            file_size: 102400,
+            mime_type: "image/webp",
+            metadata_status: "none",
+            metadata_source: "file",
+            uploaded_by_name: "Kỹ sư WebP",
+            exif_metadata: {
+              status: "clean",
+              metadata: {
+                width: 1920,
+                height: 1080,
+                aspect_ratio: "16:9",
+              },
+            },
+          },
+        ],
+      });
+
+      const res = await request(app).get("/api/projects/1/photo-metadata/acceptance/402");
+      expect(res.status).toBe(200);
+      expect(res.body.file_name).toBe("download.webp");
+      expect(res.body.mime_type).toBe("image/webp");
+      expect(res.body.inspection.metadata.width).toBe(1920);
+      expect(res.body.inspection.metadata.height).toBe(1080);
+    });
   });
 });

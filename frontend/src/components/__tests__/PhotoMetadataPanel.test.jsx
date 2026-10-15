@@ -1,7 +1,7 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
-import PhotoMetadataPanel from '../PhotoMetadataPanel';
+import PhotoMetadataPanel, { gcd, calculateAspectRatio } from '../PhotoMetadataPanel';
 import api from '../../lib/api';
 
 vi.mock('../../lib/api', () => ({
@@ -210,8 +210,8 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
     expect(mockOnClose).toHaveBeenCalledTimes(1);
   });
 
-  describe('Đánh giá phạm vi công trường (S-41 / T-108)', () => {
-    it('hiển thị badge Trong phạm vi công trường khi status = inside', async () => {
+  describe('Xóa hộp Đối chiếu phạm vi công trường (Yêu cầu 3 & Tiêu chuẩn 10)', () => {
+    it('không hiển thị hộp Đối chiếu phạm vi công trường kể cả khi status = inside', async () => {
       api.get.mockResolvedValueOnce({
         data: {
           status: 'complete',
@@ -235,14 +235,15 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByTestId('geofence-status-inside')).toHaveTextContent(
-          'Trong phạm vi công trường'
-        );
+        expect(screen.getByText('Chi tiết ảnh')).toBeInTheDocument();
       });
-      expect(screen.getByText(/cách tâm 89,2 m/i)).toBeInTheDocument();
+      expect(screen.queryByTestId('geofence-evaluation-section')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('geofence-status-inside')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Đối chiếu phạm vi công trường/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Trong phạm vi công trường/i)).not.toBeInTheDocument();
     });
 
-    it('hiển thị cảnh báo Ngoài phạm vi công trường khi status = outside', async () => {
+    it('không hiển thị hộp Đối chiếu phạm vi công trường khi status = outside', async () => {
       api.get.mockResolvedValueOnce({
         data: {
           status: 'complete',
@@ -266,19 +267,19 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByTestId('geofence-status-outside')).toHaveTextContent(
-          'Ngoài phạm vi công trường'
-        );
+        expect(screen.getByText('Chi tiết ảnh')).toBeInTheDocument();
       });
-      expect(screen.getByText(/cách tâm 133,4 m/i)).toBeInTheDocument();
-      expect(screen.getByText(/Ảnh được chụp ngoài bán kính công trường quy định/i)).toBeInTheDocument();
+      expect(screen.queryByTestId('geofence-evaluation-section')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('geofence-status-outside')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Đối chiếu phạm vi công trường/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Ngoài phạm vi công trường/i)).not.toBeInTheDocument();
     });
 
-    it('hiển thị thông báo khi dự án chưa cấu hình phạm vi', async () => {
+    it('không hiển thị hộp kể cả khi dự án chưa cấu hình phạm vi hoặc ảnh không có GPS', async () => {
       api.get.mockResolvedValueOnce({
         data: {
-          status: 'complete',
-          has_gps: true,
+          status: 'none',
+          has_gps: false,
           geofence: {
             status: 'no_site_config',
             distance_m: null,
@@ -297,10 +298,283 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       );
 
       await waitFor(() => {
-        expect(
-          screen.getByText('Dự án chưa cấu hình toạ độ tâm và bán kính công trường')
-        ).toBeInTheDocument();
+        expect(screen.getByText('Chi tiết ảnh')).toBeInTheDocument();
       });
+      expect(screen.queryByTestId('geofence-evaluation-section')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Đối chiếu phạm vi công trường/i)).not.toBeInTheDocument();
+      expect(screen.queryByText('Dự án chưa cấu hình toạ độ tâm và bán kính công trường')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Thay Kích thước tệp bằng Tỷ lệ khung hình (Yêu cầu 2 & Tiêu chuẩn 7, 8)', () => {
+    it('hàm calculateAspectRatio rút gọn chính xác tỷ lệ bằng GCD: 4:3, 16:9, 1:1, 8:5', () => {
+      // 2880 × 2160 -> 4:3
+      expect(calculateAspectRatio(2880, 2160)).toBe('4:3');
+      // 1920 × 1080 -> 16:9
+      expect(calculateAspectRatio(1920, 1080)).toBe('16:9');
+      // 1080 × 1080 -> 1:1
+      expect(calculateAspectRatio(1080, 1080)).toBe('1:1');
+      // 2880 × 1800 -> 8:5
+      expect(calculateAspectRatio(2880, 1800)).toBe('8:5');
+      // Ảnh dọc: 1080 × 1920 -> 9:16
+      expect(calculateAspectRatio(1080, 1920)).toBe('9:16');
+      // Ảnh dọc: 2160 × 2880 -> 3:4
+      expect(calculateAspectRatio(2160, 2880)).toBe('3:4');
+    });
+
+    it('hàm calculateAspectRatio trả về "Không có dữ liệu" khi thiếu hoặc sai kích thước', () => {
+      expect(calculateAspectRatio(null, null)).toBe('Không có dữ liệu');
+      expect(calculateAspectRatio(0, 1080)).toBe('Không có dữ liệu');
+      expect(calculateAspectRatio(1920, 0)).toBe('Không có dữ liệu');
+      expect(calculateAspectRatio(-1920, 1080)).toBe('Không có dữ liệu');
+      expect(calculateAspectRatio(undefined, undefined)).toBe('Không có dữ liệu');
+    });
+
+    it('giao diện hiển thị Tỷ lệ khung hình và KHÔNG còn dòng Kích thước tệp', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'evidence-4x3.jpg',
+          file_size: 2450000,
+          mime_type: 'image/jpeg',
+          status: 'complete',
+          inspection: {
+            metadata: {
+              width: 2880,
+              height: 2160,
+            },
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={201}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('photo-aspect-ratio')).toHaveTextContent('4:3');
+      });
+      expect(screen.getByTestId('photo-resolution')).toHaveTextContent('2880 × 2160 px');
+      // Tuyệt đối không hiển thị dòng Kích thước tệp
+      expect(screen.queryByText('Kích thước tệp')).not.toBeInTheDocument();
+    });
+
+    it('giao diện hiển thị "Không có dữ liệu" khi không đọc được kích thước ảnh', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'no-dimension.png',
+          file_size: 512000,
+          mime_type: 'image/png',
+          status: 'none',
+          inspection: {
+            metadata: {},
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={202}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('photo-aspect-ratio')).toHaveTextContent('Không có dữ liệu');
+      });
+      expect(screen.getByTestId('photo-resolution')).toHaveTextContent('Không có dữ liệu');
+      expect(screen.queryByText('Kích thước tệp')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Hỗ trợ các định dạng ảnh và xử lý lỗi / thử lại (Yêu cầu 1 & Tiêu chuẩn 1-6)', () => {
+    it('1. Ảnh PNG có metadata: hiển thị đúng định dạng và tỷ lệ', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'site-plan.png',
+          mime_type: 'image/png',
+          status: 'complete',
+          inspection: {
+            status: 'clean',
+            metadata: {
+              width: 1920,
+              height: 1080,
+            },
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={301}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('PNG')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('photo-aspect-ratio')).toHaveTextContent('16:9');
+    });
+
+    it('2. Ảnh PNG không có EXIF: hiển thị "Không đủ dữ liệu", KHÔNG coi là lỗi máy chủ', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'screenshot-clean.png',
+          mime_type: 'image/png',
+          status: 'none',
+          inspection: {
+            status: 'incomplete_data',
+            metadata: {
+              width: 1080,
+              height: 1080,
+            },
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={302}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Không đủ dữ liệu');
+      });
+      expect(screen.queryByText('Lỗi máy chủ')).not.toBeInTheDocument();
+      expect(screen.queryByText('Lỗi kiểm tra')).not.toBeInTheDocument();
+      expect(screen.getByTestId('photo-aspect-ratio')).toHaveTextContent('1:1');
+    });
+
+    it('3. Ảnh JPEG: hiển thị đầy đủ thông tin tệp và tỷ lệ 8:5', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'photo-field.jpg',
+          mime_type: 'image/jpeg',
+          status: 'complete',
+          inspection: {
+            status: 'clean',
+            metadata: {
+              width: 2880,
+              height: 1800,
+            },
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={303}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('JPEG')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('photo-aspect-ratio')).toHaveTextContent('8:5');
+    });
+
+    it('4. Ảnh WebP như download.webp: hiển thị định dạng WebP và tỷ lệ', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'download.webp',
+          mime_type: 'image/webp',
+          status: 'complete',
+          inspection: {
+            status: 'clean',
+            metadata: {
+              width: 1920,
+              height: 1080,
+            },
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={304}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('WebP')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('photo-aspect-ratio')).toHaveTextContent('16:9');
+    });
+
+    it('5 & 6. API lỗi hiển thị thông báo lỗi, nút Thử lại gọi API thật và cập nhật dữ liệu mới', async () => {
+      // Lần 1: API lỗi 500
+      api.get.mockRejectedValueOnce({
+        response: {
+          status: 500,
+          data: { message: 'Lỗi máy chủ' },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={305}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Lỗi kiểm tra');
+      });
+      expect(screen.getByText('Lỗi máy chủ')).toBeInTheDocument();
+      const retryBtn = screen.getByTestId('retry-metadata-btn');
+      expect(retryBtn).toBeInTheDocument();
+
+      // Lần 2: Người dùng bấm "Thử lại", API trả về thành công
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'recovered.jpg',
+          mime_type: 'image/jpeg',
+          status: 'complete',
+          inspection: {
+            status: 'clean',
+            metadata: {
+              width: 2880,
+              height: 2160,
+            },
+          },
+        },
+      });
+
+      fireEvent.click(retryBtn);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Hợp lệ');
+      });
+      expect(screen.queryByText('Lỗi máy chủ')).not.toBeInTheDocument();
+      expect(screen.getByTestId('photo-aspect-ratio')).toHaveTextContent('4:3');
     });
   });
 
@@ -894,7 +1168,7 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       expect(screen.getByText('Chi tiết ảnh')).toBeInTheDocument();
       expect(screen.getByText('Thông tin tệp')).toBeInTheDocument();
       expect(screen.getByText('Metadata EXIF')).toBeInTheDocument();
-      expect(screen.getByText(/Đối chiếu phạm vi công trường/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Đối chiếu phạm vi công trường/i)).not.toBeInTheDocument();
       expect(screen.getByText(/Chi tiết cảnh báo cần xác minh/i)).toBeInTheDocument();
       expect(screen.getByText('Nghi vấn ảnh chụp lại màn hình')).toBeInTheDocument();
       expect(screen.getByTestId('close-panel-btn')).toBeInTheDocument();
