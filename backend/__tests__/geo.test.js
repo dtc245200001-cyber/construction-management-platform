@@ -149,6 +149,7 @@ describe('Geo utility & Haversine formula (Story S-41 / T-107 & T-108)', () => {
       });
       expect(r1.status).toBe('no_site_config');
       expect(r1.distance_m).toBeNull();
+      expect(r1.basis).toBeNull();
 
       const r2 = evaluateGeofence({
         photo: { latitude: 20.845, longitude: 106.688 },
@@ -161,6 +162,43 @@ describe('Geo utility & Haversine formula (Story S-41 / T-107 & T-108)', () => {
         site: { site_latitude: null, site_longitude: null, site_radius_m: null },
       });
       expect(r3.status).toBe('no_site_config');
+    });
+
+    test('Hardening S-41: Client reported cố định dung sai 30m, BỎ QUA accuracy_m = 500', () => {
+      // Bán kính site = 100m. Khoảng cách = 140m.
+      // Nếu tin accuracy 500m -> threshold = 600m -> inside (SAI / lỗ hổng)
+      // Khi cố định 30m -> threshold = 130m -> outside (ĐÚNG)
+      const res = evaluateGeofence({
+        photo: {
+          latitude: 20.84626, // cách 20.845 khoảng 140m
+          longitude: 106.688,
+          accuracy_m: 500,
+          gps_source: 'client_reported',
+        },
+        site: SITE_HP,
+      });
+
+      expect(res.basis).toBe('client_reported');
+      expect(res.tolerance_m).toBe(30);
+      expect(res.threshold_m).toBe(130);
+      expect(res.status).toBe('outside');
+    });
+
+    test('Hardening S-41: File EXIF áp dụng accuracy lấy từ EXIF kẹp [30m, 500m]', () => {
+      const res = evaluateGeofence({
+        photo: {
+          latitude: 20.845,
+          longitude: 106.688,
+          accuracy_m: 80,
+          gps_source: 'file_exif',
+        },
+        site: SITE_HP,
+      });
+
+      expect(res.basis).toBe('file_exif');
+      expect(res.tolerance_m).toBe(80);
+      expect(res.threshold_m).toBe(180);
+      expect(res.status).toBe('inside');
     });
   });
 });

@@ -301,5 +301,86 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
         ).toBeInTheDocument();
       });
     });
+
+    it('Hardening: hiển thị nguồn toạ độ bằng chữ từ ảnh gốc', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          status: 'complete',
+          has_gps: true,
+          gps_source: 'file_exif',
+          geofence: { status: 'inside', distance_m: 50, basis: 'file_exif' },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={104}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('gps-source-text')).toHaveTextContent('Toạ độ từ ảnh gốc');
+      });
+      expect(screen.getByTestId('geofence-status-inside')).toHaveTextContent('Trong phạm vi công trường');
+    });
+
+    it('Hardening: hiển thị nguồn toạ độ client báo và nhãn chưa xác thực', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          status: 'complete',
+          has_gps: true,
+          gps_source: 'client_reported',
+          geofence: { status: 'inside', distance_m: 50, basis: 'client_reported' },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={105}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('gps-source-text')).toHaveTextContent(
+          'Toạ độ do thiết bị báo, chưa xác thực từ ảnh gốc'
+        );
+      });
+      expect(screen.getByTestId('geofence-status-inside')).toHaveTextContent(
+        'Trong phạm vi (chưa xác thực)'
+      );
+      expect(screen.getByText('Toạ độ do thiết bị báo, chưa xác thực từ ảnh gốc.')).toBeInTheDocument();
+    });
+
+    it('Hardening: ảnh thiếu metadata hiện thông báo Không có dữ liệu', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          status: 'none',
+          status_label: 'Ảnh không có siêu dữ liệu gốc',
+          has_gps: false,
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={106}
+          kind="diary"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Không có dữ liệu/i)).toBeInTheDocument();
+      });
+    });
   });
 });
