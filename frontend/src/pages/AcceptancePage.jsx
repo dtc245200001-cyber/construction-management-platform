@@ -496,7 +496,11 @@ export default function AcceptancePage({ user }) {
   const handleApprove = (voucher) => {
     if (!canApprove || actionLoading) return;
     setApproveError("");
-    setApproveTarget(voucher);
+    const targetWithFlags =
+      viewingVoucher?.voucher?.id === voucher.id && viewingVoucher?.photo_flags
+        ? { ...voucher, photo_flags: viewingVoucher.photo_flags }
+        : voucher;
+    setApproveTarget(targetWithFlags);
     setApproveDialogOpen(true);
   };
 
@@ -1407,6 +1411,24 @@ export default function AcceptancePage({ user }) {
                 </div>
               )}
 
+              {/* Cảnh báo dấu hiệu bất thường của ảnh hiện trường (Story S-42 / T-109 / T-110) */}
+              {viewingVoucher.photo_flags?.anomalies_count > 0 && (
+                <div
+                  data-testid="evidence-anomaly-banner"
+                  className="p-3 bg-orange-50 border border-orange-200 rounded-lg flex items-start gap-2.5 text-orange-950 text-xs"
+                >
+                  <AlertTriangle className="h-4 w-4 text-orange-600 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-semibold text-orange-950">
+                      Cảnh báo dấu hiệu bất thường bằng chứng ảnh ({viewingVoucher.photo_flags.anomalies_count} ảnh cần xác minh)
+                    </div>
+                    <p className="mt-0.5 text-orange-800">
+                      Phát hiện {viewingVoucher.photo_flags.anomalies_count} ảnh có dấu hiệu nghi vấn (tỷ lệ chụp màn hình hoặc sai lệch thời gian chụp so với đợt nghiệm thu). Đây là khuyến nghị kỹ thuật để kiểm tra thực tế, không tự động chặn quy trình duyệt phiếu.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Bảng chi tiết hạng mục */}
               <div className="space-y-2">
                 <h4 className="font-semibold text-slate-800 text-sm">
@@ -1546,6 +1568,43 @@ export default function AcceptancePage({ user }) {
                             </div>
                           )}
 
+                          {/* Nhãn kiểm tra quy tắc bằng chứng (Story S-42 / T-110) */}
+                          {(photo.inspection?.status === "warning" || photo.inspection_status === "warning") && (
+                            <div
+                              data-testid={`evidence-badge-${photo.id}`}
+                              className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-300"
+                              title={photo.inspection?.warnings?.map((w) => w.title).join("; ") || "Có dấu hiệu nghi vấn"}
+                            >
+                              ⚠️ {photo.inspection?.warnings?.length > 1
+                                ? `${photo.inspection.warnings.length} dấu hiệu nghi vấn`
+                                : photo.inspection?.warnings?.[0]?.title || "Có dấu hiệu nghi vấn"}
+                            </div>
+                          )}
+                          {(photo.inspection?.status === "clean" || photo.inspection_status === "clean") && (
+                            <div
+                              data-testid={`evidence-badge-${photo.id}`}
+                              className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-800 border border-emerald-200"
+                            >
+                              ✓ Bằng chứng bình thường
+                            </div>
+                          )}
+                          {(photo.inspection?.status === "incomplete_data" || photo.inspection_status === "incomplete_data") && (
+                            <div
+                              data-testid={`evidence-badge-${photo.id}`}
+                              className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-slate-600 bg-slate-100 border border-slate-200"
+                            >
+                              ℹ️ Dữ liệu không đầy đủ
+                            </div>
+                          )}
+                          {(photo.inspection?.status === "error" || photo.inspection_status === "error") && (
+                            <div
+                              data-testid={`evidence-badge-${photo.id}`}
+                              className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-100 text-rose-800 border border-rose-200"
+                            >
+                              ❌ Lỗi kiểm tra tệp
+                            </div>
+                          )}
+
                           <button
                             type="button"
                             data-testid={`photo-meta-btn-${photo.id}`}
@@ -1616,6 +1675,22 @@ export default function AcceptancePage({ user }) {
               </span>
               .
             </div>
+
+            {/* Cảnh báo nhắc nhở nếu phiếu có ảnh có dấu hiệu bất thường (Story S-42 / T-110) */}
+            {approveTarget?.photo_flags?.anomalies_count > 0 && (
+              <div
+                data-testid="approve-evidence-warning"
+                className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 flex items-start gap-2"
+              >
+                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold block">Lưu ý kiểm tra bằng chứng hiện trường:</span>
+                  <span>
+                    Phiếu này có {approveTarget.photo_flags.anomalies_count} ảnh có dấu hiệu cần xác minh (chụp màn hình hoặc sai lệch thời gian). Vui lòng đảm bảo đã đối chiếu thực tế trước khi xác nhận duyệt.
+                  </span>
+                </div>
+              </div>
+            )}
             <p className="text-sm text-slate-600">
               Sau khi duyệt, phiếu chuyển sang trạng thái <strong>Đã duyệt</strong> và
               không còn được chỉnh sửa như phiếu nháp.

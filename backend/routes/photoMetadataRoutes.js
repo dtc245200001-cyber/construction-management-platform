@@ -23,6 +23,7 @@ const {
 const asyncHandler = require("../utils/asyncHandler");
 const { parsePositiveInt } = require("../utils/validators");
 const { can } = require("../utils/permissions");
+const { inspectVoucherPhotoRecord } = require("../services/photoInspection");
 
 const router = createProjectRouter();
 
@@ -69,20 +70,25 @@ router.get(
     let query = "";
     if (kind === "diary") {
       query = `
-        SELECT dea.id, dea.captured_at, dea.captured_at_source,
+        SELECT dea.id, dea.file_name, dea.file_size, dea.mime_type,
+               dea.captured_at, dea.captured_at_source,
                dea.gps_latitude, dea.gps_longitude, dea.gps_accuracy_m,
                dea.metadata_status, dea.metadata_source,
-               dea.geofence_status, dea.geofence_distance_m, dea.geofence_checked_at
+               dea.geofence_status, dea.geofence_distance_m, dea.geofence_checked_at,
+               de.created_at AS entry_created_at
         FROM diary_entry_attachments dea
         JOIN diary_entries de ON dea.diary_entry_id = de.id
         WHERE dea.id = $1 AND de.project_id = $2
       `;
     } else {
       query = `
-        SELECT avp.id, avp.captured_at, avp.captured_at_source,
+        SELECT avp.id, avp.file_name, avp.file_size, avp.mime_type,
+               avp.captured_at, avp.captured_at_source,
                avp.gps_latitude, avp.gps_longitude, avp.gps_accuracy_m,
                avp.metadata_status, avp.metadata_source,
-               avp.geofence_status, avp.geofence_distance_m, avp.geofence_checked_at
+               avp.geofence_status, avp.geofence_distance_m, avp.geofence_checked_at,
+               avp.exif_metadata,
+               av.created_at AS voucher_created_at
         FROM acceptance_voucher_photos avp
         JOIN acceptance_vouchers av ON avp.voucher_id = av.id
         WHERE avp.id = $1 AND av.project_id = $2
@@ -100,6 +106,11 @@ router.get(
     const hasGps = row.gps_latitude !== null && row.gps_longitude !== null;
     const canViewGps = can(req.projectRole, "photo.view_gps");
 
+    // Đánh giá dấu hiệu bất thường (Story S-42 / T-109)
+    const inspection = inspectVoucherPhotoRecord(row, {
+      created_at: row.voucher_created_at || row.entry_created_at,
+    });
+
     const responsePayload = {
       status: row.metadata_status,
       status_label: STATUS_LABELS[row.metadata_status] || "Không xác định",
@@ -112,6 +123,7 @@ router.get(
         distance_m: row.geofence_distance_m !== null ? parseFloat(row.geofence_distance_m) : null,
         checked_at: row.geofence_checked_at || null,
       },
+      inspection,
     };
 
     // Chỉ đính kèm toạ độ thô nếu người dùng có quyền photo.view_gps VÀ ảnh có toạ độ

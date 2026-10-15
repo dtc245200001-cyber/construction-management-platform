@@ -1,16 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import api from '../lib/api';
 
 /**
  * Component hiển thị thông tin siêu dữ liệu ảnh hiện trường (EXIF/GPS)
- * Story S-40: T-106
+ * và kết quả kiểm tra dấu hiệu bất thường (Story S-40, S-41, S-42 / T-106, T-108, T-110)
  *
  * Tiêu chí:
  * - Hiển thị thời điểm và toạ độ khi xem ảnh trong nhật ký và phiếu nghiệm thu.
  * - Ảnh không có siêu dữ liệu thì ghi rõ trạng thái.
  * - Giới hạn vai trò xem toạ độ thô: chỉ CHU_DAU_TU, BAN_QUAN_LY được xem toạ độ chi tiết.
- * - Các vai trò khác chỉ biết ảnh có toạ độ nhưng không thấy toạ độ thô.
+ * - T-110: Hiển thị trạng thái kiểm tra bất thường (clean, warning, incomplete_data, error).
+ * - T-110: Hiển thị danh sách cảnh báo cùng lý do cụ thể, thông số kỹ thuật (kích thước, tỷ lệ, phần cứng).
+ * - T-110: Xử lý loading, error kèm nút thử lại (retry), responsive dialog.
  */
 export default function PhotoMetadataPanel({
   projectId,
@@ -23,39 +25,34 @@ export default function PhotoMetadataPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
+  const fetchMetadata = useCallback(() => {
     if (!isOpen || !projectId || !photoId || !kind) {
       setMetadata(null);
       setError(null);
       return;
     }
 
-    let isMounted = true;
     setLoading(true);
     setError(null);
 
     api
       .get(`/projects/${projectId}/photo-metadata/${kind}/${photoId}`)
       .then((res) => {
-        if (isMounted) {
-          setMetadata(res.data);
-          setLoading(false);
-        }
+        setMetadata(res.data);
+        setLoading(false);
       })
       .catch((err) => {
-        if (isMounted) {
-          setError(
-            err.response?.data?.message ||
-              'Không thể tải thông tin siêu dữ liệu ảnh.'
-          );
-          setLoading(false);
-        }
+        setError(
+          err.response?.data?.message ||
+            'Không thể tải thông tin siêu dữ liệu ảnh.'
+        );
+        setLoading(false);
       });
-
-    return () => {
-      isMounted = false;
-    };
   }, [isOpen, projectId, photoId, kind]);
+
+  useEffect(() => {
+    fetchMetadata();
+  }, [fetchMetadata]);
 
   if (!isOpen) return null;
 
@@ -110,23 +107,83 @@ export default function PhotoMetadataPanel({
     }
   };
 
+  const getInspectionBadgeClass = (status) => {
+    switch (status) {
+      case 'clean':
+        return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+      case 'warning':
+        return 'bg-amber-100 text-amber-900 border-amber-300';
+      case 'incomplete_data':
+        return 'bg-slate-100 text-slate-700 border-slate-300';
+      case 'error':
+        return 'bg-rose-100 text-rose-800 border-rose-300';
+      default:
+        return 'bg-gray-100 text-gray-700 border-gray-300';
+    }
+  };
+
+  const getInspectionBadgeLabel = (inspection) => {
+    if (!inspection) return 'Chưa kiểm tra';
+    switch (inspection.status) {
+      case 'clean':
+        return '✓ Hợp lệ / Bình thường';
+      case 'warning': {
+        const count = inspection.warnings_count || inspection.warnings?.length || 1;
+        return `⚠️ Cần xác minh (${count} dấu hiệu)`;
+      }
+      case 'incomplete_data':
+        return 'ℹ️ Dữ liệu không đầy đủ';
+      case 'error':
+        return '❌ Lỗi kiểm tra tệp';
+      default:
+        return inspection.status_label || inspection.status;
+    }
+  };
+
+  const getSeverityBadge = (severity) => {
+    switch (severity) {
+      case 'high':
+        return (
+          <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-800 border border-rose-200">
+            Nghi vấn cao
+          </span>
+        );
+      case 'medium':
+        return (
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 border border-amber-200">
+            Cần kiểm tra
+          </span>
+        );
+      case 'low':
+      default:
+        return (
+          <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800 border border-blue-200">
+            Lưu ý
+          </span>
+        );
+    }
+  };
+
+  const inspection = metadata?.inspection;
+  const techMeta = inspection?.metadata;
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 transition-opacity"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-4 transition-opacity"
       role="dialog"
       aria-modal="true"
       aria-labelledby="photo-metadata-title"
     >
-      <div className="relative w-full max-w-md rounded-xl bg-white p-6 shadow-2xl transition-all">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+      <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col rounded-xl bg-white shadow-2xl transition-all">
+        {/* Header - Fixed top */}
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 shrink-0">
           <div className="flex items-center space-x-2">
             <span className="text-xl">📸</span>
             <h3
               id="photo-metadata-title"
               className="text-lg font-semibold text-gray-900"
             >
-              Thông tin ảnh hiện trường
+              Thông tin ảnh & kiểm tra bằng chứng
             </h3>
           </div>
           <button
@@ -140,8 +197,8 @@ export default function PhotoMetadataPanel({
           </button>
         </div>
 
-        {/* Content Body */}
-        <div className="mt-4 space-y-4">
+        {/* Content Body - Scrollable */}
+        <div className="overflow-y-auto px-6 py-4 space-y-4 flex-1">
           {loading && (
             <div className="flex flex-col items-center justify-center py-8 text-gray-500">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
@@ -150,17 +207,193 @@ export default function PhotoMetadataPanel({
           )}
 
           {error && (
-            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 border border-red-200">
-              {error}
+            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 border border-red-200 space-y-2">
+              <p>{error}</p>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  data-testid="retry-metadata-btn"
+                  onClick={fetchMetadata}
+                  className="inline-flex items-center gap-1 rounded bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-800 hover:bg-red-200 transition"
+                >
+                  🔄 Thử lại
+                </button>
+              </div>
             </div>
           )}
 
           {!loading && !error && metadata && (
             <div className="space-y-4">
-              {/* Trạng thái metadata */}
+              {/* PHẦN 1: KẾT QUẢ KIỂM TRA BẤT THƯỜNG (Story S-42 / T-110) */}
+              <div
+                data-testid="photo-inspection-section"
+                className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-3"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/60 pb-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-base">🛡️</span>
+                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                      Kiểm tra quy tắc bằng chứng (S-42)
+                    </span>
+                  </div>
+                  <div>
+                    <span
+                      data-testid="inspection-status-badge"
+                      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${getInspectionBadgeClass(
+                        inspection?.status
+                      )}`}
+                    >
+                      {getInspectionBadgeLabel(inspection)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Trạng thái clean */}
+                {inspection?.status === 'clean' && (
+                  <div
+                    data-testid="inspection-clean-state"
+                    className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-900 space-y-1"
+                  >
+                    <div className="font-semibold flex items-center gap-1 text-emerald-800">
+                      <span>✓</span> Bằng chứng hợp lệ / bình thường
+                    </div>
+                    <p className="text-emerald-700">
+                      Tệp ảnh có cấu trúc toàn vẹn, không phát hiện kích thước chụp lại màn hình. Thông tin thời gian chụp nhất quán với thời điểm lập phiếu.
+                    </p>
+                  </div>
+                )}
+
+                {/* Trạng thái warning: Hiển thị danh sách cảnh báo */}
+                {inspection?.status === 'warning' && (
+                  <div className="space-y-2">
+                    <div
+                      data-testid="inspection-warnings-list"
+                      className="space-y-2"
+                    >
+                      {inspection.warnings?.map((w, idx) => (
+                        <div
+                          key={w.code || idx}
+                          data-testid={`inspection-warning-${w.code || idx}`}
+                          className="rounded-lg border border-amber-200 bg-amber-50/80 p-2.5 text-xs space-y-1"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-semibold text-amber-950 flex items-center gap-1">
+                              <span>⚠️</span> {w.title}
+                            </span>
+                            {getSeverityBadge(w.severity)}
+                          </div>
+                          <p className="text-slate-700 leading-relaxed text-[11px]">
+                            {w.reason}
+                          </p>
+                          {w.confidence && (
+                            <div className="text-[10px] text-amber-800 pt-0.5">
+                              Độ tin cậy dấu hiệu:{' '}
+                              <span className="font-medium">
+                                {w.confidence === 'high'
+                                  ? 'Cao'
+                                  : w.confidence === 'medium'
+                                  ? 'Trung bình'
+                                  : 'Thấp'}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="rounded-lg bg-amber-100/70 p-2 text-[11px] text-amber-900 border border-amber-200/60 leading-relaxed">
+                      💡 <strong>Khuyến nghị đối chiếu:</strong> Dấu hiệu nghi vấn nhằm giúp kỹ sư giám sát kiểm tra lại bằng chứng thực tế tại hiện trường. Không tự động kết luận gian lận và không tự ý chặn duyệt phiếu.
+                    </div>
+                  </div>
+                )}
+
+                {/* Trạng thái incomplete_data */}
+                {inspection?.status === 'incomplete_data' && (
+                  <div
+                    data-testid="inspection-incomplete-state"
+                    className="rounded-lg bg-slate-100 border border-slate-200 p-3 text-xs text-slate-800 space-y-1"
+                  >
+                    <div className="font-semibold text-slate-900">
+                      ℹ️ Dữ liệu không đầy đủ để đánh giá toàn diện
+                    </div>
+                    <p className="text-slate-600">
+                      Tệp ảnh không chứa các thẻ EXIF phần cứng của máy ảnh (Make/Model) hoặc không có thời gian chụp gốc. Kỹ sư có thể đối chiếu thêm thời điểm ghi nhận thực tế trên công trường.
+                    </p>
+                  </div>
+                )}
+
+                {/* Trạng thái error */}
+                {inspection?.status === 'error' && (
+                  <div
+                    data-testid="inspection-error-state"
+                    className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-xs text-rose-800 space-y-1"
+                  >
+                    <div className="font-semibold text-rose-900">
+                      ❌ Lỗi phân tích tệp ảnh
+                    </div>
+                    <p className="text-rose-700">
+                      Không thể trích xuất hoặc phân tích tệp ảnh do tệp bị hỏng hoặc định dạng không hỗ trợ.
+                    </p>
+                  </div>
+                )}
+
+                {/* Thông số kỹ thuật metadata trích xuất được */}
+                {techMeta && (
+                  <div
+                    data-testid="inspection-metadata-details"
+                    className="rounded-lg border border-slate-200 bg-white p-2.5 text-xs space-y-1.5"
+                  >
+                    <span className="text-[11px] font-semibold text-slate-700 block border-b border-slate-100 pb-1">
+                      Thông số kỹ thuật tệp ảnh:
+                    </span>
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      <div>
+                        <span className="text-slate-500">Độ phân giải: </span>
+                        <span className="font-mono font-medium text-slate-800">
+                          {techMeta.width && techMeta.height
+                            ? `${techMeta.width} × ${techMeta.height} px`
+                            : 'Không xác định'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500">Tỷ lệ khung hình: </span>
+                        <span className="font-medium text-slate-800">
+                          {techMeta.aspect_ratio || '—'}
+                        </span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-slate-500">Thiết bị chụp: </span>
+                        <span className="font-medium text-slate-800">
+                          {techMeta.make
+                            ? `${techMeta.make} ${techMeta.model || ''}`.trim()
+                            : 'Không có thông tin phần cứng máy ảnh'}
+                        </span>
+                      </div>
+                      {techMeta.screenshot_evaluation && (
+                        <div className="col-span-2">
+                          <span className="text-slate-500">Dấu hiệu màn hình: </span>
+                          <span
+                            className={
+                              techMeta.screenshot_evaluation.is_screenshot_likely
+                                ? 'font-semibold text-amber-700'
+                                : 'text-slate-700'
+                            }
+                          >
+                            {techMeta.screenshot_evaluation.is_screenshot_likely
+                              ? `Trùng tỷ lệ smartphone (${techMeta.screenshot_evaluation.matched_ratio || 'chuẩn'})`
+                              : 'Không phát hiện'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* PHẦN 2: THỜI ĐIỂM CHỤP & TRẠNG THÁI EXIF GỐC (S-40 / T-106) */}
               <div>
                 <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Trạng thái dữ liệu
+                  Trạng thái dữ liệu EXIF
                 </span>
                 <div className="mt-1">
                   <span
@@ -174,7 +407,6 @@ export default function PhotoMetadataPanel({
                 </div>
               </div>
 
-              {/* Thời điểm chụp */}
               <div className="rounded-lg border border-gray-100 bg-gray-50/70 p-3">
                 <span className="text-xs font-medium text-gray-500 uppercase tracking-wider block">
                   Thời điểm chụp
@@ -198,14 +430,13 @@ export default function PhotoMetadataPanel({
                 )}
               </div>
 
-              {/* Toạ độ GPS & Quyền riêng tư */}
+              {/* PHẦN 3: TOẠ ĐỘ GPS (S-40) */}
               <div className="rounded-lg border border-gray-100 bg-gray-50/70 p-3">
                 <span className="text-xs font-medium text-gray-500 uppercase tracking-wider block">
                   Vị trí địa lý (GPS)
                 </span>
 
                 {metadata.gps ? (
-                  /* Có quyền xem toạ độ thô */
                   <div className="mt-1 space-y-1.5" data-testid="gps-coordinates-section">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-600">Vĩ độ (Lat):</span>
@@ -237,7 +468,6 @@ export default function PhotoMetadataPanel({
                     </div>
                   </div>
                 ) : metadata.has_gps ? (
-                  /* Có toạ độ nhưng không có quyền xem toạ độ thô */
                   <div
                     data-testid="gps-restricted-section"
                     className="mt-1 rounded-md bg-amber-50 p-2.5 text-xs text-amber-800 border border-amber-200"
@@ -248,14 +478,13 @@ export default function PhotoMetadataPanel({
                     </p>
                   </div>
                 ) : (
-                  /* Không có GPS */
                   <p className="mt-1 text-sm italic text-gray-500">
                     Ảnh không có thông tin toạ độ GPS
                   </p>
                 )}
               </div>
 
-              {/* Đối chiếu phạm vi công trường (Geofence - S-41 / T-108) */}
+              {/* PHẦN 4: ĐỐI CHIẾU PHẠM VI CÔNG TRƯỜNG (S-41 / T-108) */}
               <div className="rounded-lg border border-gray-100 bg-gray-50/70 p-3" data-testid="geofence-evaluation-section">
                 <span className="text-xs font-medium text-gray-500 uppercase tracking-wider block">
                   Đối chiếu phạm vi công trường
@@ -307,8 +536,8 @@ export default function PhotoMetadataPanel({
           )}
         </div>
 
-        {/* Footer */}
-        <div className="mt-6 flex justify-end">
+        {/* Footer - Fixed bottom */}
+        <div className="border-t border-gray-100 px-6 py-3 flex justify-end shrink-0">
           <button
             type="button"
             onClick={onClose}
@@ -325,7 +554,7 @@ export default function PhotoMetadataPanel({
 
 PhotoMetadataPanel.propTypes = {
   projectId: PropTypes.oneOfType([PropTypes.number, PropTypes.string])
-    .isRequired,
+  .isRequired,
   photoId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
   kind: PropTypes.oneOf(['diary', 'acceptance']).isRequired,
   isOpen: PropTypes.bool.isRequired,
