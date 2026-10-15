@@ -75,9 +75,14 @@ router.get(
                dea.gps_latitude, dea.gps_longitude, dea.gps_accuracy_m,
                dea.metadata_status, dea.metadata_source,
                dea.geofence_status, dea.geofence_distance_m, dea.geofence_checked_at,
-               de.created_at AS entry_created_at
+               dea.created_at AS uploaded_at,
+               de.created_at AS entry_created_at,
+               de.entry_date,
+               u.full_name AS uploaded_by_name,
+               '/api/projects/' || $2 || '/diary/attachments/' || dea.id AS url
         FROM diary_entry_attachments dea
         JOIN diary_entries de ON dea.diary_entry_id = de.id
+        LEFT JOIN users u ON de.created_by = u.id
         WHERE dea.id = $1 AND de.project_id = $2
       `;
     } else {
@@ -88,9 +93,15 @@ router.get(
                avp.metadata_status, avp.metadata_source,
                avp.geofence_status, avp.geofence_distance_m, avp.geofence_checked_at,
                avp.exif_metadata,
-               av.created_at AS voucher_created_at
+               avp.created_at AS uploaded_at,
+               av.created_at AS voucher_created_at,
+               av.batch_name,
+               av.id AS voucher_id,
+               u.full_name AS uploaded_by_name,
+               '/api/projects/' || $2 || '/acceptance-vouchers/' || avp.voucher_id || '/photos/' || avp.id AS url
         FROM acceptance_voucher_photos avp
         JOIN acceptance_vouchers av ON avp.voucher_id = av.id
+        LEFT JOIN users u ON avp.uploaded_by = u.id
         WHERE avp.id = $1 AND av.project_id = $2
       `;
     }
@@ -112,6 +123,14 @@ router.get(
     });
 
     const responsePayload = {
+      id: row.id,
+      file_name: row.file_name,
+      file_size: row.file_size,
+      mime_type: row.mime_type,
+      uploaded_at: row.uploaded_at,
+      uploaded_by_name: row.uploaded_by_name || "Người dùng hệ thống",
+      batch_name: row.batch_name || (row.entry_date ? `Nhật ký ${row.entry_date}` : null),
+      url: row.url,
       status: row.metadata_status,
       status_label: STATUS_LABELS[row.metadata_status] || "Không xác định",
       captured_at: row.captured_at,
