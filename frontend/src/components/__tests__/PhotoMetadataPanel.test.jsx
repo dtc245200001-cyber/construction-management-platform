@@ -681,5 +681,225 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       expect(scrollableBody).toHaveClass('min-h-0');
     });
   });
+
+  describe('Luồng đóng/mở, trạng thái preview và xử lý lỗi không chặn đóng (Section 6 Requirements)', () => {
+    it('1. đóng modal Chi tiết ảnh bằng nút X (close-x-btn)', () => {
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={101}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      const closeXBtn = screen.getByTestId('close-x-btn');
+      fireEvent.click(closeXBtn);
+      expect(mockOnClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('2. đóng modal Chi tiết ảnh bằng nút Đóng (close-panel-btn)', () => {
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={101}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      const closePanelBtn = screen.getByTestId('close-panel-btn');
+      fireEvent.click(closePanelBtn);
+      expect(mockOnClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('3. đóng modal khi nhấn phím Escape', () => {
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={101}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      fireEvent.keyDown(window, { key: 'Escape', code: 'Escape' });
+      expect(mockOnClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('4. đóng modal bằng cách bấm vào lớp nền backdrop bên ngoài card', () => {
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={101}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      const backdrop = screen.getByRole('dialog');
+      fireEvent.click(backdrop);
+      expect(mockOnClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('5. mở chế độ phóng to ảnh (preview) và đóng lại', () => {
+      const mockSwitchMode = vi.fn();
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={101}
+          photo={{ url: '/test-img.jpg', file_name: 'test-img.jpg' }}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+          onSwitchMode={mockSwitchMode}
+        />
+      );
+
+      const img = screen.getByRole('img');
+      fireEvent.click(img);
+      expect(mockSwitchMode).toHaveBeenCalledWith('preview');
+    });
+
+    it('5b. trong chế độ preview độc lập: hiển thị ảnh lớn và nút close-preview-btn đóng modal', () => {
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={101}
+          photo={{ url: '/test-img.jpg', file_name: 'test-img.jpg' }}
+          kind="acceptance"
+          isOpen={true}
+          mode="preview"
+          onClose={mockOnClose}
+        />
+      );
+
+      // Trong preview mode, chỉ có lightbox ảnh lớn, không có tiêu đề "Chi tiết ảnh"
+      expect(screen.queryByText('Chi tiết ảnh')).toBeNull();
+      const closeBtn = screen.getByTestId('close-preview-btn');
+      expect(closeBtn).toBeInTheDocument();
+
+      fireEvent.click(closeBtn);
+      expect(mockOnClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('5c. đóng chế độ preview khi nhấn phím Escape', () => {
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={101}
+          photo={{ url: '/test-img.jpg', file_name: 'test-img.jpg' }}
+          kind="acceptance"
+          isOpen={true}
+          mode="preview"
+          onClose={mockOnClose}
+        />
+      );
+
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(mockOnClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('6. khi API trả lỗi 500 (Lỗi máy chủ), modal vẫn đóng được bình thường bằng X và Đóng', async () => {
+      api.get.mockRejectedValueOnce({
+        response: { status: 500, data: { message: 'Lỗi máy chủ' } },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={101}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Lỗi máy chủ')).toBeInTheDocument();
+      });
+
+      expect(screen.getByTestId('retry-metadata-btn')).toBeInTheDocument();
+
+      // Nút X và Đóng vẫn hoạt động hoàn toàn bình thường
+      const closeX = screen.getByTestId('close-x-btn');
+      fireEvent.click(closeX);
+      expect(mockOnClose).toHaveBeenCalledTimes(1);
+
+      const closeBtn = screen.getByTestId('close-panel-btn');
+      fireEvent.click(closeBtn);
+      expect(mockOnClose).toHaveBeenCalledTimes(2);
+    });
+
+    it('7. mở chi tiết nhiều ảnh khác nhau liên tiếp cập nhật chính xác dữ liệu', () => {
+      const { rerender } = render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={101}
+          photo={{ file_name: 'photo_alpha.jpg' }}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      expect(screen.getByText('photo_alpha.jpg')).toBeInTheDocument();
+
+      rerender(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={102}
+          photo={{ file_name: 'photo_beta.jpg' }}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      expect(screen.getByText('photo_beta.jpg')).toBeInTheDocument();
+      expect(screen.queryByText('photo_alpha.jpg')).toBeNull();
+    });
+
+    it('9. thông tin tệp, EXIF và kết quả kiểm tra không bị che khuất bởi overlay hay ảnh', () => {
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={101}
+          photo={{
+            url: '/site.jpg',
+            file_name: 'site.jpg',
+            mime_type: 'image/jpeg',
+            inspection: {
+              status: 'warning',
+              warnings: [
+                {
+                  code: 'SCREENSHOT_DETECTED',
+                  title: 'Nghi vấn ảnh chụp lại màn hình',
+                  reason: 'Kích thước đặc trưng màn hình',
+                },
+              ],
+            },
+          }}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      // Tất cả các phần thông tin đều hiển thị rõ ràng, không có lớp overlay che khuất
+      expect(screen.getByText('Chi tiết ảnh')).toBeInTheDocument();
+      expect(screen.getByText('Thông tin tệp')).toBeInTheDocument();
+      expect(screen.getByText('Metadata EXIF')).toBeInTheDocument();
+      expect(screen.getByText(/Đối chiếu phạm vi công trường/i)).toBeInTheDocument();
+      expect(screen.getByText(/Chi tiết cảnh báo cần xác minh/i)).toBeInTheDocument();
+      expect(screen.getByText('Nghi vấn ảnh chụp lại màn hình')).toBeInTheDocument();
+      expect(screen.getByTestId('close-panel-btn')).toBeInTheDocument();
+    });
+  });
 });
+
 

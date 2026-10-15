@@ -256,4 +256,122 @@ describe("AcceptancePage Evidence Inspection (Story S-42 / T-110)", () => {
       );
     });
   });
+
+  test("Luồng mở và đóng Chi tiết ảnh trên trang nghiệm thu (X, Đóng, Escape, Preview)", async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes("/summary")) {
+        return Promise.resolve({ data: [] });
+      }
+      if (url.endsWith("/acceptance-vouchers")) {
+        return Promise.resolve({ data: { vouchers: mockVouchers } });
+      }
+      if (url.includes("/acceptance-vouchers/20")) {
+        return Promise.resolve({ data: mockVoucherDetailWithInspection });
+      }
+      if (url.match(/\/projects\/\d+$/)) {
+        return Promise.resolve({ data: { membership: "ban_quan_ly" } });
+      }
+      if (url.includes("/photo-metadata/acceptance/")) {
+        return Promise.resolve({
+          data: {
+            id: 601,
+            file_name: "screenshot_photo.png",
+            status: "warning",
+            status_label: "Cần xác minh",
+            inspection: {
+              status: "warning",
+              warnings: [
+                {
+                  code: "SCREENSHOT_DETECTED",
+                  title: "Nghi vấn ảnh chụp lại màn hình",
+                },
+              ],
+            },
+          },
+        });
+      }
+      return Promise.reject(new Error("Not found"));
+    });
+
+    render(<AcceptancePage user={{ id: 1, is_system_admin: true }} />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Nghiệm thu khối xây tầng 2 đợt 1")
+      ).toBeInTheDocument();
+    });
+
+    const detailBtns = screen.getAllByRole("button", { name: /chi tiết/i });
+    fireEvent.click(detailBtns[0]);
+
+    // Chờ danh sách ảnh hiển thị
+    await waitFor(() => {
+      expect(screen.getByTestId("photo-meta-btn-601")).toBeInTheDocument();
+    });
+
+    // 1. Bấm 'Thông tin ảnh' -> Mở Chi tiết ảnh
+    fireEvent.click(screen.getByTestId("photo-meta-btn-601"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Chi tiết ảnh" })
+      ).toBeInTheDocument();
+      expect(screen.getAllByText("screenshot_photo.png").length).toBeGreaterThanOrEqual(2);
+    });
+
+    // 2. Đóng bằng nút X
+    fireEvent.click(screen.getByTestId("close-x-btn"));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: "Chi tiết ảnh" })
+      ).toBeNull();
+    });
+
+    // 3. Mở lại và đóng bằng nút Đóng
+    fireEvent.click(screen.getByTestId("photo-meta-btn-601"));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Chi tiết ảnh" })
+      ).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId("close-panel-btn"));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: "Chi tiết ảnh" })
+      ).toBeNull();
+    });
+
+    // 4. Mở lại và đóng bằng phím Escape
+    fireEvent.click(screen.getByTestId("photo-meta-btn-601"));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Chi tiết ảnh" })
+      ).toBeInTheDocument();
+    });
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: "Chi tiết ảnh" })
+      ).toBeNull();
+    });
+
+    // 5. Bấm vào ảnh thẻ mở trực tiếp chế độ preview (phóng to ảnh)
+    const photoImg = screen.getByAltText("screenshot_photo.png");
+    fireEvent.click(photoImg);
+    await waitFor(() => {
+      expect(screen.getByTestId("close-preview-btn")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("heading", { name: "Chi tiết ảnh" })
+      ).toBeNull();
+    });
+
+    // Đóng preview không tự mở lại Chi tiết ảnh
+    fireEvent.click(screen.getByTestId("close-preview-btn"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("close-preview-btn")).toBeNull();
+      expect(
+        screen.queryByRole("heading", { name: "Chi tiết ảnh" })
+      ).toBeNull();
+    });
+  });
 });
