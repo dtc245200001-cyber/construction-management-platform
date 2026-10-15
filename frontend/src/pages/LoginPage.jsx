@@ -13,7 +13,8 @@ import {
   Mail,
   Lock,
   EyeOff,
-  ArrowRight
+  ArrowRight,
+  Activity
 } from 'lucide-react';
 import loginBg from '../assets/login-bg.png';
 import loginIllustration from '../assets/login-illustration.png';
@@ -292,6 +293,25 @@ navigate(
                     </svg>
                     Đăng nhập với Google
                   </button>
+
+                  <div style={{ textAlign: 'center', marginTop: '16px' }}>
+                    <a
+                      href="/system-status"
+                      style={{
+                        fontSize: '13px',
+                        color: '#64748b',
+                        textDecoration: 'none',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        transition: 'color 0.2s',
+                      }}
+                      onMouseOver={(e) => (e.currentTarget.style.color = '#2563eb')}
+                      onMouseOut={(e) => (e.currentTarget.style.color = '#64748b')}
+                    >
+                      <Activity size={14} /> Kiểm tra sức khỏe hệ thống & Giám sát
+                    </a>
+                  </div>
                 </form>
 
                 <form className={`nl-form-pane ${isRegister ? 'nl-active' : ''}`} onSubmit={handleRegister}>

@@ -62,9 +62,11 @@ describe("App & Security Integration Tests", () => {
   });
 
   it("B8. /health trả 200, /ready trả 200 khi DB ok, và 503 khi pool close", async () => {
+    jest.spyOn(pool, 'query').mockResolvedValueOnce({ rows: [{ "?column?": 1 }] });
     const health = await request(app).get("/health");
     expect(health.status).toBe(200);
     
+    jest.spyOn(pool, 'query').mockResolvedValueOnce({ rows: [{ "?column?": 1 }] });
     const ready = await request(app).get("/ready");
     expect(ready.status).toBe(200);
 
@@ -73,7 +75,8 @@ describe("App & Security Integration Tests", () => {
     const readyFail = await request(app).get("/ready");
     expect(readyFail.status).toBe(503);
     
-    // /health should still be 200
+    // /health should still be 200 khi DB ok
+    jest.spyOn(pool, 'query').mockResolvedValueOnce({ rows: [{ "?column?": 1 }] });
     const health2 = await request(app).get("/health");
     expect(health2.status).toBe(200);
   });

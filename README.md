@@ -388,3 +388,121 @@ curl -X PUT http://localhost:5000/api/projects/1/work-items/5/contract-quantity 
 curl -X DELETE http://localhost:5000/api/projects/1/work-items/5/contract-quantity \
   -b "cmp.sid=s%3AosBnnoMXD1SJEj56..."
 ```
+
+---
+
+## 7. Giám sát sức khỏe Staging & Cảnh báo khi ngừng phản hồi (T-128 & T-129 / S-51)
+
+Hệ thống cung cấp cơ chế giám sát sức khỏe toàn diện và cảnh báo tự động khi môi trường Staging gặp sự cố gián đoạn kéo dài quá 5 phút.
+
+### 7.1. Endpoint Health Check (`T-128`)
+
+- **Đường dẫn**: `GET /health` (hoặc alias `GET /api/health`).
+- **Liveness Probe**: `GET /health/live` (chỉ kiểm tra tiến trình sống của ứng dụng, không truy vấn DB).
+- **Readiness Probe**: `GET /ready` (kiểm tra DB sẵn sàng, phục vụ kiểm tra tự động trong script deploy Blue/Green).
+
+#### Định dạng phản hồi:
+
+* **Khi hệ thống hoạt động bình thường (HTTP 200 OK):**
+```json
+{
+  "status": "healthy",
+  "timestamp": "2026-10-15T09:50:00.000Z",
+  "app": {
+    "status": "healthy",
+    "uptime": 1250,
+    "environment": "staging"
+  },
+  "database": {
+    "status": "healthy",
+    "responseTimeMs": 8
+  }
+}
+```
+
+* **Khi cơ sở dữ liệu gặp sự cố hoặc timeout (HTTP 503 Service Unavailable):**
+```json
+{
+  "status": "unhealthy",
+  "timestamp": "2026-10-15T09:51:00.000Z",
+  "app": {
+    "status": "healthy",
+    "uptime": 1310,
+    "environment": "staging"
+  },
+  "database": {
+    "status": "unhealthy",
+    "error": "Không thể kết nối cơ sở dữ liệu"
+  }
+}
+```
+
+#### Đặc tính kỹ thuật & An toàn (NFR):
+1. **Phân biệt độc lập**: Tách biệt rõ trạng thái của ứng dụng (`app`) và PostgreSQL (`database`).
+2. **Giới hạn thời gian chờ (Timeout Guard)**: Truy vấn kiểm tra DB có timeout tối đa qua biến `HEALTHCHECK_DB_TIMEOUT_MS` (mặc định 3000ms), ngăn ngừa nguy cơ treo pool kết nối khi cơ sở dữ liệu bị đóng băng.
+3. **Bảo mật tuyệt đối**: Không bao giờ để lộ mật khẩu, tài khoản, host, port hay chuỗi kết nối (`DATABASE_URL`) trong mã phản hồi và log công khai.
+
+---
+
+### 7.2. Quy tắc giám sát & Cảnh báo sự cố (`T-129`)
+
+Hệ thống chạy dịch vụ giám sát `staging_monitor` định kỳ gọi endpoint `/health`:
+- **Chu kỳ kiểm tra**: Mặc định 30 giây (`CHECK_INTERVAL_SECONDS=30`).
+- **Ngưỡng cảnh báo**: Nếu Staging thất bại liên tục **quá 5 phút** (`ALERT_THRESHOLD_SECONDS=300`), hệ thống sẽ gửi cảnh báo khẩn cấp tới kênh thông báo đã thống nhất.
+- **Tự động chuyển trạng thái khi phục hồi (Recovery)**: Khi Staging phản hồi thành công trở lại, hệ thống lập tức gửi thông báo **PHỤC HỒI (RECOVERED)** kèm tổng thời gian gián đoạn và tự động thiết lập lại bộ đếm theo dõi.
+
+#### Các kênh thông báo hỗ trợ:
+Hệ thống hỗ trợ gửi thông báo tới các nền tảng nhóm:
+* **Discord Webhook** (Tự động format rich embed kèm màu Đỏ khi Down và Xanh lá khi Phục hồi).
+* **Slack Webhook** (Format theo cấu trúc Blocks & Sections).
+* **Telegram Bot** (Gửi tin nhắn định dạng Markdown qua Telegram Bot API).
+* **Generic HTTP Webhook** (Gửi JSON payload chuẩn cho các hệ thống giám sát tập trung).
+
+#### Cấu hình biến môi trường (NFR - Không commit Secret vào Git):
+Trên máy chủ Staging, cấu hình các biến trong file `deploy/.env.staging` (tuyệt đối không đưa vào Git):
+```bash
+MONITOR_TARGET_URL=http://backend:3000/health
+CHECK_INTERVAL_SECONDS=30
+ALERT_THRESHOLD_SECONDS=300
+HEALTHCHECK_DB_TIMEOUT_MS=3000
+ALERT_CHANNEL_TYPE=auto
+
+# Webhook URL hoặc bot token (lấy từ Discord/Slack/Telegram của team):
+ALERT_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_SECRET_WEBHOOK
+```
+
+---
+
+### 7.3. Hướng dẫn thử nghiệm & Mô phỏng sự cố (Testing & Simulation)
+
+#### Cách 1: Chạy kịch bản mô phỏng tự động (Khuyến nghị cho kiểm thử nhanh)
+Chạy script mô phỏng có sẵn trong dự án:
+```bash
+npm run monitor:simulate
+```
+Kịch bản tự động thực hiện:
+1. Dựng mock server đại diện cho Staging.
+2. Kiểm tra chu kỳ bình thường (Healthy).
+3. Mô phỏng sự cố ngắt kết nối DB kéo dài vượt ngưỡng -> Kích hoạt cảnh báo `🚨 STAGING DOWN`.
+4. Mô phỏng Staging phục hồi trở lại -> Kích hoạt chuyển trạng thái `✅ STAGING RECOVERED`.
+
+#### Cách 2: Thử nghiệm thực tế trên môi trường Docker Staging
+1. Khởi động môi trường Staging:
+   ```bash
+   docker compose -f deploy/docker-compose.yml up -d
+   ```
+2. Đặt `ALERT_THRESHOLD_SECONDS=10` trong `deploy/.env.staging` nếu muốn thử nghiệm nhanh trong 10 giây thay vì đợi 5 phút thực tế.
+3. Giả lập sự cố tắt DB:
+   ```bash
+   docker stop construction_postgres_staging
+   ```
+4. Quan sát log của container giám sát:
+   ```bash
+   docker logs -f construction_staging_monitor
+   ```
+   Sau thời gian vượt ngưỡng, cảnh báo sự cố sẽ được bắn về kênh Discord/Slack/Telegram của team.
+5. Khôi phục lại DB:
+   ```bash
+   docker start construction_postgres_staging
+   ```
+   Hệ thống kiểm tra thấy khỏe trở lại và gửi ngay thông báo phục hồi thành công.
