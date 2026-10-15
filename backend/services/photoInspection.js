@@ -66,6 +66,157 @@ const STANDARD_RATIOS = [
 ];
 
 /**
+ * Cấu hình tập trung danh sách trường EXIF bắt buộc (Story S-42 / Mục II.2)
+ * Mặc định:
+ * - requireCaptureTime: bắt buộc DateTimeOriginal (thời gian chụp gốc)
+ * - requireDevice: bắt buộc Make hoặc Model (thông tin thiết bị chụp)
+ * - requireGps: false (GPS không bắt buộc mặc định vì không phải mọi khu vực thi công đều bắt được GPS, ví dụ hầm/trong nhà)
+ */
+const DEFAULT_REQUIRED_FIELDS_CONFIG = Object.freeze({
+  requireCaptureTime: true,
+  requireDevice: true,
+  requireGps: false,
+});
+
+const PHOTO_DATA_STATUS = Object.freeze({
+  FULL_DATA: 'full_data',
+  INCOMPLETE_DATA: 'incomplete_data',
+  INCOMPLETE_DATA_WARNING: 'incomplete_data_warning',
+});
+
+const PHOTO_DATA_STATUS_LABELS = Object.freeze({
+  full_data: 'Dữ liệu đầy đủ',
+  incomplete_data: 'Dữ liệu không đầy đủ',
+  incomplete_data_warning: 'Dữ liệu không đầy đủ và cảnh báo',
+});
+
+/**
+ * Kiểm tra các trường EXIF bắt buộc và trả về danh sách các trường bị thiếu
+ *
+ * @param {Object} metadata - Siêu dữ liệu ảnh đã trích xuất
+ * @param {Object} [config] - Cấu hình trường bắt buộc
+ * @returns {Array<{ field: string, label: string }>} Danh sách trường thiếu
+ */
+function getMissingRequiredFields(metadata = {}, config = DEFAULT_REQUIRED_FIELDS_CONFIG) {
+  const cfg = { ...DEFAULT_REQUIRED_FIELDS_CONFIG, ...(config || {}) };
+  const missing = [];
+
+  // 1. Thời gian chụp (DateTimeOriginal)
+  if (cfg.requireCaptureTime) {
+    const capAt = metadata?.captured_at;
+    const isValidDate =
+      capAt &&
+      !isNaN(new Date(capAt).getTime()) &&
+      new Date(capAt).getUTCFullYear() >= 2000;
+    if (!isValidDate) {
+      missing.push({
+        field: 'captured_at',
+        label: 'Không có thời gian chụp',
+      });
+    }
+  }
+
+  // 2. Thông tin thiết bị (Make hoặc Model)
+  if (cfg.requireDevice) {
+    const make = metadata?.make ? String(metadata.make).trim() : '';
+    const model = metadata?.model ? String(metadata.model).trim() : '';
+    if (!make && !model) {
+      missing.push({
+        field: 'device',
+        label: 'Không có thông tin thiết bị',
+      });
+    }
+  }
+
+  // 3. Toạ độ GPS (nếu được cấu hình bắt buộc)
+  if (cfg.requireGps) {
+    const lat = metadata?.gps_latitude ?? metadata?.gps?.latitude;
+    const lng = metadata?.gps_longitude ?? metadata?.gps?.longitude;
+    const hasGps =
+      lat !== null &&
+      lng !== null &&
+      typeof lat === 'number' &&
+      typeof lng === 'number' &&
+      !isNaN(lat) &&
+      !isNaN(lng) &&
+      !(lat === 0 && lng === 0) &&
+      lat >= -90 &&
+      lat <= 90 &&
+      lng >= -180 &&
+      lng <= 180;
+
+    if (!hasGps) {
+      missing.push({
+        field: 'gps',
+        label: 'Không có toạ độ GPS',
+      });
+    }
+  }
+
+  return missing;
+}
+
+/**
+ * Hàm xác định thống nhất 3 trạng thái dữ liệu ảnh (Story S-42 / Mục III)
+ *
+ * 1. Dữ liệu đầy đủ: Đủ mọi trường bắt buộc theo cấu hình, đọc thành công, không có dấu hiệu cảnh báo.
+ * 2. Dữ liệu không đầy đủ: Thiếu ít nhất 1 trường bắt buộc theo cấu hình, không có cảnh báo bất thường.
+ * 3. Dữ liệu không đầy đủ và cảnh báo: Có ít nhất 1 dấu hiệu bất thường (kể cả khi EXIF đủ hay thiếu đều thuộc trạng thái này).
+ *
+ * @param {Object} params
+ * @param {Array<Object>} params.missingFields - Danh sách trường thiếu
+ * @param {Array<Object>} params.warnings - Danh sách cảnh báo
+ * @param {boolean} [params.canEvaluate] - Đã kiểm tra thành công hay chưa
+ * @returns {{ data_status: string|null, data_status_label: string|null, anomaly_warnings: Array<Object> }}
+ */
+function evaluatePhotoDataStatus({ missingFields = [], warnings = [], canEvaluate = true } = {}) {
+  if (!canEvaluate) {
+    return {
+      data_status: null,
+      data_status_label: null,
+      anomaly_warnings: [],
+    };
+  }
+
+  const hasMissing = Array.isArray(missingFields) && missingFields.length > 0;
+
+  // Lọc các cảnh báo bất thường (loại trừ các thông báo chỉ đơn thuần nói thiếu trường bắt buộc để tránh đếm trùng)
+  const anomalyWarnings = Array.isArray(warnings)
+    ? warnings.filter(
+        (w) =>
+          w &&
+          w.code !== 'MISSING_CAMERA_METADATA' &&
+          w.code !== 'MISSING_CAPTURE_TIME' &&
+          w.code !== 'MISSING_GPS'
+      )
+    : [];
+
+  const hasAnomalies = anomalyWarnings.length > 0;
+
+  if (hasAnomalies) {
+    return {
+      data_status: PHOTO_DATA_STATUS.INCOMPLETE_DATA_WARNING,
+      data_status_label: PHOTO_DATA_STATUS_LABELS[PHOTO_DATA_STATUS.INCOMPLETE_DATA_WARNING],
+      anomaly_warnings: anomalyWarnings,
+    };
+  }
+
+  if (hasMissing) {
+    return {
+      data_status: PHOTO_DATA_STATUS.INCOMPLETE_DATA,
+      data_status_label: PHOTO_DATA_STATUS_LABELS[PHOTO_DATA_STATUS.INCOMPLETE_DATA],
+      anomaly_warnings: [],
+    };
+  }
+
+  return {
+    data_status: PHOTO_DATA_STATUS.FULL_DATA,
+    data_status_label: PHOTO_DATA_STATUS_LABELS[PHOTO_DATA_STATUS.FULL_DATA],
+    anomaly_warnings: [],
+  };
+}
+
+/**
  * Tính tỷ lệ khung hình và format chuỗi tỷ lệ rút gọn
  */
 function getAspectRatioInfo(width, height) {
@@ -444,22 +595,32 @@ async function inspectPhotoMetadata({
     }
   }
 
-  // 6. Xác định trạng thái tổng thể
+  // 6. Xác định danh sách trường bắt buộc bị thiếu & 3 trạng thái chuẩn (Mục III)
+  const missingFields = getMissingRequiredFields(result.metadata, options.requiredFieldsConfig);
+  const dataStatusInfo = evaluatePhotoDataStatus({
+    missingFields,
+    warnings,
+    canEvaluate: result.can_evaluate,
+  });
+
   result.warnings = warnings;
-  result.has_sufficient_data = hasExif && !!finalMake && !!finalCapturedAt;
+  result.missing_fields = missingFields;
+  result.data_status = dataStatusInfo.data_status;
+  result.data_status_label = dataStatusInfo.data_status_label;
+  result.has_sufficient_data = missingFields.length === 0;
 
-  const hasHighSeverity = warnings.some((w) => w.severity === 'high');
-  const hasWarnings = warnings.length > 0;
-
-  if (hasHighSeverity) {
+  if (dataStatusInfo.data_status === PHOTO_DATA_STATUS.INCOMPLETE_DATA_WARNING) {
     result.status = 'warning';
-    result.summary = `Phát hiện ${warnings.length} dấu hiệu nghi vấn cần người duyệt kiểm tra đối chiếu.`;
-  } else if (hasWarnings) {
+    result.summary = `Phát hiện dấu hiệu bất thường cần xem xét.${missingFields.length > 0 ? ` Đồng thời thiếu: ${missingFields.map((f) => f.label).join(', ')}.` : ''}`;
+  } else if (dataStatusInfo.data_status === PHOTO_DATA_STATUS.INCOMPLETE_DATA) {
     result.status = 'incomplete_data';
-    result.summary = 'Ảnh thiếu một số siêu dữ liệu gốc (máy ảnh hoặc thời gian chụp).';
-  } else {
+    result.summary = `Dữ liệu không đầy đủ (thiếu một số siêu dữ liệu gốc: ${missingFields.map((f) => f.label).join(', ')}).`;
+  } else if (dataStatusInfo.data_status === PHOTO_DATA_STATUS.FULL_DATA) {
     result.status = 'clean';
-    result.summary = 'Bằng chứng hợp lệ, đầy đủ siêu dữ liệu máy ảnh và thời gian chụp.';
+    result.summary = 'Bằng chứng hợp lệ: Dữ liệu đầy đủ, không phát hiện dấu hiệu bất thường.';
+  } else {
+    result.status = 'error';
+    result.summary = 'Không thể kiểm tra do tệp dữ liệu không hợp lệ.';
   }
 
   return result;
@@ -493,7 +654,7 @@ function inspectVoucherPhotoRecord(photoRow, voucherRow = null) {
   if (
     savedInspection &&
     typeof savedInspection === 'object' &&
-    savedInspection.status
+    (savedInspection.status || savedInspection.data_status)
   ) {
     // Đảm bảo các trường toạ độ và thông số tệp luôn có giá trị từ bản ghi DB nếu trong JSON cũ bị null
     if (savedInspection.metadata) {
@@ -521,6 +682,18 @@ function inspectVoucherPhotoRecord(photoRow, voucherRow = null) {
       if (!savedInspection.metadata.mime_type && photoRow.mime_type) {
         savedInspection.metadata.mime_type = photoRow.mime_type;
       }
+    }
+
+    if (!savedInspection.data_status || !savedInspection.missing_fields) {
+      const missing = getMissingRequiredFields(savedInspection.metadata || {});
+      const ds = evaluatePhotoDataStatus({
+        missingFields: missing,
+        warnings: savedInspection.warnings || [],
+        canEvaluate: savedInspection.can_evaluate !== false,
+      });
+      savedInspection.missing_fields = missing;
+      savedInspection.data_status = ds.data_status;
+      savedInspection.data_status_label = ds.data_status_label;
     }
     return savedInspection;
   }
@@ -593,55 +766,66 @@ function inspectVoucherPhotoRecord(photoRow, voucherRow = null) {
     });
   }
 
-  const hasHigh = warnings.some((w) => w.severity === 'high');
-  let status = 'clean';
-  if (photoRow.metadata_status === 'unreadable') {
-    status = 'error';
-  } else if (hasHigh) {
-    status = 'warning';
-  } else if (warnings.length > 0) {
-    status = 'incomplete_data';
-  }
-
   const width = savedInspection?.metadata?.width || savedInspection?.width || savedInspection?.ImageWidth || null;
   const height = savedInspection?.metadata?.height || savedInspection?.height || savedInspection?.ImageHeight || null;
   const calculatedRatio = calculateAspectRatio(width, height);
 
+  const metadata = {
+    file_name: fileName,
+    file_size: photoRow.file_size,
+    mime_type: photoRow.mime_type,
+    width,
+    height,
+    aspect_ratio: savedInspection?.metadata?.aspect_ratio || calculatedRatio || null,
+    make: savedInspection?.metadata?.make || savedInspection?.make || savedInspection?.Make || null,
+    model: savedInspection?.metadata?.model || savedInspection?.model || savedInspection?.Model || null,
+    software: savedInspection?.metadata?.software || savedInspection?.software || savedInspection?.Software || null,
+    iso: savedInspection?.metadata?.iso || savedInspection?.iso || savedInspection?.ISO || null,
+    aperture: savedInspection?.metadata?.aperture || savedInspection?.aperture || null,
+    shutter_speed: savedInspection?.metadata?.shutter_speed || savedInspection?.shutter_speed || null,
+    captured_at: photoRow.captured_at,
+    captured_at_source: photoRow.captured_at_source,
+    gps_latitude: photoRow.gps_latitude ? parseFloat(photoRow.gps_latitude) : null,
+    gps_longitude: photoRow.gps_longitude ? parseFloat(photoRow.gps_longitude) : null,
+    gps_accuracy_m: photoRow.gps_accuracy_m ? parseFloat(photoRow.gps_accuracy_m) : null,
+    metadata_status: photoRow.metadata_status,
+    is_screenshot: hasScreenshotName,
+  };
+
+  const missingFields = getMissingRequiredFields(metadata);
+  const canEvaluate = photoRow.metadata_status !== 'unreadable' && photoRow.metadata_status !== 'unsupported';
+  const dataStatusInfo = evaluatePhotoDataStatus({
+    missingFields,
+    warnings,
+    canEvaluate,
+  });
+
+  let status = 'clean';
+  if (photoRow.metadata_status === 'unreadable' || photoRow.metadata_status === 'unsupported') {
+    status = 'error';
+  } else if (dataStatusInfo.data_status === PHOTO_DATA_STATUS.INCOMPLETE_DATA_WARNING) {
+    status = 'warning';
+  } else if (dataStatusInfo.data_status === PHOTO_DATA_STATUS.INCOMPLETE_DATA) {
+    status = 'incomplete_data';
+  }
+
   return {
     status,
-    can_evaluate: photoRow.metadata_status !== 'unreadable',
-    has_sufficient_data:
-      photoRow.metadata_status === 'complete' || photoRow.metadata_status === 'time_only',
+    data_status: dataStatusInfo.data_status,
+    data_status_label: dataStatusInfo.data_status_label,
+    missing_fields: missingFields,
+    can_evaluate: canEvaluate,
+    has_sufficient_data: missingFields.length === 0,
     summary:
-      status === 'warning'
-        ? `Phát hiện ${warnings.length} dấu hiệu nghi vấn cần người duyệt kiểm tra.`
-        : status === 'incomplete_data'
-        ? 'Ảnh thiếu một số siêu dữ liệu gốc.'
+      dataStatusInfo.data_status === PHOTO_DATA_STATUS.INCOMPLETE_DATA_WARNING
+        ? `Phát hiện dấu hiệu bất thường cần xem xét.${missingFields.length > 0 ? ` Đồng thời thiếu: ${missingFields.map((f) => f.label).join(', ')}.` : ''}`
+        : dataStatusInfo.data_status === PHOTO_DATA_STATUS.INCOMPLETE_DATA
+        ? `Dữ liệu không đầy đủ: ${missingFields.map((f) => f.label).join(', ')}.`
         : status === 'error'
         ? 'Siêu dữ liệu ảnh bị lỗi.'
-        : 'Bằng chứng hợp lệ, không phát hiện dấu hiệu bất thường.',
+        : 'Dữ liệu đầy đủ, không phát hiện dấu hiệu bất thường.',
     warnings,
-    metadata: {
-      file_name: fileName,
-      file_size: photoRow.file_size,
-      mime_type: photoRow.mime_type,
-      width,
-      height,
-      aspect_ratio: savedInspection?.metadata?.aspect_ratio || calculatedRatio || null,
-      make: savedInspection?.metadata?.make || savedInspection?.make || savedInspection?.Make || null,
-      model: savedInspection?.metadata?.model || savedInspection?.model || savedInspection?.Model || null,
-      software: savedInspection?.metadata?.software || savedInspection?.software || savedInspection?.Software || null,
-      iso: savedInspection?.metadata?.iso || savedInspection?.iso || savedInspection?.ISO || null,
-      aperture: savedInspection?.metadata?.aperture || savedInspection?.aperture || null,
-      shutter_speed: savedInspection?.metadata?.shutter_speed || savedInspection?.shutter_speed || null,
-      captured_at: photoRow.captured_at,
-      captured_at_source: photoRow.captured_at_source,
-      gps_latitude: photoRow.gps_latitude ? parseFloat(photoRow.gps_latitude) : null,
-      gps_longitude: photoRow.gps_longitude ? parseFloat(photoRow.gps_longitude) : null,
-      gps_accuracy_m: photoRow.gps_accuracy_m ? parseFloat(photoRow.gps_accuracy_m) : null,
-      metadata_status: photoRow.metadata_status,
-      is_screenshot: hasScreenshotName,
-    },
+    metadata,
     inspected_at: new Date().toISOString(),
   };
 }
@@ -664,6 +848,9 @@ function sanitizeInspectionForRole(inspection, isReviewer = false) {
   return {
     status: inspection.status,
     status_label: inspection.status_label,
+    data_status: inspection.data_status || null,
+    data_status_label: inspection.data_status_label || null,
+    missing_fields: Array.isArray(inspection.missing_fields) ? inspection.missing_fields : [],
     can_evaluate: inspection.can_evaluate,
     has_sufficient_data: inspection.has_sufficient_data,
     summary: inspection.summary,
@@ -694,4 +881,9 @@ module.exports = {
   inspectVoucherPhotoRecord,
   sanitizeInspectionForRole,
   KNOWN_SCREENSHOT_RESOLUTIONS,
+  DEFAULT_REQUIRED_FIELDS_CONFIG,
+  PHOTO_DATA_STATUS,
+  PHOTO_DATA_STATUS_LABELS,
+  getMissingRequiredFields,
+  evaluatePhotoDataStatus,
 };

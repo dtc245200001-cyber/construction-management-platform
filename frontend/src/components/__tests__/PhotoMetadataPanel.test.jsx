@@ -179,8 +179,8 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       );
     });
 
-    expect(screen.getByText('Ảnh không ghi nhận thời gian chụp gốc')).toBeInTheDocument();
-    expect(screen.getByText('Ảnh không có thông tin toạ độ GPS')).toBeInTheDocument();
+    expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Dữ liệu không đầy đủ');
+    expect(screen.getAllByText('Không có dữ liệu').length).toBeGreaterThanOrEqual(2);
   });
 
   it('gọi callback onClose khi bấm nút đóng', async () => {
@@ -428,12 +428,13 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       expect(screen.getByTestId('photo-aspect-ratio')).toHaveTextContent('16:9');
     });
 
-    it('2. Ảnh PNG không có EXIF: hiển thị "Không đủ dữ liệu", KHÔNG coi là lỗi máy chủ', async () => {
+    it('2. Ảnh PNG không có EXIF: hiển thị "Dữ liệu không đầy đủ", KHÔNG coi là lỗi máy chủ', async () => {
       api.get.mockResolvedValueOnce({
         data: {
           file_name: 'screenshot-clean.png',
           mime_type: 'image/png',
           status: 'none',
+          data_status: 'incomplete_data',
           inspection: {
             status: 'incomplete_data',
             metadata: {
@@ -455,7 +456,7 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Không đủ dữ liệu');
+        expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Dữ liệu không đầy đủ');
       });
       expect(screen.queryByText('Lỗi máy chủ')).not.toBeInTheDocument();
       expect(screen.queryByText('Lỗi kiểm tra')).not.toBeInTheDocument();
@@ -546,11 +547,14 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Lỗi kiểm tra');
+        expect(screen.getByTestId('retry-metadata-btn')).toBeInTheDocument();
       });
-      expect(screen.getByText('Lỗi máy chủ')).toBeInTheDocument();
+      // Tuyệt đối không hiển thị "Lỗi máy chủ" hoặc "Lỗi kiểm tra" trong modal Chi tiết ảnh
+      expect(screen.queryByText('Lỗi máy chủ')).not.toBeInTheDocument();
+      expect(screen.queryByText('Lỗi kiểm tra')).not.toBeInTheDocument();
+      expect(screen.getByText('Không thể tải thông tin tệp. Vui lòng bấm thử lại.')).toBeInTheDocument();
+      expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Cần tải lại');
       const retryBtn = screen.getByTestId('retry-metadata-btn');
-      expect(retryBtn).toBeInTheDocument();
 
       // Lần 2: Người dùng bấm "Thử lại", API trả về thành công
       api.get.mockResolvedValueOnce({
@@ -558,6 +562,7 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
           file_name: 'recovered.jpg',
           mime_type: 'image/jpeg',
           status: 'complete',
+          data_status: 'full_data',
           inspection: {
             status: 'clean',
             metadata: {
@@ -571,9 +576,10 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       fireEvent.click(retryBtn);
 
       await waitFor(() => {
-        expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Hợp lệ');
+        expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Dữ liệu đầy đủ');
       });
       expect(screen.queryByText('Lỗi máy chủ')).not.toBeInTheDocument();
+      expect(screen.queryByText('Lỗi kiểm tra')).not.toBeInTheDocument();
       expect(screen.getByTestId('photo-aspect-ratio')).toHaveTextContent('4:3');
     });
   });
@@ -616,13 +622,13 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent(
-          'Hợp lệ'
+          'Dữ liệu đầy đủ'
         );
       });
 
       expect(screen.getByTestId('inspection-clean-state')).toBeInTheDocument();
       expect(
-        screen.getByText(/không phát hiện kích thước chụp lại màn hình/i)
+        screen.getByText(/Không phát hiện dấu hiệu bất thường/i)
       ).toBeInTheDocument();
 
       // Thông số kỹ thuật
@@ -689,7 +695,7 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent(
-          'Cần xác minh'
+          'Dữ liệu không đầy đủ và cảnh báo'
         );
       });
 
@@ -752,13 +758,13 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent(
-          'Không đủ dữ liệu'
+          'Dữ liệu không đầy đủ'
         );
       });
 
       expect(screen.getByTestId('inspection-incomplete-state')).toBeInTheDocument();
       expect(
-        screen.getByText(/Tệp ảnh không chứa các thẻ EXIF phần cứng của máy ảnh/i)
+        screen.getByText(/Tệp ảnh thiếu một số trường EXIF bắt buộc/i)
       ).toBeInTheDocument();
     });
 
@@ -797,13 +803,13 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent(
-          'Lỗi kiểm tra'
+          'Dữ liệu không đầy đủ và cảnh báo'
         );
       });
 
-      expect(screen.getByTestId('inspection-error-state')).toBeInTheDocument();
+      expect(screen.getByTestId('inspection-warnings-section')).toBeInTheDocument();
       expect(
-        screen.getByText(/Không thể trích xuất hoặc phân tích tệp ảnh do tệp bị hỏng/i)
+        screen.getByText(/Tệp ảnh bị hỏng hoặc không đọc được/i)
       ).toBeInTheDocument();
     });
 
@@ -842,12 +848,12 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent(
-          'Hợp lệ'
+          'Dữ liệu đầy đủ'
         );
       });
     });
 
-    it('hiển thị nhãn Lỗi kiểm tra và thông báo lỗi máy chủ khi API trả về 500, không tự kết luận ảnh không hợp lệ', async () => {
+    it('không hiển thị nhãn Lỗi kiểm tra và Lỗi máy chủ khi API trả về 500, không tự kết luận ảnh không hợp lệ', async () => {
       api.get.mockRejectedValueOnce({
         response: {
           status: 500,
@@ -866,11 +872,14 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByText('Lỗi máy chủ')).toBeInTheDocument();
+        expect(screen.getByTestId('retry-metadata-btn')).toBeInTheDocument();
       });
 
-      // Nhãn góc trên là "Lỗi kiểm tra", TUYỆT ĐỐI không phải "Không hợp lệ"
-      expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Lỗi kiểm tra');
+      // Tuyệt đối không hiển thị "Lỗi máy chủ", "Lỗi kiểm tra" hay "Chưa có cấu hình tâm"
+      expect(screen.queryByText('Lỗi máy chủ')).not.toBeInTheDocument();
+      expect(screen.queryByText('Lỗi kiểm tra')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Chưa có cấu hình tâm/i)).not.toBeInTheDocument();
+      expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Cần tải lại');
       expect(screen.queryByText('Không hợp lệ')).toBeNull();
       expect(screen.getByTestId('retry-metadata-btn')).toBeInTheDocument();
     });
@@ -1094,10 +1103,13 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByText('Lỗi máy chủ')).toBeInTheDocument();
+        expect(screen.getByTestId('retry-metadata-btn')).toBeInTheDocument();
       });
 
-      expect(screen.getByTestId('retry-metadata-btn')).toBeInTheDocument();
+      // Tuyệt đối không hiển thị "Lỗi máy chủ" hoặc "Lỗi kiểm tra"
+      expect(screen.queryByText('Lỗi máy chủ')).not.toBeInTheDocument();
+      expect(screen.queryByText('Lỗi kiểm tra')).not.toBeInTheDocument();
+      expect(screen.getByText('Không thể tải thông tin tệp. Vui lòng bấm thử lại.')).toBeInTheDocument();
 
       // Nút X và Đóng vẫn hoạt động hoàn toàn bình thường
       const closeX = screen.getByTestId('close-x-btn');
@@ -1169,7 +1181,7 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       expect(screen.getByText('Thông tin tệp')).toBeInTheDocument();
       expect(screen.getByText('Metadata EXIF')).toBeInTheDocument();
       expect(screen.queryByText(/Đối chiếu phạm vi công trường/i)).not.toBeInTheDocument();
-      expect(screen.getByText(/Chi tiết cảnh báo cần xác minh/i)).toBeInTheDocument();
+      expect(screen.getByTestId('inspection-warnings-section')).toBeInTheDocument();
       expect(screen.getByText('Nghi vấn ảnh chụp lại màn hình')).toBeInTheDocument();
       expect(screen.getByTestId('close-panel-btn')).toBeInTheDocument();
     });
@@ -1224,7 +1236,7 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       // Xem được thông tin tệp và trạng thái
       expect(screen.getByText('JPEG')).toBeInTheDocument();
       expect(screen.getByTestId('photo-resolution')).toHaveTextContent('1080 × 2400 px');
-      expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Cần xác minh');
+      expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Dữ liệu không đầy đủ và cảnh báo');
       expect(screen.getByText('Dấu hiệu ảnh chụp lại màn hình')).toBeInTheDocument();
 
       // GPS thô bị ẩn đối với người gửi, chỉ hiển thị thông báo quyền riêng tư
@@ -1341,7 +1353,9 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
         expect(screen.getByText('Lỗi kết nối máy chủ')).toBeInTheDocument();
       });
 
-      expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Lỗi kiểm tra');
+      expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Cần tải lại');
+      expect(screen.queryByText('Lỗi kiểm tra')).not.toBeInTheDocument();
+      expect(screen.queryByText('Lỗi máy chủ')).not.toBeInTheDocument();
 
       const retryBtn = screen.getByTestId('retry-metadata-btn');
       fireEvent.click(retryBtn);
@@ -1350,6 +1364,539 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
         expect(api.get).toHaveBeenCalledTimes(2);
         expect(screen.getByText('retry_success.jpg')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('Kiểm thử 15 yêu cầu bắt buộc (Mục VII)', () => {
+    // 1. EXIF đầy đủ, không có cảnh báo → “Dữ liệu đầy đủ”.
+    it('1. EXIF đầy đủ, không có cảnh báo -> "Dữ liệu đầy đủ"', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'full_valid.jpg',
+          mime_type: 'image/jpeg',
+          status: 'complete',
+          data_status: 'full_data',
+          data_status_label: 'Dữ liệu đầy đủ',
+          captured_at: '2026-10-15T08:00:00.000Z',
+          missing_fields: [],
+          inspection: {
+            data_status: 'full_data',
+            status: 'clean',
+            warnings: [],
+            metadata: {
+              width: 4032,
+              height: 3024,
+              make: 'Apple',
+              model: 'iPhone 15 Pro',
+            },
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={701}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Dữ liệu đầy đủ');
+      });
+      expect(screen.queryByTestId('missing-fields-section')).toBeNull();
+    });
+
+    // 2. Thiếu một trường EXIF bắt buộc, không có cảnh báo → “Dữ liệu không đầy đủ”.
+    it('2. Thiếu một trường EXIF bắt buộc (thiết bị), không có cảnh báo -> "Dữ liệu không đầy đủ"', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'missing_device.jpg',
+          mime_type: 'image/jpeg',
+          status: 'complete',
+          data_status: 'incomplete_data',
+          data_status_label: 'Dữ liệu không đầy đủ',
+          captured_at: '2026-10-15T08:00:00.000Z',
+          missing_fields: [{ field: 'device', label: 'Không có thông tin thiết bị' }],
+          inspection: {
+            data_status: 'incomplete_data',
+            status: 'incomplete_data',
+            warnings: [],
+            metadata: {
+              width: 1920,
+              height: 1080,
+              make: null,
+              model: null,
+            },
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={702}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Dữ liệu không đầy đủ');
+      });
+      expect(screen.getByTestId('missing-fields-section')).toHaveTextContent('Không có thông tin thiết bị');
+    });
+
+    // 3. Thiếu nhiều trường EXIF, không có cảnh báo → “Dữ liệu không đầy đủ”.
+    it('3. Thiếu nhiều trường EXIF, không có cảnh báo -> "Dữ liệu không đầy đủ"', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'missing_multiple.jpg',
+          mime_type: 'image/jpeg',
+          status: 'none',
+          data_status: 'incomplete_data',
+          data_status_label: 'Dữ liệu không đầy đủ',
+          captured_at: null,
+          missing_fields: [
+            { field: 'captured_at', label: 'Không có thời gian chụp' },
+            { field: 'device', label: 'Không có thông tin thiết bị' },
+          ],
+          inspection: {
+            data_status: 'incomplete_data',
+            status: 'incomplete_data',
+            warnings: [],
+            metadata: {
+              width: 1920,
+              height: 1080,
+            },
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={703}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Dữ liệu không đầy đủ');
+      });
+      expect(screen.getByText('Không có thời gian chụp')).toBeInTheDocument();
+      expect(screen.getByText('Không có thông tin thiết bị')).toBeInTheDocument();
+    });
+
+    // 4. Thiếu EXIF và có dấu hiệu cảnh báo → “Dữ liệu không đầy đủ và cảnh báo”.
+    it('4. Thiếu EXIF và có dấu hiệu cảnh báo -> "Dữ liệu không đầy đủ và cảnh báo"', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'screenshot_warn.png',
+          mime_type: 'image/png',
+          status: 'none',
+          data_status: 'incomplete_data_warning',
+          data_status_label: 'Dữ liệu không đầy đủ và cảnh báo',
+          missing_fields: [
+            { field: 'captured_at', label: 'Không có thời gian chụp' },
+            { field: 'device', label: 'Không có thông tin thiết bị' },
+          ],
+          inspection: {
+            data_status: 'incomplete_data_warning',
+            status: 'warning',
+            warnings: [
+              {
+                code: 'SCREENSHOT_SUSPECTED',
+                title: 'Dấu hiệu ảnh chụp lại màn hình',
+                reason: 'Kích thước ảnh 1080x2400 tương ứng tỷ lệ màn hình điện thoại',
+                severity: 'high',
+              },
+            ],
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={704}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Dữ liệu không đầy đủ và cảnh báo');
+      });
+      expect(screen.getByText('Dấu hiệu ảnh chụp lại màn hình')).toBeInTheDocument();
+      expect(screen.getByText('Không có thời gian chụp')).toBeInTheDocument();
+    });
+
+    // 5. Thiếu thời gian chụp.
+    it('5. Thiếu thời gian chụp hiển thị "Không có dữ liệu" tại dòng thời gian chụp', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'no_captured_at.jpg',
+          captured_at: null,
+          data_status: 'incomplete_data',
+          missing_fields: [{ field: 'captured_at', label: 'Không có thời gian chụp' }],
+          inspection: {
+            data_status: 'incomplete_data',
+            metadata: { width: 1920, height: 1080, make: 'Canon' },
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={705}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('no_captured_at.jpg')).toBeInTheDocument();
+      });
+      expect(screen.getByText('Không có thời gian chụp')).toBeInTheDocument();
+      expect(screen.getAllByText('Không có dữ liệu').length).toBeGreaterThanOrEqual(1);
+    });
+
+    // 6. Thiếu GPS: không hiển thị "Chưa có cấu hình tâm" hoặc hộp đối chiếu.
+    it('6. Thiếu GPS hiển thị "Không có dữ liệu", tuyệt đối không hiển thị "Chưa có cấu hình tâm"', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'no_gps.jpg',
+          has_gps: false,
+          gps: null,
+          data_status: 'incomplete_data',
+          missing_fields: [],
+          inspection: { data_status: 'incomplete_data' },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={706}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('no_gps.jpg')).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/Chưa có cấu hình tâm/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Đối chiếu phạm vi công trường/i)).not.toBeInTheDocument();
+      expect(screen.queryByTestId('geofence-evaluation-section')).not.toBeInTheDocument();
+    });
+
+    // 7. Ảnh có kích thước trùng kích thước màn hình phổ biến.
+    it('7. Ảnh có kích thước trùng kích thước màn hình phổ biến hiển thị cảnh báo', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'phone_screen.jpg',
+          data_status: 'incomplete_data_warning',
+          inspection: {
+            data_status: 'incomplete_data_warning',
+            warnings: [
+              {
+                code: 'SCREENSHOT_SUSPECTED',
+                title: 'Dấu hiệu ảnh chụp lại màn hình',
+                reason: 'Kích thước ảnh 1080x2400 (tỷ lệ 9:20) đặc trưng màn hình điện thoại',
+                severity: 'high',
+              },
+            ],
+            metadata: { width: 1080, height: 2400 },
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={707}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Dữ liệu không đầy đủ và cảnh báo');
+      });
+      expect(screen.getByText(/Kích thước ảnh 1080x2400/i)).toBeInTheDocument();
+    });
+
+    // 8. Ảnh có thời gian chụp lệch ngày nghiệm thu.
+    it('8. Ảnh có thời gian chụp lệch ngày nghiệm thu hiển thị cảnh báo thời gian', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'drift_time.jpg',
+          data_status: 'incomplete_data_warning',
+          inspection: {
+            data_status: 'incomplete_data_warning',
+            warnings: [
+              {
+                code: 'CAPTURE_DATE_DRIFT',
+                title: 'Thời gian chụp sai lệch lớn so với đợt nghiệm thu',
+                reason: 'Ảnh được chụp cách ngày lập phiếu 50 ngày',
+                severity: 'medium',
+                actual_value: '2026-08-01',
+                comparison_value: '2026-10-15',
+              },
+            ],
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={708}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Dữ liệu không đầy đủ và cảnh báo');
+      });
+      expect(screen.getByText('Thời gian chụp sai lệch lớn so với đợt nghiệm thu')).toBeInTheDocument();
+      expect(screen.getByText('2026-08-01')).toBeInTheDocument();
+      expect(screen.getByText('2026-10-15')).toBeInTheDocument();
+    });
+
+    // 9. Ảnh bình thường không bị cảnh báo sai.
+    it('9. Ảnh bình thường không bị cảnh báo sai -> hiển thị "Dữ liệu đầy đủ"', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'clean_dslr.jpg',
+          data_status: 'full_data',
+          missing_fields: [],
+          inspection: {
+            data_status: 'full_data',
+            warnings: [],
+            metadata: { width: 3000, height: 2000, make: 'Nikon', model: 'D850' },
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={709}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Dữ liệu đầy đủ');
+      });
+      expect(screen.queryByTestId('inspection-warnings-section')).toBeNull();
+    });
+
+    // 10. JPEG, PNG và WebP theo khả năng hỗ trợ thực tế.
+    it('10. Hỗ trợ hiển thị đúng định dạng JPEG, PNG và WebP', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'sample.webp',
+          mime_type: 'image/webp',
+          data_status: 'full_data',
+          inspection: { metadata: { width: 1200, height: 800 } },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={710}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('WebP')).toBeInTheDocument();
+      });
+    });
+
+    // 11. File hỏng hoặc không đọc được.
+    it('11. File hỏng hoặc không đọc được hiển thị cảnh báo tệp, không làm crash modal', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'corrupt.jpg',
+          status: 'unreadable',
+          data_status: 'incomplete_data_warning',
+          inspection: {
+            data_status: 'incomplete_data_warning',
+            warnings: [
+              {
+                code: 'FILE_CORRUPTED',
+                title: 'Tệp ảnh bị hỏng hoặc không đọc được',
+                reason: 'Không thể phân tích cấu trúc nhị phân',
+                severity: 'high',
+              },
+            ],
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={711}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Dữ liệu không đầy đủ và cảnh báo');
+      });
+      expect(screen.getByText('Tệp ảnh bị hỏng hoặc không đọc được')).toBeInTheDocument();
+    });
+
+    // 12. API lỗi, thử lại và tải lại dữ liệu.
+    it('12. API lỗi, thử lại và tải lại dữ liệu thành công', async () => {
+      api.get.mockRejectedValueOnce({
+        response: { status: 500, data: { message: 'Lỗi máy chủ' } },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={712}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('retry-metadata-btn')).toBeInTheDocument();
+      });
+
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'success_reload.jpg',
+          data_status: 'full_data',
+          inspection: { data_status: 'full_data' },
+        },
+      });
+
+      fireEvent.click(screen.getByTestId('retry-metadata-btn'));
+
+      await waitFor(() => {
+        expect(screen.getByText('success_reload.jpg')).toBeInTheDocument();
+      });
+    });
+
+    // 13. Đảm bảo không hiển thị “Lỗi máy chủ”, “Lỗi kiểm tra” hoặc “Chưa có cấu hình tâm” trong modal Chi tiết ảnh.
+    it('13. Đảm bảo không hiển thị "Lỗi máy chủ", "Lỗi kiểm tra" hoặc "Chưa có cấu hình tâm" trong modal Chi tiết ảnh', async () => {
+      api.get.mockRejectedValueOnce({
+        response: { status: 500, data: { message: 'Lỗi máy chủ' } },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={713}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('retry-metadata-btn')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('Lỗi máy chủ')).not.toBeInTheDocument();
+      expect(screen.queryByText('Lỗi kiểm tra')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Chưa có cấu hình tâm/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Đối chiếu phạm vi công trường/i)).not.toBeInTheDocument();
+    });
+
+    // 14. Đảm bảo lỗi kỹ thuật không bị hiểu nhầm thành dữ liệu đầy đủ.
+    it('14. Đảm bảo lỗi kỹ thuật không bị hiểu nhầm thành dữ liệu đầy đủ', async () => {
+      api.get.mockRejectedValueOnce({
+        response: { status: 500, data: { message: 'Lỗi máy chủ' } },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={714}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('inspection-status-badge')).not.toHaveTextContent('Dữ liệu đầy đủ');
+      });
+      expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Cần tải lại');
+    });
+
+    // 15. Đảm bảo các cảnh báo được hiển thị đúng cho người duyệt.
+    it('15. Đảm bảo các cảnh báo và toạ độ được hiển thị đúng cho người duyệt (is_reviewer = true)', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'reviewer_photo.jpg',
+          is_reviewer: true,
+          has_gps: true,
+          gps: { latitude: 10.7769, longitude: 106.7009 },
+          data_status: 'incomplete_data_warning',
+          inspection: {
+            data_status: 'incomplete_data_warning',
+            warnings: [
+              {
+                code: 'SCREENSHOT_SUSPECTED',
+                title: 'Dấu hiệu ảnh chụp lại màn hình',
+                reason: 'Kích thước ảnh đặc trưng màn hình',
+                severity: 'high',
+                action_suggestion: 'Yêu cầu kỹ sư cung cấp tệp ảnh gốc',
+              },
+            ],
+            metadata: { width: 1080, height: 2340 },
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={715}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('reviewer_photo.jpg')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('gps-coordinates-section')).toBeInTheDocument();
+      expect(screen.getByText(/10.7769/)).toBeInTheDocument();
+      expect(screen.getByText('Dấu hiệu ảnh chụp lại màn hình')).toBeInTheDocument();
+      expect(screen.getByText('Yêu cầu kỹ sư cung cấp tệp ảnh gốc')).toBeInTheDocument();
     });
   });
 });
