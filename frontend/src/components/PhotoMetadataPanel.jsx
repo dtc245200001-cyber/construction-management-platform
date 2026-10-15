@@ -4,6 +4,40 @@ import PropTypes from 'prop-types';
 import api from '../lib/api';
 
 /**
+ * Tìm ước chung lớn nhất (GCD) bằng thuật toán Euclid
+ */
+export function gcd(a, b) {
+  let x = Math.abs(Math.round(a));
+  let y = Math.abs(Math.round(b));
+  while (y) {
+    const t = y;
+    y = x % y;
+    x = t;
+  }
+  return x || 1;
+}
+
+/**
+ * Tính tỷ lệ khung hình tối giản từ chiều rộng và chiều cao
+ * Ví dụ:
+ * - 2880 × 2160 -> 4:3
+ * - 1920 × 1080 -> 16:9
+ * - 1080 × 1080 -> 1:1
+ * - 2880 × 1800 -> 8:5
+ */
+export function calculateAspectRatio(width, height) {
+  const w = Number(width);
+  const h = Number(height);
+  if (!w || !h || isNaN(w) || isNaN(h) || w <= 0 || h <= 0) {
+    return 'Không có dữ liệu';
+  }
+  const divisor = gcd(w, h);
+  const rw = Math.round(w / divisor);
+  const rh = Math.round(h / divisor);
+  return `${rw}:${rh}`;
+}
+
+/**
  * Component hiển thị "Chi tiết ảnh" hiện trường (EXIF, thông tin tệp, kết quả kiểm tra)
  * Story S-40, S-41, S-42 / T-106, T-108, T-109, T-110
  *
@@ -11,7 +45,7 @@ import api from '../lib/api';
  * - Tiêu đề: "Chi tiết ảnh" (ở góc trên bên trái).
  * - Nhãn trạng thái ở góc trên bên phải (Hợp lệ, Cần xác minh, Không hợp lệ, Không đủ dữ liệu, Lỗi kiểm tra, Chưa kiểm tra).
  * - Ảnh hiển thị lớn, rõ ràng, bo góc.
- * - Phần "Thông tin tệp": Tên ảnh, Định dạng, Kích thước tệp, Độ phân giải, Người tải lên, Thời gian tải lên, Mã đợt/công việc.
+ * - Phần "Thông tin tệp": Tên ảnh, Định dạng, Tỷ lệ khung hình, Độ phân giải, Người tải lên, Thời gian tải lên, Mã đợt/công việc.
  * - Phần "Metadata EXIF": Thời gian chụp, Thiết bị chụp, Vị trí GPS, Phần mềm chỉnh sửa, ISO, Khẩu độ, Tốc độ màn trập.
  * - Phần "Chi tiết cảnh báo": Hiển thị dấu hiệu bất thường, lý do, độ tin cậy và hướng xử lý đối chiếu.
  * - Render qua createPortal vào document.body với z-[9999] để đảm bảo luôn mở trên cùng của mọi dialog.
@@ -30,6 +64,7 @@ export default function PhotoMetadataPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [internalMode, setInternalMode] = useState('detail');
+  const [naturalDimensions, setNaturalDimensions] = useState({ width: null, height: null });
 
   const currentMode = mode || internalMode;
 
@@ -102,6 +137,7 @@ export default function PhotoMetadataPanel({
       setMetadata(null);
       setError(null);
       setInternalMode('detail');
+      setNaturalDimensions({ width: null, height: null });
     }
   }, [isOpen, fetchMetadata, photo]);
 
@@ -187,11 +223,22 @@ export default function PhotoMetadataPanel({
   const batchName = metadata?.batch_name || photo?.batch_name;
   const imageUrl = photo?.url || metadata?.url;
 
-  // Độ phân giải
-  const width = techMeta.width || null;
-  const height = techMeta.height || null;
+  // Độ phân giải và Tỷ lệ khung hình
+  const width =
+    techMeta.width ||
+    metadata?.width ||
+    photo?.width ||
+    naturalDimensions.width ||
+    null;
+  const height =
+    techMeta.height ||
+    metadata?.height ||
+    photo?.height ||
+    naturalDimensions.height ||
+    null;
   const resolution =
     width && height ? `${width} × ${height} px` : null;
+  const aspectRatio = calculateAspectRatio(width, height);
 
   // Metadata EXIF
   const capturedAtFormatted = formatDateTime(
@@ -366,6 +413,14 @@ export default function PhotoMetadataPanel({
                 alt={fileName}
                 className="w-full max-h-[220px] sm:max-h-[280px] object-cover sm:object-contain mx-auto transition-transform cursor-pointer"
                 onClick={handleImageClick}
+                onLoad={(e) => {
+                  if (e.target?.naturalWidth && e.target?.naturalHeight) {
+                    setNaturalDimensions({
+                      width: e.target.naturalWidth,
+                      height: e.target.naturalHeight,
+                    });
+                  }
+                }}
                 onError={(e) => {
                   e.target.style.display = 'none';
                 }}
@@ -435,18 +490,22 @@ export default function PhotoMetadataPanel({
               </div>
               <div className="py-2 flex items-center justify-between">
                 <span className="text-slate-600">Độ phân giải</span>
-                <span className="text-slate-900 font-medium text-right">
+                <span
+                  data-testid="photo-resolution"
+                  className="text-slate-900 font-medium text-right"
+                >
                   {resolution || 'Không có dữ liệu'}
                 </span>
               </div>
-              {fileSize && (
-                <div className="py-2 flex items-center justify-between">
-                  <span className="text-slate-600">Kích thước tệp</span>
-                  <span className="text-slate-900 font-medium text-right">
-                    {formatFileSize(fileSize)}
-                  </span>
-                </div>
-              )}
+              <div className="py-2 flex items-center justify-between">
+                <span className="text-slate-600">Tỷ lệ khung hình</span>
+                <span
+                  data-testid="photo-aspect-ratio"
+                  className="text-slate-900 font-medium text-right font-mono"
+                >
+                  {aspectRatio}
+                </span>
+              </div>
               <div className="py-2 flex items-center justify-between">
                 <span className="text-slate-600">Người tải lên</span>
                 <span className="text-slate-900 font-medium text-right">
@@ -593,56 +652,7 @@ export default function PhotoMetadataPanel({
             </div>
           </div>
 
-          {/* MỤC 3: ĐỐI CHIẾU PHẠM VI CÔNG TRƯỜNG (S-41 / T-108) */}
-          <div data-testid="geofence-evaluation-section" className="rounded-lg border border-slate-100 bg-slate-50/70 p-3">
-            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">
-              Đối chiếu phạm vi công trường
-            </span>
-            {metadata?.geofence?.status === 'inside' ? (
-              <div className="flex items-center gap-2">
-                <span
-                  data-testid="geofence-status-inside"
-                  className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 border border-green-200"
-                >
-                  ✓ Trong phạm vi công trường
-                </span>
-                {metadata.geofence.distance_m !== null && (
-                  <span className="text-xs text-slate-600">
-                    (cách tâm {Number(metadata.geofence.distance_m).toLocaleString('vi-VN')} m)
-                  </span>
-                )}
-              </div>
-            ) : metadata?.geofence?.status === 'outside' ? (
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span
-                    data-testid="geofence-status-outside"
-                    className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800 border border-red-200"
-                  >
-                    ⚠️ Ngoài phạm vi công trường
-                  </span>
-                  {metadata.geofence.distance_m !== null && (
-                    <span className="text-xs font-semibold text-red-700">
-                      (cách tâm {Number(metadata.geofence.distance_m).toLocaleString('vi-VN')} m)
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-red-600">
-                  Ảnh được chụp ngoài bán kính công trường quy định, cần kiểm tra đối chiếu khi nghiệm thu.
-                </p>
-              </div>
-            ) : metadata?.geofence?.status === 'no_site_config' ? (
-              <p className="text-sm italic text-gray-500">
-                Dự án chưa cấu hình toạ độ tâm và bán kính công trường
-              </p>
-            ) : (
-              <p className="text-sm italic text-gray-500">
-                Không có toạ độ GPS để đối chiếu với phạm vi công trường
-              </p>
-            )}
-          </div>
-
-          {/* MỤC 4: CHI TIẾT CẢNH BÁO QUY TẮC BẰNG CHỨNG (S-42 / T-110) */}
+          {/* MỤC 3: CHI TIẾT CẢNH BÁO QUY TẮC BẰNG CHỨNG (S-42 / T-110) */}
           <div data-testid="photo-inspection-section" className="pt-2">
             {inspection?.status === 'warning' && (
               <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3">
