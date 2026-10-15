@@ -20,6 +20,11 @@ const {
   inspectPhotoMetadata,
   inspectVoucherPhotoRecord,
   sanitizeInspectionForRole,
+  DEFAULT_REQUIRED_FIELDS_CONFIG,
+  PHOTO_DATA_STATUS,
+  PHOTO_DATA_STATUS_LABELS,
+  getMissingRequiredFields,
+  evaluatePhotoDataStatus,
 } = require('../services/photoInspection');
 
 const {
@@ -601,6 +606,298 @@ describe('photoInspection service (Story S-42 / T-109)', () => {
       expect(res.metadata.width).toBe(3840);
       expect(res.metadata.height).toBe(2160);
       expect(res.metadata.aspect_ratio).toBe('16:9');
+    });
+  });
+
+  describe('Quy tắc xác định 3 trạng thái và danh sách trường bắt buộc (Mục I, II, III)', () => {
+    test('1. getMissingRequiredFields: đầy đủ trường bắt buộc mặc định -> mảng rỗng', () => {
+      const missing = getMissingRequiredFields({
+        captured_at: '2026-03-15T07:30:00.000Z',
+        make: 'Sony',
+        model: 'A7 IV',
+      });
+      expect(missing).toEqual([]);
+    });
+
+    test('2. getMissingRequiredFields: thiếu thời gian chụp -> trả về nhãn "Không có thời gian chụp"', () => {
+      const missing = getMissingRequiredFields({
+        captured_at: null,
+        make: 'Sony',
+      });
+      expect(missing).toHaveLength(1);
+      expect(missing[0]).toEqual({
+        field: 'captured_at',
+        label: 'Không có thời gian chụp',
+      });
+    });
+
+    test('3. getMissingRequiredFields: thiếu thông tin thiết bị (cả make và model null/rỗng) -> trả về nhãn "Không có thông tin thiết bị"', () => {
+      const missing = getMissingRequiredFields({
+        captured_at: '2026-03-15T07:30:00.000Z',
+        make: '',
+        model: null,
+      });
+      expect(missing).toHaveLength(1);
+      expect(missing[0]).toEqual({
+        field: 'device',
+        label: 'Không có thông tin thiết bị',
+      });
+    });
+
+    test('4. getMissingRequiredFields: thiếu nhiều trường -> liệt kê đầy đủ từng trường', () => {
+      const missing = getMissingRequiredFields({
+        captured_at: null,
+        make: null,
+        model: null,
+      });
+      expect(missing).toHaveLength(2);
+      expect(missing.map((f) => f.label)).toEqual([
+        'Không có thời gian chụp',
+        'Không có thông tin thiết bị',
+      ]);
+    });
+
+    test('5. getMissingRequiredFields: mặc định GPS không bắt buộc, chỉ bắt buộc khi config.requireGps = true', () => {
+      // Mặc định: không có GPS -> không bị xem là thiếu trường bắt buộc
+      const missingDefault = getMissingRequiredFields({
+        captured_at: '2026-03-15T07:30:00.000Z',
+        make: 'Apple',
+        gps_latitude: null,
+        gps_longitude: null,
+      });
+      expect(missingDefault).toEqual([]);
+
+      // Khi bật requireGps = true
+      const missingWithGps = getMissingRequiredFields(
+        {
+          captured_at: '2026-03-15T07:30:00.000Z',
+          make: 'Apple',
+          gps_latitude: null,
+          gps_longitude: null,
+        },
+        { requireGps: true }
+      );
+      expect(missingWithGps).toHaveLength(1);
+      expect(missingWithGps[0]).toEqual({
+        field: 'gps',
+        label: 'Không có toạ độ GPS',
+      });
+    });
+
+    test('6. evaluatePhotoDataStatus: Trạng thái 1 "Dữ liệu đầy đủ" khi đủ trường và không có cảnh báo', () => {
+      const res = evaluatePhotoDataStatus({
+        missingFields: [],
+        warnings: [],
+        canEvaluate: true,
+      });
+      expect(res.data_status).toBe('full_data');
+      expect(res.data_status_label).toBe('Dữ liệu đầy đủ');
+    });
+
+    test('7. evaluatePhotoDataStatus: Trạng thái 2 "Dữ liệu không đầy đủ" khi thiếu trường bắt buộc và không có cảnh báo', () => {
+      const res = evaluatePhotoDataStatus({
+        missingFields: [{ field: 'captured_at', label: 'Không có thời gian chụp' }],
+        warnings: [],
+        canEvaluate: true,
+      });
+      expect(res.data_status).toBe('incomplete_data');
+      expect(res.data_status_label).toBe('Dữ liệu không đầy đủ');
+    });
+
+    test('8. evaluatePhotoDataStatus: Trạng thái 3 "Dữ liệu không đầy đủ và cảnh báo" khi thiếu EXIF VÀ có cảnh báo bất thường', () => {
+      const res = evaluatePhotoDataStatus({
+        missingFields: [{ field: 'captured_at', label: 'Không có thời gian chụp' }],
+        warnings: [
+          {
+            code: 'SCREENSHOT_SUSPECTED',
+            severity: 'high',
+            title: 'Dấu hiệu ảnh chụp lại màn hình',
+          },
+        ],
+        canEvaluate: true,
+      });
+      expect(res.data_status).toBe('incomplete_data_warning');
+      expect(res.data_status_label).toBe('Dữ liệu không đầy đủ và cảnh báo');
+    });
+
+    test('9. evaluatePhotoDataStatus: Trạng thái 3 "Dữ liệu không đầy đủ và cảnh báo" khi EXIF đầy đủ NHƯNG có cảnh báo bất thường (không tạo nhãn thứ 4)', () => {
+      const res = evaluatePhotoDataStatus({
+        missingFields: [],
+        warnings: [
+          {
+            code: 'DATE_TOO_FAR',
+            severity: 'high',
+            title: 'Thời điểm chụp cách xa ngày lập phiếu',
+          },
+        ],
+        canEvaluate: true,
+      });
+      expect(res.data_status).toBe('incomplete_data_warning');
+      expect(res.data_status_label).toBe('Dữ liệu không đầy đủ và cảnh báo');
+    });
+
+    test('10. evaluatePhotoDataStatus: khi canEvaluate = false (lỗi kỹ thuật tệp hỏng) -> data_status = null, không bị hiểu nhầm thành Dữ liệu đầy đủ', () => {
+      const res = evaluatePhotoDataStatus({
+        missingFields: [],
+        warnings: [],
+        canEvaluate: false,
+      });
+      expect(res.data_status).toBeNull();
+      expect(res.data_status_label).toBeNull();
+    });
+
+    test('11. inspectPhotoMetadata: ảnh bình thường đầy đủ EXIF -> "Dữ liệu đầy đủ"', async () => {
+      const jpegBuf = createJpegWithExif({
+        dateTimeOriginal: '2026:03:15 14:30:00',
+        offsetTimeOriginal: '+07:00',
+        make: 'Canon',
+        model: 'EOS R6',
+        latitude: 10.762622,
+        longitude: 106.660172,
+        width: 2400,
+        height: 1600, // 3:2 chuẩn máy ảnh
+      });
+
+      const res = await inspectPhotoMetadata({
+        buffer: jpegBuf,
+        mimeType: 'image/jpeg',
+        fileName: 'construction_site.jpg',
+      });
+
+      expect(res.data_status).toBe('full_data');
+      expect(res.data_status_label).toBe('Dữ liệu đầy đủ');
+      expect(res.missing_fields).toEqual([]);
+    });
+
+    test('12. inspectPhotoMetadata: ảnh thiếu EXIF nhưng không có dấu hiệu chụp màn hình -> "Dữ liệu không đầy đủ"', async () => {
+      // 1200 x 900 là tỷ lệ 4:3 thông thường (không phải kích thước màn hình điện thoại)
+      const plainJpeg = createPlainJpeg(1200, 900);
+
+      const res = await inspectPhotoMetadata({
+        buffer: plainJpeg,
+        mimeType: 'image/jpeg',
+        fileName: 'scaffold_check.jpg',
+      });
+
+      expect(res.data_status).toBe('incomplete_data');
+      expect(res.data_status_label).toBe('Dữ liệu không đầy đủ');
+      expect(res.missing_fields.length).toBeGreaterThanOrEqual(1);
+      expect(res.missing_fields.map((f) => f.label)).toContain('Không có thời gian chụp');
+      expect(res.missing_fields.map((f) => f.label)).toContain('Không có thông tin thiết bị');
+    });
+
+    test('13. inspectPhotoMetadata: ảnh có kích thước màn hình phổ biến (1080x2400) và thiếu EXIF -> "Dữ liệu không đầy đủ và cảnh báo"', async () => {
+      const screenJpeg = createPlainJpeg(1080, 2400);
+
+      const res = await inspectPhotoMetadata({
+        buffer: screenJpeg,
+        mimeType: 'image/jpeg',
+        fileName: 'screenshot_inspection.jpg',
+      });
+
+      expect(res.data_status).toBe('incomplete_data_warning');
+      expect(res.data_status_label).toBe('Dữ liệu không đầy đủ và cảnh báo');
+      expect(res.warnings.some((w) => w.code === 'SCREENSHOT_SUSPECTED')).toBe(true);
+      expect(res.missing_fields.length).toBeGreaterThan(0);
+    });
+
+    test('14. inspectPhotoMetadata: đầy đủ EXIF nhưng thời gian chụp lệch xa ngày lập phiếu -> "Dữ liệu không đầy đủ và cảnh báo"', async () => {
+      const jpegBuf = createJpegWithExif({
+        dateTimeOriginal: '2025:12:01 10:00:00', // Trước hơn 90 ngày
+        offsetTimeOriginal: '+07:00',
+        make: 'Sony',
+        model: 'A7',
+        width: 2400,
+        height: 1600,
+      });
+
+      const res = await inspectPhotoMetadata({
+        buffer: jpegBuf,
+        mimeType: 'image/jpeg',
+        fileName: 'foundation.jpg',
+        voucherCreatedAt: '2026-03-15T00:00:00.000Z',
+      });
+
+      expect(res.data_status).toBe('incomplete_data_warning');
+      expect(res.data_status_label).toBe('Dữ liệu không đầy đủ và cảnh báo');
+      expect(res.warnings.some((w) => w.code === 'DATE_TOO_FAR')).toBe(true);
+    });
+
+    test('15. inspectVoucherPhotoRecord: trích xuất đúng 3 trạng thái từ bản ghi cơ sở dữ liệu', () => {
+      const mockRowClean = {
+        id: 1,
+        file_name: 'site.jpg',
+        file_size: 500000,
+        mime_type: 'image/jpeg',
+        captured_at: '2026-03-15T07:30:00.000Z',
+        metadata_status: 'complete',
+        exif_metadata: {
+          status: 'clean',
+          metadata: {
+            make: 'Nikon',
+            model: 'Z6',
+            captured_at: '2026-03-15T07:30:00.000Z',
+          },
+          warnings: [],
+        },
+      };
+
+      const resClean = inspectVoucherPhotoRecord(mockRowClean);
+      expect(resClean.data_status).toBe('full_data');
+      expect(resClean.data_status_label).toBe('Dữ liệu đầy đủ');
+      expect(resClean.missing_fields).toEqual([]);
+
+      const mockRowMissing = {
+        id: 2,
+        file_name: 'no_exif.jpg',
+        file_size: 300000,
+        mime_type: 'image/jpeg',
+        captured_at: null,
+        metadata_status: 'none',
+      };
+
+      const resMissing = inspectVoucherPhotoRecord(mockRowMissing);
+      expect(resMissing.data_status).toBe('incomplete_data');
+      expect(resMissing.data_status_label).toBe('Dữ liệu không đầy đủ');
+      expect(resMissing.missing_fields.length).toBeGreaterThan(0);
+    });
+
+    test('16. sanitizeInspectionForRole: bảo vệ thông tin đối chiếu cho người gửi nhưng vẫn giữ nguyên data_status và missing_fields', () => {
+      const fullInspection = {
+        status: 'warning',
+        data_status: 'incomplete_data_warning',
+        data_status_label: 'Dữ liệu không đầy đủ và cảnh báo',
+        missing_fields: [{ field: 'captured_at', label: 'Không có thời gian chụp' }],
+        can_evaluate: true,
+        has_sufficient_data: false,
+        summary: 'Phát hiện dấu hiệu bất thường',
+        warnings: [
+          {
+            code: 'SCREENSHOT_SUSPECTED',
+            title: 'Ảnh chụp màn hình',
+            reason: 'Tên file chứa screenshot',
+            severity: 'high',
+            actual_value: '1080x2400',
+            comparison_value: 'Màn hình điện thoại',
+          },
+        ],
+        metadata: {
+          width: 1080,
+          height: 2400,
+          aspect_ratio: '9:20',
+        },
+      };
+
+      // Người gửi (isReviewer = false)
+      const submitterView = sanitizeInspectionForRole(fullInspection, false);
+      expect(submitterView.data_status).toBe('incomplete_data_warning');
+      expect(submitterView.data_status_label).toBe('Dữ liệu không đầy đủ và cảnh báo');
+      expect(submitterView.missing_fields).toHaveLength(1);
+      expect(submitterView.warnings[0].actual_value).toBeUndefined(); // Đã ẩn đối chiếu nội bộ
+
+      // Người duyệt (isReviewer = true)
+      const reviewerView = sanitizeInspectionForRole(fullInspection, true);
+      expect(reviewerView.warnings[0].actual_value).toBe('1080x2400');
     });
   });
 });

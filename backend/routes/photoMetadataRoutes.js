@@ -140,6 +140,12 @@ router.get(
     } catch (_inspErr) {
       inspection = {
         status: "incomplete_data",
+        data_status: "incomplete_data",
+        data_status_label: "Dữ liệu không đầy đủ",
+        missing_fields: [
+          { field: "captured_at", label: "Không có thời gian chụp" },
+          { field: "device", label: "Không có thông tin thiết bị" },
+        ],
         can_evaluate: false,
         has_sufficient_data: false,
         summary: "Dữ liệu không đầy đủ để đánh giá toàn diện",
@@ -166,6 +172,9 @@ router.get(
       url: photoUrl,
       status: row.metadata_status,
       status_label: STATUS_LABELS[row.metadata_status] || "Không xác định",
+      data_status: inspection?.data_status || null,
+      data_status_label: inspection?.data_status_label || null,
+      missing_fields: inspection?.missing_fields || [],
       captured_at: row.captured_at,
       captured_at_source: row.captured_at_source,
       source: row.metadata_source,

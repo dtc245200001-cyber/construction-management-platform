@@ -85,12 +85,16 @@ export default function PhotoMetadataPanel({
         setLoading(false);
       })
       .catch((err) => {
-        const errorMsg =
-          err.response?.data?.message ||
-          err.response?.data?.error ||
-          (err.message === 'Network Error' ? 'Mất kết nối máy chủ' : null) ||
-          'Không thể tải thông tin siêu dữ liệu ảnh.';
-        setError(errorMsg);
+        // Ghi log lỗi phía client
+        console.error('Lỗi khi tải thông tin ảnh:', err);
+        const rawMsg = err.response?.data?.error || err.response?.data?.message;
+        const errMsg =
+          rawMsg &&
+          !String(rawMsg).includes('Lỗi máy chủ') &&
+          !String(rawMsg).includes('Lỗi kiểm tra')
+            ? rawMsg
+            : 'Không thể tải thông tin tệp. Vui lòng bấm thử lại.';
+        setError(errMsg);
         setLoading(false);
       });
   }, [isOpen, projectId, photoId, kind]);
@@ -254,48 +258,89 @@ export default function PhotoMetadataPanel({
   const shutterSpeed = techMeta.shutter_speed || null;
   const fileHash = techMeta.file_hash || metadata?.file_hash || null;
 
-  // Xác định nhãn trạng thái góc trên bên phải
+  const missingFields =
+    metadata?.missing_fields ||
+    inspection?.missing_fields ||
+    [];
+
+  const warnings = Array.isArray(inspection?.warnings) ? inspection.warnings : [];
+  const anomalyWarnings = warnings.filter(
+    (w) =>
+      w &&
+      w.code !== 'MISSING_CAMERA_METADATA' &&
+      w.code !== 'MISSING_CAPTURE_TIME' &&
+      w.code !== 'MISSING_GPS'
+  );
+
+  // Xác định nhãn trạng thái góc trên bên phải theo đúng 3 trạng thái chuẩn (Story S-42 / Mục I.3)
   const getStatusPill = () => {
+    if (loading) {
+      return {
+        label: 'Đang tải...',
+        className: 'bg-slate-100 text-slate-600 border border-slate-200',
+      };
+    }
     if (error) {
       return {
-        label: 'Lỗi kiểm tra',
-        className: 'bg-rose-50 text-rose-700 border border-rose-200',
+        label: 'Cần tải lại',
+        className: 'bg-slate-100 text-slate-700 border border-slate-300',
       };
     }
-    const status = inspection?.status;
-    if (status === 'warning') {
+
+    const dataStatus =
+      metadata?.data_status ||
+      inspection?.data_status ||
+      (metadata?.data_status_label === 'Dữ liệu đầy đủ' ? 'full_data' : null);
+
+    if (dataStatus === 'full_data') {
       return {
-        label: 'Cần xác minh',
-        className: 'bg-orange-50 text-orange-700 border border-orange-200',
-      };
-    }
-    if (status === 'invalid') {
-      return {
-        label: 'Không hợp lệ',
-        className: 'bg-red-50 text-red-700 border border-red-200',
-      };
-    }
-    if (status === 'clean') {
-      return {
-        label: 'Hợp lệ',
+        label: 'Dữ liệu đầy đủ',
         className: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
       };
     }
-    if (status === 'incomplete_data' || metadata?.status === 'none') {
+    if (dataStatus === 'incomplete_data') {
       return {
-        label: 'Không đủ dữ liệu',
+        label: 'Dữ liệu không đầy đủ',
         className: 'bg-slate-100 text-slate-700 border border-slate-200',
       };
     }
-    if (status === 'error' || metadata?.status === 'unreadable' || metadata?.status === 'unsupported') {
+    if (dataStatus === 'incomplete_data_warning') {
       return {
-        label: 'Lỗi kiểm tra',
-        className: 'bg-rose-50 text-rose-700 border border-rose-200',
+        label: 'Dữ liệu không đầy đủ và cảnh báo',
+        className: 'bg-amber-50 text-amber-800 border border-amber-300',
       };
     }
+
+    // Fallback theo inspection.status cũ
+    const legacyStatus = inspection?.status;
+    if (legacyStatus === 'clean') {
+      return {
+        label: 'Dữ liệu đầy đủ',
+        className: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+      };
+    }
+    if (legacyStatus === 'warning') {
+      return {
+        label: 'Dữ liệu không đầy đủ và cảnh báo',
+        className: 'bg-amber-50 text-amber-800 border border-amber-300',
+      };
+    }
+    if (legacyStatus === 'incomplete_data' || metadata?.status === 'none') {
+      return {
+        label: 'Dữ liệu không đầy đủ',
+        className: 'bg-slate-100 text-slate-700 border border-slate-200',
+      };
+    }
+    if (legacyStatus === 'error' || metadata?.status === 'unreadable' || metadata?.status === 'unsupported') {
+      return {
+        label: 'Dữ liệu không đầy đủ và cảnh báo',
+        className: 'bg-amber-50 text-amber-800 border border-amber-300',
+      };
+    }
+
     return {
-      label: 'Chưa kiểm tra',
-      className: 'bg-slate-100 text-slate-600 border border-slate-200',
+      label: 'Dữ liệu không đầy đủ',
+      className: 'bg-slate-100 text-slate-700 border border-slate-200',
     };
   };
 
@@ -564,8 +609,8 @@ export default function PhotoMetadataPanel({
                       )}
                     </div>
                   ) : (
-                    <span className="text-slate-500 italic">
-                      Ảnh không ghi nhận thời gian chụp gốc
+                    <span className="text-slate-900 font-medium">
+                      Không có dữ liệu
                     </span>
                   )}
                 </div>
@@ -615,8 +660,8 @@ export default function PhotoMetadataPanel({
                       </p>
                     </div>
                   ) : (
-                    <span className="text-slate-500 italic">
-                      Ảnh không có thông tin toạ độ GPS
+                    <span className="text-slate-900 font-medium">
+                      Không có dữ liệu
                     </span>
                   )}
                 </div>
@@ -652,18 +697,38 @@ export default function PhotoMetadataPanel({
             </div>
           </div>
 
-          {/* MỤC 3: CHI TIẾT CẢNH BÁO QUY TẮC BẰNG CHỨNG (S-42 / T-110) */}
-          <div data-testid="photo-inspection-section" className="pt-2">
-            {inspection?.status === 'warning' && (
-              <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3">
+          {/* MỤC 3: DANH SÁCH TRƯỜNG EXIF THIẾU (Story S-42 / Mục III) */}
+          {missingFields.length > 0 && (
+            <div
+              data-testid="missing-fields-section"
+              className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs space-y-1.5"
+            >
+              <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                <span>ℹ️</span> Danh sách trường EXIF còn thiếu ({missingFields.length}):
+              </div>
+              <ul className="list-disc list-inside space-y-0.5 text-slate-700 text-[11px]">
+                {missingFields.map((f, idx) => (
+                  <li key={f.field || idx}>{f.label || f}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* MỤC 4: CHI TIẾT CẢNH BÁO QUY TẮC BẰNG CHỨNG (S-42 / T-110) */}
+          <div data-testid="photo-inspection-section" className="pt-1">
+            {warnings.length > 0 && (
+              <div
+                data-testid="inspection-warnings-section"
+                className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3"
+              >
                 <div className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
-                  <span>⚠️</span> Chi tiết cảnh báo cần xác minh
+                  <span>⚠️</span> Dấu hiệu cảnh báo bất thường ({warnings.length})
                 </div>
                 <div
                   data-testid="inspection-warnings-list"
                   className="space-y-2 text-xs"
                 >
-                  {inspection.warnings?.map((w, idx) => (
+                  {warnings.map((w, idx) => (
                     <div
                       key={w.code || idx}
                       data-testid={`inspection-warning-${w.code || idx}`}
@@ -715,44 +780,32 @@ export default function PhotoMetadataPanel({
               </div>
             )}
 
-            {inspection?.status === 'clean' && (
+            {/* Dữ liệu đầy đủ */}
+            {(statusPill.label === 'Dữ liệu đầy đủ' || inspection?.status === 'clean') && warnings.length === 0 && (
               <div
                 data-testid="inspection-clean-state"
                 className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-900 space-y-1"
               >
                 <div className="font-semibold flex items-center gap-1 text-emerald-800">
-                  <span>✓</span> Bằng chứng hợp lệ
+                  <span>✓</span> Dữ liệu đầy đủ
                 </div>
                 <p className="text-emerald-700 text-[11px]">
-                  Tệp ảnh có cấu trúc toàn vẹn, không phát hiện kích thước chụp lại màn hình. Thông tin thời gian chụp nhất quán.
+                  Tệp ảnh có đầy đủ thông tin thời gian chụp gốc và thiết bị. Không phát hiện dấu hiệu bất thường.
                 </p>
               </div>
             )}
 
-            {inspection?.status === 'incomplete_data' && (
+            {/* Dữ liệu không đầy đủ (không có cảnh báo) */}
+            {statusPill.label === 'Dữ liệu không đầy đủ' && warnings.length === 0 && (
               <div
                 data-testid="inspection-incomplete-state"
                 className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-800 space-y-1"
               >
                 <div className="font-semibold text-slate-900">
-                  ℹ️ Dữ liệu không đầy đủ để đánh giá toàn diện
+                  ℹ️ Dữ liệu không đầy đủ
                 </div>
                 <p className="text-slate-600 text-[11px]">
-                  Tệp ảnh không chứa các thẻ EXIF phần cứng của máy ảnh (Make/Model) hoặc không có thời gian chụp gốc.
-                </p>
-              </div>
-            )}
-
-            {inspection?.status === 'error' && (
-              <div
-                data-testid="inspection-error-state"
-                className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 space-y-1"
-              >
-                <div className="font-semibold text-rose-900">
-                  ❌ Lỗi phân tích tệp ảnh
-                </div>
-                <p className="text-rose-700 text-[11px]">
-                  Không thể trích xuất hoặc phân tích tệp ảnh do tệp bị hỏng hoặc định dạng không hỗ trợ.
+                  Tệp ảnh thiếu một số trường EXIF bắt buộc (thời gian chụp hoặc thiết bị).
                 </p>
               </div>
             )}
