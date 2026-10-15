@@ -280,12 +280,6 @@ export default function PhotoMetadataPanel({
         className: 'bg-slate-100 text-slate-600 border border-slate-200',
       };
     }
-    if (error) {
-      return {
-        label: 'Cần tải lại',
-        className: 'bg-slate-100 text-slate-700 border border-slate-300',
-      };
-    }
 
     const dataStatus =
       metadata?.data_status ||
@@ -336,6 +330,10 @@ export default function PhotoMetadataPanel({
         label: 'Dữ liệu không đầy đủ và cảnh báo',
         className: 'bg-amber-50 text-amber-800 border border-amber-300',
       };
+    }
+
+    if (error) {
+      return null;
     }
 
     return {
@@ -426,12 +424,14 @@ export default function PhotoMetadataPanel({
                 </h2>
               </DialogPrimitive.Title>
           <div className="flex items-center gap-2">
-            <span
-              data-testid="inspection-status-badge"
-              className={`inline-flex items-center rounded-full px-3 py-0.5 text-xs font-semibold ${statusPill.className}`}
-            >
-              {statusPill.label}
-            </span>
+            {statusPill && (
+              <span
+                data-testid="inspection-status-badge"
+                className={`inline-flex items-center rounded-full px-3 py-0.5 text-xs font-semibold ${statusPill.className}`}
+              >
+                {statusPill.label}
+              </span>
+            )}
             <button
               type="button"
               onClick={(e) => {
@@ -498,20 +498,6 @@ export default function PhotoMetadataPanel({
           {loading && (
             <div className="py-4 text-center text-xs text-slate-500">
               Đang đọc siêu dữ liệu...
-            </div>
-          )}
-
-          {error && (
-            <div className="rounded-lg bg-red-50 p-3 text-xs text-red-700 border border-red-200 flex items-center justify-between">
-              <span>{error}</span>
-              <button
-                type="button"
-                data-testid="retry-metadata-btn"
-                onClick={fetchMetadata}
-                className="font-semibold underline ml-2 hover:text-red-900 cursor-pointer"
-              >
-                Thử lại
-              </button>
             </div>
           )}
 
@@ -781,7 +767,7 @@ export default function PhotoMetadataPanel({
             )}
 
             {/* Dữ liệu đầy đủ */}
-            {(statusPill.label === 'Dữ liệu đầy đủ' || inspection?.status === 'clean') && warnings.length === 0 && (
+            {(statusPill?.label === 'Dữ liệu đầy đủ' || inspection?.status === 'clean') && warnings.length === 0 && (
               <div
                 data-testid="inspection-clean-state"
                 className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-900 space-y-1"
@@ -796,7 +782,7 @@ export default function PhotoMetadataPanel({
             )}
 
             {/* Dữ liệu không đầy đủ (không có cảnh báo) */}
-            {statusPill.label === 'Dữ liệu không đầy đủ' && warnings.length === 0 && (
+            {statusPill?.label === 'Dữ liệu không đầy đủ' && warnings.length === 0 && (
               <div
                 data-testid="inspection-incomplete-state"
                 className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-800 space-y-1"
