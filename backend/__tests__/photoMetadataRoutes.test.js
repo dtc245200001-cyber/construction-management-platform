@@ -390,5 +390,71 @@ describe("photoMetadataRoutes Unit Tests (S-40 / T-106)", () => {
       expect(res.body.inspection.metadata.width).toBe(1920);
       expect(res.body.inspection.metadata.height).toBe(1080);
     });
+
+    test("Lỗi database khi truy vấn: trả về lỗi 500 an toàn qua middleware", async () => {
+      mockCurrentProjectRole = "ban_quan_ly";
+      mockQuery.mockRejectedValueOnce(new Error("PostgreSQL connection failure"));
+
+      const res = await request(app).get("/api/projects/1/photo-metadata/acceptance/999");
+      expect(res.status).toBe(500);
+      expect(res.body.message).toBeDefined();
+    });
+
+    test("Phân quyền camera metadata: người gửi chỉ thấy file info, người duyệt thấy camera EXIF", async () => {
+      const photoWithCameraExif = {
+        id: 501,
+        voucher_id: 10,
+        file_name: "camera_photo.jpg",
+        file_size: 2048000,
+        mime_type: "image/jpeg",
+        captured_at: "2026-03-15T07:30:00.000Z",
+        metadata_status: "complete",
+        gps_latitude: "10.762622",
+        gps_longitude: "106.660172",
+        exif_metadata: {
+          status: "clean",
+          summary: "Bằng chứng hợp lệ",
+          warnings: [],
+          metadata: {
+            width: 4000,
+            height: 3000,
+            aspect_ratio: "4:3",
+            make: "Sony",
+            model: "ILCE-7M4",
+            software: "v2.00",
+            iso: "100",
+            aperture: "f/2.8",
+            shutter_speed: "1/500s",
+            gps_latitude: 10.762622,
+            gps_longitude: 106.660172,
+          },
+        },
+      };
+
+      // 1. Người gửi (ky_su_giam_sat): make, model, software, iso bị lọc bỏ khỏi inspection.metadata
+      mockCurrentProjectRole = "ky_su_giam_sat";
+      mockQuery.mockResolvedValueOnce({ rows: [photoWithCameraExif] });
+      const submitterRes = await request(app).get("/api/projects/1/photo-metadata/acceptance/501");
+      expect(submitterRes.status).toBe(200);
+      expect(submitterRes.body.is_reviewer).toBe(false);
+      expect(submitterRes.body.inspection.metadata.width).toBe(4000);
+      expect(submitterRes.body.inspection.metadata.height).toBe(3000);
+      expect(submitterRes.body.inspection.metadata.aspect_ratio).toBe("4:3");
+      expect(submitterRes.body.inspection.metadata.make).toBeUndefined();
+      expect(submitterRes.body.inspection.metadata.model).toBeUndefined();
+      expect(submitterRes.body.inspection.metadata.iso).toBeUndefined();
+
+      // 2. Người duyệt (chu_dau_tu): xem được toàn bộ thông số máy ảnh EXIF
+      mockCurrentProjectRole = "chu_dau_tu";
+      mockQuery.mockResolvedValueOnce({ rows: [photoWithCameraExif] });
+      const reviewerRes = await request(app).get("/api/projects/1/photo-metadata/acceptance/501");
+      expect(reviewerRes.status).toBe(200);
+      expect(reviewerRes.body.is_reviewer).toBe(true);
+      expect(reviewerRes.body.inspection.metadata.make).toBe("Sony");
+      expect(reviewerRes.body.inspection.metadata.model).toBe("ILCE-7M4");
+      expect(reviewerRes.body.inspection.metadata.iso).toBe("100");
+      expect(reviewerRes.body.inspection.metadata.aperture).toBe("f/2.8");
+      expect(reviewerRes.body.inspection.metadata.shutter_speed).toBe("1/500s");
+    });
   });
 });

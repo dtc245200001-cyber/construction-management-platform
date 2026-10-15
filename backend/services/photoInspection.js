@@ -1,6 +1,6 @@
 /**
  * Service phân tích và phát hiện dấu hiệu bất thường của ảnh bằng chứng (EXIF / Metadata)
- * Story S-42: T-109
+ * Story S-42: T-109 & T-110
  *
  * Tiêu chí:
  * - Trích xuất metadata máy ảnh, kích thước, thời gian chụp, toạ độ GPS.
@@ -15,15 +15,11 @@
 'use strict';
 
 const crypto = require('crypto');
-const exifr = require('exifr');
 const {
-  isSupportedMagicBytes,
-  parseExifDateTime,
-  isValidCaptureDate,
-  SUPPORTED_MIME_TYPES,
+  extractPhotoMetadata,
+  extractImageDimensions,
+  calculateAspectRatio,
 } = require('./photoMetadata');
-
-const EXIF_PARSE_BYTE_LIMIT = 256 * 1024;
 
 // Danh sách các độ phân giải màn hình điện thoại phổ biến (pixels)
 const KNOWN_SCREENSHOT_RESOLUTIONS = new Set([
@@ -70,94 +66,6 @@ const STANDARD_RATIOS = [
 ];
 
 /**
- * Trích xuất kích thước ảnh (width, height) từ buffer nhị phân (PNG, JPEG, WebP)
- * Đảm bảo đọc được kích thước kể cả khi EXIF đã bị lột bỏ hoàn toàn (như ảnh screenshot).
- */
-function extractImageDimensions(buffer) {
-  if (!buffer || !Buffer.isBuffer(buffer) || buffer.length < 12) {
-    return { width: null, height: null };
-  }
-
-  // 1. PNG: magic bytes 89 50 4E 47 0D 0A 1A 0A -> IHDR starts at byte 12
-  if (
-    buffer[0] === 0x89 &&
-    buffer[1] === 0x50 &&
-    buffer[2] === 0x4e &&
-    buffer[3] === 0x47
-  ) {
-    if (buffer.length >= 24) {
-      const width = buffer.readUInt32BE(16);
-      const height = buffer.readUInt32BE(20);
-      if (width > 0 && height > 0 && width < 50000 && height < 50000) {
-        return { width, height };
-      }
-    }
-  }
-
-  // 2. JPEG: magic bytes FF D8
-  if (buffer[0] === 0xff && buffer[1] === 0xd8) {
-    let offset = 2;
-    const len = Math.min(buffer.length, 128 * 1024); // Quét trong 128KB đầu
-    while (offset < len - 8) {
-      if (buffer[offset] !== 0xff) {
-        offset++;
-        continue;
-      }
-      const marker = buffer[offset + 1];
-      // Markers SOF0..SOF15 (loại trừ DHT=C4, JPG=C8, DAC=CC)
-      if (
-        (marker >= 0xc0 && marker <= 0xc3) ||
-        (marker >= 0xc5 && marker <= 0xc7) ||
-        (marker >= 0xc9 && marker <= 0xcb) ||
-        (marker >= 0xcd && marker <= 0xcf)
-      ) {
-        const height = buffer.readUInt16BE(offset + 5);
-        const width = buffer.readUInt16BE(offset + 7);
-        if (width > 0 && height > 0) {
-          return { width, height };
-        }
-      }
-
-      // Đọc length của segment
-      if (offset + 3 >= len) break;
-      const segmentLength = buffer.readUInt16BE(offset + 2);
-      if (segmentLength < 2) break;
-      offset += 2 + segmentLength;
-    }
-  }
-
-  // 3. WebP: RIFF .... WEBP
-  if (
-    buffer.toString('ascii', 0, 4) === 'RIFF' &&
-    buffer.toString('ascii', 8, 12) === 'WEBP'
-  ) {
-    const format = buffer.toString('ascii', 12, 16);
-    if (format === 'VP8 ' && buffer.length >= 30) {
-      // VP8 lossy
-      const width = buffer.readUInt16LE(26) & 0x3fff;
-      const height = buffer.readUInt16LE(28) & 0x3fff;
-      if (width > 0 && height > 0) return { width, height };
-    } else if (format === 'VP8L' && buffer.length >= 25) {
-      // VP8L lossless
-      const b1 = buffer[21];
-      const b2 = buffer[22];
-      const b3 = buffer[23];
-      const b4 = buffer[24];
-      const width = 1 + (((b2 & 0x3f) << 8) | b1);
-      const height = 1 + (((b4 & 0x0f) << 10) | (b3 << 2) | ((b2 & 0xc0) >> 6));
-      if (width > 0 && height > 0) return { width, height };
-    } else if (format === 'VP8X' && buffer.length >= 30) {
-      // VP8X extended
-      const width = 1 + buffer.readUIntLE(24, 3);
-      const height = 1 + buffer.readUIntLE(27, 3);
-      if (width > 0 && height > 0) return { width, height };
-    }
-  }
-
-  return { width: null, height: null };
-}
-
-/**
  * Tính tỷ lệ khung hình và format chuỗi tỷ lệ rút gọn
  */
 function getAspectRatioInfo(width, height) {
@@ -169,6 +77,9 @@ function getAspectRatioInfo(width, height) {
   const longSide = Math.max(width, height);
   const shortSide = Math.min(width, height);
   const ratio = longSide / shortSide;
+
+  // Sử dụng thuật toán GCD để tính tỷ lệ rút gọn chính xác nhất
+  const gcdRatioStr = calculateAspectRatio(width, height);
 
   let closest = null;
   let minDiff = 0.035; // Ngưỡng nhận diện tỷ lệ chuẩn
@@ -184,7 +95,7 @@ function getAspectRatioInfo(width, height) {
     ? isPortrait
       ? closest.portrait
       : closest.landscape
-    : `${ratio.toFixed(2)}:1`;
+    : gcdRatioStr || `${ratio.toFixed(2)}:1`;
 
   return { ratio, ratioStr, isPortrait };
 }
@@ -255,6 +166,7 @@ function evaluateScreenshotSigns({ width, height, make, model, fileName }) {
  * @param {Object} [params.clientFallback] - Metadata client gửi kèm
  * @param {Array<Object>} [params.existingPhotos] - Danh sách ảnh đã có trong dự án để kiểm tra trùng lặp SHA-256
  * @param {Object} [params.options] - Tuỳ chọn kiểm tra ({ thresholdDays: 30 })
+ * @param {Object} [params.photoMeta] - Kết quả trích xuất EXIF từ photoMetadata service nếu đã chạy
  * @returns {Promise<Object>} Kết quả kiểm tra quy tắc bất thường
  */
 async function inspectPhotoMetadata({
@@ -269,11 +181,12 @@ async function inspectPhotoMetadata({
   model = null,
   existingPhotos = [],
   options = {},
+  photoMeta = null,
 } = {}) {
   const inspectedAt = new Date().toISOString();
   const warnings = [];
 
-  // Tính mã băm nội dung SHA-256 để phát hiện ảnh trùng lặp tuyệt đối (Rule 4)
+  // Tính mã băm nội dung SHA-256 để phát hiện ảnh trùng lặp tuyệt đối
   const fileHash =
     buffer && Buffer.isBuffer(buffer) && buffer.length > 0
       ? crypto.createHash('sha256').update(buffer).digest('hex')
@@ -295,17 +208,21 @@ async function inspectPhotoMetadata({
       make: null,
       model: null,
       software: null,
+      iso: null,
+      aperture: null,
+      shutter_speed: null,
       captured_at: null,
       captured_at_source: null,
       gps_latitude: null,
       gps_longitude: null,
+      gps_accuracy_m: null,
       has_exif: false,
       is_screenshot: false,
     },
     inspected_at: inspectedAt,
   };
 
-  // 1. Kiểm tra Buffer & Định dạng
+  // 1. Kiểm tra Buffer & Tính hợp lệ nhị phân
   if (!buffer || !Buffer.isBuffer(buffer) || buffer.length === 0) {
     result.status = 'error';
     result.can_evaluate = false;
@@ -324,19 +241,22 @@ async function inspectPhotoMetadata({
     return result;
   }
 
-  const isMimeSupported = mimeType ? SUPPORTED_MIME_TYPES.has(mimeType.toLowerCase()) : false;
-  const isMagicSupported = isSupportedMagicBytes(buffer);
+  // 2. Trích xuất metadata bằng photoMetadata service nếu chưa có
+  const meta =
+    photoMeta ||
+    (await extractPhotoMetadata(buffer, mimeType, clientFallback));
 
-  if (!isMimeSupported && !isMagicSupported) {
+  // 3. Phân loại trạng thái lỗi kỹ thuật (unsupported / unreadable)
+  if (meta.metadata_status === 'unsupported') {
     result.status = 'error';
     result.can_evaluate = false;
     result.has_sufficient_data = false;
-    result.summary = 'Định dạng tệp không được hỗ trợ để phân tích siêu dữ liệu.';
+    result.summary = 'Định dạng tệp không được hỗ trợ hoặc tệp ảnh không hợp lệ.';
     result.warnings.push({
       code: 'FORMAT_UNSUPPORTED',
       severity: 'high',
       title: 'Định dạng tệp không hỗ trợ',
-      reason: `Định dạng tệp (${mimeType || 'không xác định'}) không nằm trong danh sách hỗ trợ trích xuất EXIF.`,
+      reason: `Định dạng tệp (${mimeType || 'không xác định'}) không hợp lệ hoặc không nằm trong danh sách hỗ trợ trích xuất EXIF.`,
       confidence: 'high',
       actual_value: mimeType || 'unknown',
       comparison_value: 'JPEG, PNG, WebP',
@@ -345,49 +265,7 @@ async function inspectPhotoMetadata({
     return result;
   }
 
-  // 2. Trích xuất kích thước ảnh nhị phân
-  let { width, height } = extractImageDimensions(buffer);
-
-  // 3. Đọc EXIF nâng cao từ buffer bằng exifr
-  const parseBuffer = buffer.slice(0, EXIF_PARSE_BYTE_LIMIT);
-  let parsedExif = null;
-  let exifParseError = false;
-
-  try {
-    parsedExif = await exifr.parse(parseBuffer, {
-      pick: [
-        'Make',
-        'Model',
-        'Software',
-        'DateTimeOriginal',
-        'OffsetTimeOriginal',
-        'GPSLatitude',
-        'GPSLongitude',
-        'GPSLatitudeRef',
-        'GPSLongitudeRef',
-        'ExifImageWidth',
-        'ExifImageHeight',
-        'ImageWidth',
-        'ImageHeight',
-        'ISO',
-        'FNumber',
-        'ExposureTime',
-        'ShutterSpeedValue',
-        'ApertureValue',
-      ],
-      tiff: true,
-      xmp: true,
-      exif: true,
-      gps: true,
-      silentErrors: false,
-      translateValues: false,
-      reviveValues: false,
-    });
-  } catch (_err) {
-    exifParseError = true;
-  }
-
-  if (exifParseError) {
+  if (meta.metadata_status === 'unreadable') {
     result.status = 'error';
     result.can_evaluate = false;
     result.has_sufficient_data = false;
@@ -405,36 +283,30 @@ async function inspectPhotoMetadata({
     return result;
   }
 
-  // Điền metadata nếu exifr lấy được kích thước mà binary parser chưa có
-  if (!width && parsedExif) {
-    width = parsedExif.ImageWidth || parsedExif.ExifImageWidth || null;
-  }
-  if (!height && parsedExif) {
-    height = parsedExif.ImageHeight || parsedExif.ExifImageHeight || null;
-  }
+  // 4. Đồng bộ dữ liệu tệp và thông số máy ảnh
+  const width = meta.width;
+  const height = meta.height;
+  const ratioStr = meta.aspect_ratio || calculateAspectRatio(width, height);
 
-  const { ratioStr } = getAspectRatioInfo(width, height);
   const finalMake =
     make ||
-    (parsedExif?.Make ? String(parsedExif.Make).trim() : null) ||
+    meta.make ||
     (clientFallback?.make ? String(clientFallback.make).trim() : null);
   const finalModel =
     model ||
-    (parsedExif?.Model ? String(parsedExif.Model).trim() : null) ||
+    meta.model ||
     (clientFallback?.model ? String(clientFallback.model).trim() : null);
-  const software = parsedExif?.Software ? String(parsedExif.Software).trim() : null;
-  const hasExif = !!(parsedExif && Object.keys(parsedExif).length > 0);
+  const software = meta.software;
+  const hasExif = meta.has_exif;
 
-  // Xử lý thời gian chụp
+  // Thời gian chụp
   let finalCapturedAt = null;
   if (capturedAt) {
     finalCapturedAt = capturedAt instanceof Date ? capturedAt : new Date(capturedAt);
-    if (!isValidCaptureDate(finalCapturedAt)) finalCapturedAt = null;
-  } else if (parsedExif?.DateTimeOriginal) {
-    finalCapturedAt = parseExifDateTime(parsedExif.DateTimeOriginal, parsedExif.OffsetTimeOriginal);
-  } else if (clientFallback?.exif_captured_at) {
-    const dClient = new Date(clientFallback.exif_captured_at);
-    if (isValidCaptureDate(dClient)) finalCapturedAt = dClient;
+    if (isNaN(finalCapturedAt.getTime()) || finalCapturedAt.getUTCFullYear() < 2000) finalCapturedAt = null;
+  } else if (meta.captured_at) {
+    finalCapturedAt = new Date(meta.captured_at);
+    if (isNaN(finalCapturedAt.getTime()) || finalCapturedAt.getUTCFullYear() < 2000) finalCapturedAt = null;
   }
 
   result.metadata = {
@@ -447,26 +319,19 @@ async function inspectPhotoMetadata({
     make: finalMake,
     model: finalModel,
     software,
-    iso: parsedExif?.ISO ? String(parsedExif.ISO) : (clientFallback?.iso || null),
-    aperture: parsedExif?.FNumber
-      ? `f/${parsedExif.FNumber}`
-      : parsedExif?.ApertureValue
-      ? `f/${parsedExif.ApertureValue}`
-      : null,
-    shutter_speed: parsedExif?.ExposureTime
-      ? parsedExif.ExposureTime < 1
-        ? `1/${Math.round(1 / parsedExif.ExposureTime)}s`
-        : `${parsedExif.ExposureTime}s`
-      : null,
+    iso: meta.iso,
+    aperture: meta.aperture,
+    shutter_speed: meta.shutter_speed,
     captured_at: finalCapturedAt ? finalCapturedAt.toISOString() : null,
-    captured_at_source: capturedAt ? 'provided' : parsedExif?.DateTimeOriginal ? 'exif' : null,
-    gps_latitude: null,
-    gps_longitude: null,
+    captured_at_source: capturedAt ? 'provided' : meta.captured_at_source,
+    gps_latitude: meta.gps_latitude,
+    gps_longitude: meta.gps_longitude,
+    gps_accuracy_m: meta.gps_accuracy_m,
     has_exif: hasExif,
     is_screenshot: false,
   };
 
-  // 4. KIỂM TRA QUY TẮC BẤT THƯỜNG
+  // 5. KIỂM TRA QUY TẮC BẤT THƯỜNG
 
   // Quy tắc 0: Phát hiện ảnh trùng lặp nội bộ (cùng mã băm SHA-256)
   if (fileHash && Array.isArray(existingPhotos) && existingPhotos.length > 0) {
@@ -543,7 +408,7 @@ async function inspectPhotoMetadata({
     });
   }
 
-  // Quy tắc 4: Đối chiếu thời gian chụp với ngày lập phiếu nghiệm thu (ngưỡng có thể cấu hình)
+  // Quy tắc 4: Đối chiếu thời gian chụp với ngày lập phiếu nghiệm thu
   const thresholdDays = Number(options.thresholdDays) > 0 ? Number(options.thresholdDays) : 30;
   if (finalCapturedAt && voucherCreatedAt) {
     const vDate = voucherCreatedAt instanceof Date ? voucherCreatedAt : new Date(voucherCreatedAt);
@@ -579,9 +444,9 @@ async function inspectPhotoMetadata({
     }
   }
 
-  // 5. Xác định trạng thái tổng thể và đủ dữ liệu
+  // 6. Xác định trạng thái tổng thể
   result.warnings = warnings;
-  result.has_sufficient_data = hasExif && !!make && !!finalCapturedAt;
+  result.has_sufficient_data = hasExif && !!finalMake && !!finalCapturedAt;
 
   const hasHighSeverity = warnings.some((w) => w.severity === 'high');
   const hasWarnings = warnings.length > 0;
@@ -630,6 +495,33 @@ function inspectVoucherPhotoRecord(photoRow, voucherRow = null) {
     typeof savedInspection === 'object' &&
     savedInspection.status
   ) {
+    // Đảm bảo các trường toạ độ và thông số tệp luôn có giá trị từ bản ghi DB nếu trong JSON cũ bị null
+    if (savedInspection.metadata) {
+      if (savedInspection.metadata.gps_latitude === null && photoRow.gps_latitude !== null) {
+        savedInspection.metadata.gps_latitude = parseFloat(photoRow.gps_latitude);
+      }
+      if (savedInspection.metadata.gps_longitude === null && photoRow.gps_longitude !== null) {
+        savedInspection.metadata.gps_longitude = parseFloat(photoRow.gps_longitude);
+      }
+      if (savedInspection.metadata.gps_accuracy_m === null && photoRow.gps_accuracy_m !== null) {
+        savedInspection.metadata.gps_accuracy_m = parseFloat(photoRow.gps_accuracy_m);
+      }
+      if (!savedInspection.metadata.captured_at && photoRow.captured_at) {
+        savedInspection.metadata.captured_at = photoRow.captured_at;
+      }
+      if (!savedInspection.metadata.captured_at_source && photoRow.captured_at_source) {
+        savedInspection.metadata.captured_at_source = photoRow.captured_at_source;
+      }
+      if (!savedInspection.metadata.file_name && photoRow.file_name) {
+        savedInspection.metadata.file_name = photoRow.file_name;
+      }
+      if (!savedInspection.metadata.file_size && photoRow.file_size) {
+        savedInspection.metadata.file_size = photoRow.file_size;
+      }
+      if (!savedInspection.metadata.mime_type && photoRow.mime_type) {
+        savedInspection.metadata.mime_type = photoRow.mime_type;
+      }
+    }
     return savedInspection;
   }
 
@@ -711,6 +603,10 @@ function inspectVoucherPhotoRecord(photoRow, voucherRow = null) {
     status = 'incomplete_data';
   }
 
+  const width = savedInspection?.metadata?.width || savedInspection?.width || savedInspection?.ImageWidth || null;
+  const height = savedInspection?.metadata?.height || savedInspection?.height || savedInspection?.ImageHeight || null;
+  const calculatedRatio = calculateAspectRatio(width, height);
+
   return {
     status,
     can_evaluate: photoRow.metadata_status !== 'unreadable',
@@ -729,9 +625,9 @@ function inspectVoucherPhotoRecord(photoRow, voucherRow = null) {
       file_name: fileName,
       file_size: photoRow.file_size,
       mime_type: photoRow.mime_type,
-      width: savedInspection?.metadata?.width || savedInspection?.width || savedInspection?.ImageWidth || null,
-      height: savedInspection?.metadata?.height || savedInspection?.height || savedInspection?.ImageHeight || null,
-      aspect_ratio: savedInspection?.metadata?.aspect_ratio || savedInspection?.aspect_ratio || null,
+      width,
+      height,
+      aspect_ratio: savedInspection?.metadata?.aspect_ratio || calculatedRatio || null,
       make: savedInspection?.metadata?.make || savedInspection?.make || savedInspection?.Make || null,
       model: savedInspection?.metadata?.model || savedInspection?.model || savedInspection?.Model || null,
       software: savedInspection?.metadata?.software || savedInspection?.software || savedInspection?.Software || null,
@@ -740,8 +636,9 @@ function inspectVoucherPhotoRecord(photoRow, voucherRow = null) {
       shutter_speed: savedInspection?.metadata?.shutter_speed || savedInspection?.shutter_speed || null,
       captured_at: photoRow.captured_at,
       captured_at_source: photoRow.captured_at_source,
-      gps_latitude: photoRow.gps_latitude,
-      gps_longitude: photoRow.gps_longitude,
+      gps_latitude: photoRow.gps_latitude ? parseFloat(photoRow.gps_latitude) : null,
+      gps_longitude: photoRow.gps_longitude ? parseFloat(photoRow.gps_longitude) : null,
+      gps_accuracy_m: photoRow.gps_accuracy_m ? parseFloat(photoRow.gps_accuracy_m) : null,
       metadata_status: photoRow.metadata_status,
       is_screenshot: hasScreenshotName,
     },

@@ -1347,6 +1347,7 @@ router.post(
       capturedAt: photoMeta.captured_at,
       voucherCreatedAt: voucherCheck.rows[0].created_at,
       clientFallback: req.body,
+      photoMeta,
     });
 
     const caption = req.body.caption
