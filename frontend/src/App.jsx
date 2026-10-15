@@ -43,6 +43,9 @@ import AuditPortalPage from './pages/AuditPortalPage';
 // S-41 / T-107: Cấu hình phạm vi công trường
 import SiteGeofencePage from './pages/SiteGeofencePage';
 
+// S-51 / T-128 & T-129
+import SystemStatusPage from './pages/SystemStatusPage';
+
 
 // S-33 / T-80 / T-82 Upload Queue
 import { UploadQueueProvider } from './context/UploadQueueContext';
@@ -121,6 +124,9 @@ function App() {
         <Route element={<AuthLayout />}>
           <Route path="/login" element={<LoginPage setUser={setUser} />} />
         </Route>
+
+        {/* ================= HỆ THỐNG / HEALTH CHECK (T-128 & T-129) ================= */}
+        <Route path="/system-status" element={<SystemStatusPage />} />
 
         <Route
           path="/invitations/:token/accept"

@@ -25,6 +25,7 @@ import {
   Coins,
   History,
   MapPin,
+  Activity,
 } from "lucide-react";
 
 
@@ -179,6 +180,14 @@ export const MENU_CONFIG = [
     label: "Phạm vi công trường",
     path: "/site-geofence",
     icon: MapPin,
+    group: "manage",
+    roles: ALL_ROLES,
+  },
+  {
+    key: "system-status",
+    label: "Giám sát hệ thống",
+    path: "/system-status",
+    icon: Activity,
     group: "manage",
     roles: ALL_ROLES,
   },
