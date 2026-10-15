@@ -19,6 +19,7 @@ const {
   evaluateScreenshotSigns,
   inspectPhotoMetadata,
   inspectVoucherPhotoRecord,
+  sanitizeInspectionForRole,
 } = require('../services/photoInspection');
 
 const {
@@ -341,4 +342,127 @@ describe('photoInspection service (Story S-42 / T-109)', () => {
       expect(codes).toContain('DATE_TOO_FAR');
     });
   });
+
+  describe('Mã băm SHA-256 & Phát hiện ảnh trùng lặp (Rule 4)', () => {
+    test('tính mã băm SHA-256 chính xác từ buffer', async () => {
+      const crypto = require('crypto');
+      const pngBuf = createPngBuffer(800, 600);
+      const expectedHash = crypto.createHash('sha256').update(pngBuf).digest('hex');
+
+      const res = await inspectPhotoMetadata({
+        buffer: pngBuf,
+        fileName: 'site.png',
+        mimeType: 'image/png',
+      });
+
+      expect(res.metadata.file_hash).toBe(expectedHash);
+    });
+
+    test('phát hiện ảnh trùng lặp 100% với ảnh đã có trong hệ thống', async () => {
+      const crypto = require('crypto');
+      const pngBuf = createPngBuffer(800, 600);
+      const fileHash = crypto.createHash('sha256').update(pngBuf).digest('hex');
+
+      const existingPhotos = [
+        {
+          id: 99,
+          file_name: 'anh_da_duyet.png',
+          file_hash: fileHash,
+          batch_name: 'Đợt 1 - Cọc móng',
+        },
+      ];
+
+      const res = await inspectPhotoMetadata({
+        buffer: pngBuf,
+        fileName: 'anh_gui_lai.png',
+        mimeType: 'image/png',
+        existingPhotos,
+      });
+
+      expect(res.status).toBe('warning');
+      const dupWarning = res.warnings.find((w) => w.code === 'DUPLICATE_PHOTO_DETECTED');
+      expect(dupWarning).toBeDefined();
+      expect(dupWarning.severity).toBe('high');
+      expect(dupWarning.reason).toContain('ảnh #99');
+      expect(dupWarning.comparison_value).toMatch(/#99/);
+    });
+
+    test('áp dụng ngưỡng thời gian tuỳ chỉnh options.thresholdDays', async () => {
+      const jpegBuf = createJpegWithExif({
+        make: 'Apple',
+        model: 'iPhone 15',
+        dateTimeOriginal: '2026-10-01T10:00:00.000Z',
+      });
+
+      // Ngày lập phiếu: 2026-10-15 (cách 14 ngày).
+      // Nếu ngưỡng là 7 ngày -> DATE_TOO_FAR.
+      const resStrict = await inspectPhotoMetadata({
+        buffer: jpegBuf,
+        fileName: 'photo.jpg',
+        voucherCreatedAt: '2026-10-15T10:00:00.000Z',
+        options: { thresholdDays: 7 },
+      });
+      expect(resStrict.warnings.some((w) => w.code === 'DATE_TOO_FAR')).toBe(true);
+
+      // Nếu ngưỡng là 20 ngày -> không bị cảnh báo DATE_TOO_FAR.
+      const resPermissive = await inspectPhotoMetadata({
+        buffer: jpegBuf,
+        fileName: 'photo.jpg',
+        voucherCreatedAt: '2026-10-15T10:00:00.000Z',
+        options: { thresholdDays: 20 },
+      });
+      expect(resPermissive.warnings.some((w) => w.code === 'DATE_TOO_FAR')).toBe(false);
+    });
+  });
+
+  describe('Phân quyền hiển thị (sanitizeInspectionForRole)', () => {
+    test('người duyệt (isReviewer = true) xem đầy đủ thông tin đối chiếu kỹ thuật', () => {
+      const raw = {
+        status: 'warning',
+        summary: 'Có cảnh báo',
+        warnings: [
+          {
+            code: 'SCREENSHOT_SUSPECTED',
+            title: 'Dấu hiệu màn hình',
+            severity: 'high',
+            reason: 'Tỷ lệ màn hình',
+            actual_value: '1080x2400',
+            comparison_value: 'Màn hình chuẩn',
+            confidence: 'high',
+          },
+        ],
+        metadata: { width: 1080, height: 2400, file_hash: 'abc123' },
+      };
+
+      const result = sanitizeInspectionForRole(raw, true);
+      expect(result).toEqual(raw);
+    });
+
+    test('người gửi / thành viên thông thường (isReviewer = false) chỉ thấy tóm tắt', () => {
+      const raw = {
+        status: 'warning',
+        summary: 'Có cảnh báo',
+        warnings: [
+          {
+            code: 'SCREENSHOT_SUSPECTED',
+            title: 'Dấu hiệu màn hình',
+            severity: 'high',
+            reason: 'Tỷ lệ màn hình',
+            actual_value: '1080x2400',
+            comparison_value: 'Màn hình chuẩn',
+            confidence: 'high',
+          },
+        ],
+        metadata: { width: 1080, height: 2400, file_hash: 'abc123' },
+      };
+
+      const result = sanitizeInspectionForRole(raw, false);
+      expect(result.status).toBe('warning');
+      expect(result.warnings[0].title).toBe('Dấu hiệu màn hình');
+      expect(result.warnings[0].actual_value).toBeUndefined();
+      expect(result.warnings[0].comparison_value).toBeUndefined();
+      expect(result.metadata.file_hash).toBeUndefined();
+    });
+  });
 });
+

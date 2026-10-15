@@ -14,6 +14,7 @@
 
 'use strict';
 
+const crypto = require('crypto');
 const exifr = require('exifr');
 const {
   isSupportedMagicBytes,
@@ -252,6 +253,8 @@ function evaluateScreenshotSigns({ width, height, make, model, fileName }) {
  * @param {Date|string} [params.capturedAt] - Thời gian chụp đã trích xuất (nếu có)
  * @param {Date|string} [params.voucherCreatedAt] - Thời điểm lập phiếu nghiệm thu để đối chiếu
  * @param {Object} [params.clientFallback] - Metadata client gửi kèm
+ * @param {Array<Object>} [params.existingPhotos] - Danh sách ảnh đã có trong dự án để kiểm tra trùng lặp SHA-256
+ * @param {Object} [params.options] - Tuỳ chọn kiểm tra ({ thresholdDays: 30 })
  * @returns {Promise<Object>} Kết quả kiểm tra quy tắc bất thường
  */
 async function inspectPhotoMetadata({
@@ -264,9 +267,17 @@ async function inspectPhotoMetadata({
   clientFallback = {},
   make = null,
   model = null,
+  existingPhotos = [],
+  options = {},
 } = {}) {
   const inspectedAt = new Date().toISOString();
   const warnings = [];
+
+  // Tính mã băm nội dung SHA-256 để phát hiện ảnh trùng lặp tuyệt đối (Rule 4)
+  const fileHash =
+    buffer && Buffer.isBuffer(buffer) && buffer.length > 0
+      ? crypto.createHash('sha256').update(buffer).digest('hex')
+      : null;
 
   const result = {
     status: 'clean', // 'clean' | 'warning' | 'incomplete_data' | 'error'
@@ -279,6 +290,7 @@ async function inspectPhotoMetadata({
       height: null,
       aspect_ratio: null,
       file_size: fileSize || (buffer ? buffer.length : 0),
+      file_hash: fileHash,
       mime_type: mimeType || 'unknown',
       make: null,
       model: null,
@@ -305,6 +317,9 @@ async function inspectPhotoMetadata({
       title: 'Tệp ảnh rỗng hoặc không hợp lệ',
       reason: 'Dữ liệu nhị phân của tệp không tồn tại hoặc có kích thước 0 byte.',
       confidence: 'high',
+      actual_value: '0 bytes',
+      comparison_value: '> 0 bytes',
+      action_suggestion: 'Tải lại tệp ảnh hợp lệ.',
     });
     return result;
   }
@@ -323,6 +338,9 @@ async function inspectPhotoMetadata({
       title: 'Định dạng tệp không hỗ trợ',
       reason: `Định dạng tệp (${mimeType || 'không xác định'}) không nằm trong danh sách hỗ trợ trích xuất EXIF.`,
       confidence: 'high',
+      actual_value: mimeType || 'unknown',
+      comparison_value: 'JPEG, PNG, WebP',
+      action_suggestion: 'Sử dụng định dạng ảnh phổ biến (JPEG, PNG, WebP).',
     });
     return result;
   }
@@ -380,6 +398,9 @@ async function inspectPhotoMetadata({
       title: 'Siêu dữ liệu bị hỏng hoặc không thể đọc',
       reason: 'Header EXIF trong tệp ảnh bị lỗi cấu trúc nhị phân không thể giải mã.',
       confidence: 'high',
+      actual_value: 'EXIF parsing error',
+      comparison_value: 'Hợp chuẩn TIFF/EXIF',
+      action_suggestion: 'Kiểm tra tệp ảnh gốc xem có bị hỏng trong quá trình truyền tải.',
     });
     return result;
   }
@@ -421,6 +442,7 @@ async function inspectPhotoMetadata({
     height: height || null,
     aspect_ratio: ratioStr || null,
     file_size: fileSize || buffer.length,
+    file_hash: fileHash,
     mime_type: mimeType || 'image/jpeg',
     make: finalMake,
     model: finalModel,
@@ -444,7 +466,28 @@ async function inspectPhotoMetadata({
     is_screenshot: false,
   };
 
-  // 4. KIỂM TRA QUY TẮC BẤT THƯỜNG (S-42)
+  // 4. KIỂM TRA QUY TẮC BẤT THƯỜNG
+
+  // Quy tắc 0: Phát hiện ảnh trùng lặp nội bộ (cùng mã băm SHA-256)
+  if (fileHash && Array.isArray(existingPhotos) && existingPhotos.length > 0) {
+    const duplicate = existingPhotos.find(
+      (p) => p && p.file_hash === fileHash && String(p.id) !== String(clientFallback?.photoId)
+    );
+    if (duplicate) {
+      warnings.push({
+        code: 'DUPLICATE_PHOTO_DETECTED',
+        severity: 'high',
+        title: 'Ảnh trùng lặp với bằng chứng đã có trong hệ thống',
+        reason: `Tệp ảnh có mã băm SHA-256 trùng khớp 100% với ảnh #${duplicate.id} ("${duplicate.file_name || 'ảnh đã lưu'}")${
+          duplicate.batch_name ? ` thuộc đợt "${duplicate.batch_name}"` : ''
+        }.`,
+        confidence: 'high',
+        actual_value: `${fileHash.slice(0, 16)}...`,
+        comparison_value: `Ảnh #${duplicate.id} (${duplicate.file_name || 'N/A'})`,
+        action_suggestion: 'Đối chiếu xem ảnh có bị gửi lặp hoặc tái sử dụng từ đợt nghiệm thu khác hay không.',
+      });
+    }
+  }
 
   // Quy tắc 1: Dấu hiệu chụp lại màn hình
   const screenshotEval = evaluateScreenshotSigns({
@@ -463,12 +506,14 @@ async function inspectPhotoMetadata({
       title: 'Dấu hiệu ảnh chụp lại màn hình',
       reason: screenshotEval.reason,
       confidence: screenshotEval.confidence,
+      actual_value: width && height ? `${width}×${height} px (${ratioStr || 'N/A'})` : fileName,
+      comparison_value: 'Màn hình thiết bị chuẩn',
+      action_suggestion: 'Yêu cầu kỹ sư cung cấp tệp ảnh gốc chụp trực tiếp từ máy ảnh hiện trường thay vì ảnh chụp lại màn hình.',
     });
   }
 
   // Quy tắc 2: Thiếu siêu dữ liệu máy ảnh gốc (Make, Model)
   if (!finalMake && !finalModel) {
-    // Nếu chưa bị cảnh báo screenshot thì mới gắn cảnh báo thiếu máy ảnh
     if (!screenshotEval.isScreenshot) {
       warnings.push({
         code: 'MISSING_CAMERA_METADATA',
@@ -477,6 +522,9 @@ async function inspectPhotoMetadata({
         reason:
           'Tệp ảnh không chứa thông tin thiết bị (Make, Model), thường do ảnh qua ứng dụng nhắn tin nén hoặc bị xoá siêu dữ liệu.',
         confidence: 'medium',
+        actual_value: 'Không có thông tin Make/Model',
+        comparison_value: 'Yêu cầu máy ảnh gốc',
+        action_suggestion: 'Ảnh có thể đã được chia sẻ qua ứng dụng nhắn tin làm mất EXIF gốc. Nhắc nhở người chụp gửi file gốc chất lượng cao.',
       });
     }
   }
@@ -489,24 +537,31 @@ async function inspectPhotoMetadata({
       title: 'Thiếu thời gian chụp gốc',
       reason: 'Tệp ảnh không ghi nhận thời gian chụp DateTimeOriginal trong EXIF.',
       confidence: 'high',
+      actual_value: 'Thiếu thẻ DateTimeOriginal',
+      comparison_value: 'Thời gian chụp gốc',
+      action_suggestion: 'Kiểm tra nhật ký thi công cùng ngày để đối chiếu tiến độ thực hiện.',
     });
   }
 
-  // Quy tắc 4: Đối chiếu thời gian chụp với ngày lập phiếu nghiệm thu
+  // Quy tắc 4: Đối chiếu thời gian chụp với ngày lập phiếu nghiệm thu (ngưỡng có thể cấu hình)
+  const thresholdDays = Number(options.thresholdDays) > 0 ? Number(options.thresholdDays) : 30;
   if (finalCapturedAt && voucherCreatedAt) {
     const vDate = voucherCreatedAt instanceof Date ? voucherCreatedAt : new Date(voucherCreatedAt);
     if (!isNaN(vDate.getTime())) {
       const diffMs = vDate.getTime() - finalCapturedAt.getTime();
       const diffDays = diffMs / (1000 * 60 * 60 * 24);
 
-      // Ảnh chụp cách ngày lập phiếu quá xa (> 30 ngày)
-      if (diffDays > 30) {
+      // Ảnh chụp cách ngày lập phiếu quá xa (> thresholdDays ngày)
+      if (diffDays > thresholdDays) {
         warnings.push({
           code: 'DATE_TOO_FAR',
           severity: 'high',
           title: 'Thời điểm chụp cách xa ngày lập phiếu',
-          reason: `Ảnh được chụp trước ngày lập phiếu ${Math.round(diffDays)} ngày (vượt ngưỡng thông thường 30 ngày), cần kiểm tra đối chiếu tính thời sự của bằng chứng.`,
+          reason: `Ảnh được chụp trước ngày lập phiếu ${Math.round(diffDays)} ngày (vượt ngưỡng đề xuất ${thresholdDays} ngày), cần kiểm tra đối chiếu tính thời sự của bằng chứng.`,
           confidence: 'high',
+          actual_value: finalCapturedAt.toISOString().slice(0, 10),
+          comparison_value: vDate.toISOString().slice(0, 10),
+          action_suggestion: 'Đối chiếu với nhật ký thi công xem hạng mục có được thi công tại thời điểm chụp này hay không.',
         });
       } else if (diffDays < -1) {
         // Thời điểm chụp trong tương lai so với ngày lập phiếu (> 1 ngày)
@@ -516,6 +571,9 @@ async function inspectPhotoMetadata({
           title: 'Thời điểm chụp sau ngày lập phiếu',
           reason: 'Thời điểm chụp ghi nhận trong ảnh muộn hơn ngày tạo phiếu nghiệm thu, có dấu hiệu sai lệch đồng hồ thiết bị.',
           confidence: 'high',
+          actual_value: finalCapturedAt.toISOString().slice(0, 10),
+          comparison_value: vDate.toISOString().slice(0, 10),
+          action_suggestion: 'Kiểm tra thiết lập ngày giờ trên thiết bị chụp của người gửi bằng chứng.',
         });
       }
     }
@@ -682,11 +740,50 @@ function inspectVoucherPhotoRecord(photoRow, voucherRow = null) {
   };
 }
 
+/**
+ * Phân quyền hiển thị kết quả kiểm tra (Story S-42 / Mục 7)
+ * - Người duyệt (BQL, CĐT): Xem toàn bộ metadata, dấu hiệu bất thường, dữ liệu đối chiếu và lý do.
+ * - Người gửi / thành viên thông thường: Xem ảnh, trạng thái và tóm tắt lý do, không xem dữ liệu đối chiếu nội bộ.
+ *
+ * @param {Object} inspection - Kết quả kiểm tra đầy đủ
+ * @param {boolean} isReviewer - Người dùng có quyền duyệt / xem đầy đủ hay không
+ * @returns {Object} Kết quả kiểm tra đã được lọc theo quyền
+ */
+function sanitizeInspectionForRole(inspection, isReviewer = false) {
+  if (!inspection || typeof inspection !== 'object') return inspection;
+  if (isReviewer) return inspection;
+
+  return {
+    status: inspection.status,
+    status_label: inspection.status_label,
+    can_evaluate: inspection.can_evaluate,
+    has_sufficient_data: inspection.has_sufficient_data,
+    summary: inspection.summary,
+    warnings_count: inspection.warnings?.length || 0,
+    warnings: (inspection.warnings || []).map((w) => ({
+      code: w.code,
+      title: w.title,
+      severity: w.severity,
+      reason: w.reason,
+      // Không để lộ actual_value, comparison_value đối chiếu kỹ thuật cho người gửi
+    })),
+    metadata: {
+      width: inspection.metadata?.width,
+      height: inspection.metadata?.height,
+      aspect_ratio: inspection.metadata?.aspect_ratio,
+      file_size: inspection.metadata?.file_size,
+      mime_type: inspection.metadata?.mime_type,
+    },
+    inspected_at: inspection.inspected_at,
+  };
+}
+
 module.exports = {
   extractImageDimensions,
   getAspectRatioInfo,
   evaluateScreenshotSigns,
   inspectPhotoMetadata,
   inspectVoucherPhotoRecord,
+  sanitizeInspectionForRole,
   KNOWN_SCREENSHOT_RESOLUTIONS,
 };

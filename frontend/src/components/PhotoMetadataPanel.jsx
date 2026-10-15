@@ -162,6 +162,7 @@ export default function PhotoMetadataPanel({
   const iso = techMeta.iso ? `ISO ${techMeta.iso}` : null;
   const aperture = techMeta.aperture || null;
   const shutterSpeed = techMeta.shutter_speed || null;
+  const fileHash = techMeta.file_hash || metadata?.file_hash || null;
 
   // Xác định nhãn trạng thái góc trên bên phải
   const getStatusPill = () => {
@@ -351,6 +352,17 @@ export default function PhotoMetadataPanel({
                   <span className="text-slate-600">Mã đợt nghiệm thu</span>
                   <span className="text-slate-900 font-medium text-right">
                     {batchName}
+                  </span>
+                </div>
+              )}
+              {fileHash && (
+                <div className="py-2 flex items-center justify-between">
+                  <span className="text-slate-600">Mã băm SHA-256</span>
+                  <span
+                    className="font-mono text-[11px] text-slate-800 text-right truncate max-w-[180px] sm:max-w-[240px]"
+                    title={fileHash}
+                  >
+                    {fileHash.slice(0, 16)}...
                   </span>
                 </div>
               )}
@@ -548,6 +560,25 @@ export default function PhotoMetadataPanel({
                       <p className="text-slate-700 text-[11px] leading-relaxed">
                         {w.reason}
                       </p>
+                      {w.actual_value && (
+                        <div className="mt-1 rounded bg-slate-50 border border-slate-200/60 p-1.5 text-[11px] text-slate-700 space-y-0.5">
+                          <div>
+                            <span className="font-semibold text-slate-600">Thực tế: </span>
+                            <span className="font-mono text-slate-900">{w.actual_value}</span>
+                          </div>
+                          {w.comparison_value && (
+                            <div>
+                              <span className="font-semibold text-slate-600">Đối chiếu: </span>
+                              <span className="text-slate-800">{w.comparison_value}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {w.action_suggestion && (
+                        <div className="text-[10px] text-amber-900 mt-0.5">
+                          <span className="font-semibold">Đề xuất: </span>{w.action_suggestion}
+                        </div>
+                      )}
                       {w.confidence && (
                         <div className="text-[10px] text-amber-800">
                           Độ tin cậy dấu hiệu: {w.confidence === 'high' ? 'Cao' : 'Trung bình'}
