@@ -208,4 +208,98 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
     fireEvent.click(screen.getByTestId('close-panel-btn'));
     expect(mockOnClose).toHaveBeenCalledTimes(1);
   });
+
+  describe('Đánh giá phạm vi công trường (S-41 / T-108)', () => {
+    it('hiển thị badge Trong phạm vi công trường khi status = inside', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          status: 'complete',
+          status_label: 'Đầy đủ thời gian và toạ độ',
+          has_gps: true,
+          geofence: {
+            status: 'inside',
+            distance_m: 89.2,
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={101}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('geofence-status-inside')).toHaveTextContent(
+          'Trong phạm vi công trường'
+        );
+      });
+      expect(screen.getByText(/cách tâm 89,2 m/i)).toBeInTheDocument();
+    });
+
+    it('hiển thị cảnh báo Ngoài phạm vi công trường khi status = outside', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          status: 'complete',
+          status_label: 'Đầy đủ thời gian và toạ độ',
+          has_gps: true,
+          geofence: {
+            status: 'outside',
+            distance_m: 133.4,
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={102}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('geofence-status-outside')).toHaveTextContent(
+          'Ngoài phạm vi công trường'
+        );
+      });
+      expect(screen.getByText(/cách tâm 133,4 m/i)).toBeInTheDocument();
+      expect(screen.getByText(/Ảnh được chụp ngoài bán kính công trường quy định/i)).toBeInTheDocument();
+    });
+
+    it('hiển thị thông báo khi dự án chưa cấu hình phạm vi', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          status: 'complete',
+          has_gps: true,
+          geofence: {
+            status: 'no_site_config',
+            distance_m: null,
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={103}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.getByText('Dự án chưa cấu hình toạ độ tâm và bán kính công trường')
+        ).toBeInTheDocument();
+      });
+    });
+  });
 });

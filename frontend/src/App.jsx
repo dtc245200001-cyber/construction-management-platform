@@ -40,6 +40,9 @@ import AcceptancePage from './pages/AcceptancePage';
 // S-39: Audit Portal cho Chủ đầu tư / Ban quản lý
 import AuditPortalPage from './pages/AuditPortalPage';
 
+// S-41 / T-107: Cấu hình phạm vi công trường
+import SiteGeofencePage from './pages/SiteGeofencePage';
+
 
 // S-33 / T-80 / T-82 Upload Queue
 import { UploadQueueProvider } from './context/UploadQueueContext';
@@ -284,6 +287,11 @@ function App() {
           <Route
             path="/members"
             element={<MembersPage user={user} />}
+          />
+
+          <Route
+            path="/site-geofence"
+            element={<SiteGeofencePage user={user} />}
           />
         </Route>
 
