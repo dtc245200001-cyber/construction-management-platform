@@ -46,13 +46,26 @@ export default function PhotoMetadataPanel({
         setLoading(false);
       })
       .catch((err) => {
-        setError(
+        const errorMsg =
           err.response?.data?.message ||
-            'Không thể tải thông tin siêu dữ liệu ảnh.'
-        );
+          err.response?.data?.error ||
+          (err.message === 'Network Error' ? 'Mất kết nối máy chủ' : null) ||
+          'Không thể tải thông tin siêu dữ liệu ảnh.';
+        setError(errorMsg);
         setLoading(false);
       });
   }, [isOpen, projectId, photoId, kind]);
+
+  // Khóa cuộn trang nền khi modal đang mở để tránh cuộn kép
+  useEffect(() => {
+    if (isOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {
@@ -166,6 +179,12 @@ export default function PhotoMetadataPanel({
 
   // Xác định nhãn trạng thái góc trên bên phải
   const getStatusPill = () => {
+    if (error) {
+      return {
+        label: 'Lỗi kiểm tra',
+        className: 'bg-rose-50 text-rose-700 border border-rose-200',
+      };
+    }
     const status = inspection?.status;
     if (status === 'warning') {
       return {
@@ -207,18 +226,18 @@ export default function PhotoMetadataPanel({
 
   const modalContent = (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 overflow-hidden"
       role="dialog"
       aria-modal="true"
       aria-labelledby="photo-metadata-title"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-lg my-auto rounded-2xl bg-white shadow-2xl transition-all border border-slate-200/80 p-5 sm:p-6"
+        className="relative w-full max-w-lg max-h-[90dvh] sm:max-h-[90vh] flex flex-col rounded-2xl bg-white shadow-2xl transition-all border border-slate-200/80 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Hàng trên cùng: Tiêu đề "Chi tiết ảnh" và Nhãn trạng thái */}
-        <div className="flex items-center justify-between pb-3">
+        {/* Hàng trên cùng cố định: Tiêu đề "Chi tiết ảnh", Nhãn trạng thái và Nút đóng */}
+        <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 shrink-0 bg-white">
           <h2
             id="photo-metadata-title"
             className="text-lg sm:text-xl font-bold tracking-tight text-slate-900"
@@ -236,7 +255,7 @@ export default function PhotoMetadataPanel({
               type="button"
               onClick={onClose}
               data-testid="close-x-btn"
-              className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
+              className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition cursor-pointer"
               aria-label="Đóng"
             >
               ✕
@@ -244,45 +263,45 @@ export default function PhotoMetadataPanel({
           </div>
         </div>
 
-        {/* Khối xem trước ảnh lớn */}
-        <div className="relative mt-2 w-full overflow-hidden rounded-xl bg-slate-900/5 border border-slate-100 group">
-          {imageUrl ? (
-            <img
-              src={imageUrl}
-              alt={fileName}
-              className="w-full max-h-[340px] object-cover sm:object-contain mx-auto transition-transform cursor-pointer"
-              onClick={() => setIsZoomed(true)}
-              onError={(e) => {
-                e.target.style.display = 'none';
-              }}
-            />
-          ) : (
-            <div className="py-16 text-center text-slate-400 text-xs">
-              Không có hình ảnh xem trước
-            </div>
-          )}
-
-          {/* Nút bookmark trang trí góc trên phải ảnh */}
-          <div className="absolute top-2.5 right-2.5 rounded-md bg-black/40 p-1.5 text-white/90 shadow-sm backdrop-blur-sm pointer-events-none">
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+        {/* Vùng nội dung cuộn độc lập: hỗ trợ xem trọn vẹn thông tin tệp, EXIF, đối chiếu phạm vi và cảnh báo */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4 overscroll-contain">
+          {/* Khối xem trước ảnh lớn */}
+          <div className="relative w-full overflow-hidden rounded-xl bg-slate-900/5 border border-slate-100 group shrink-0">
+            {imageUrl ? (
+              <img
+                src={imageUrl}
+                alt={fileName}
+                className="w-full max-h-[220px] sm:max-h-[280px] object-cover sm:object-contain mx-auto transition-transform cursor-pointer"
+                onClick={() => setIsZoomed(true)}
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                }}
               />
-            </svg>
-          </div>
-        </div>
+            ) : (
+              <div className="py-16 text-center text-slate-400 text-xs">
+                Không có hình ảnh xem trước
+              </div>
+            )}
 
-        {/* Nội dung thông tin cuộn */}
-        <div className="mt-4 space-y-4 max-h-[50vh] overflow-y-auto pr-1">
+            {/* Nút bookmark trang trí góc trên phải ảnh */}
+            <div className="absolute top-2.5 right-2.5 rounded-md bg-black/40 p-1.5 text-white/90 shadow-sm backdrop-blur-sm pointer-events-none">
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                />
+              </svg>
+            </div>
+          </div>
+
           {loading && (
             <div className="py-4 text-center text-xs text-slate-500">
               Đang đọc siêu dữ liệu...
@@ -296,7 +315,7 @@ export default function PhotoMetadataPanel({
                 type="button"
                 data-testid="retry-metadata-btn"
                 onClick={fetchMetadata}
-                className="font-semibold underline ml-2 hover:text-red-900"
+                className="font-semibold underline ml-2 hover:text-red-900 cursor-pointer"
               >
                 Thử lại
               </button>
@@ -647,13 +666,16 @@ export default function PhotoMetadataPanel({
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="mt-5 pt-3 border-t border-slate-100 flex justify-end">
+        {/* Hàng dưới cùng cố định */}
+        <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/70">
+          <span className="text-[11px] text-slate-500">
+            {imageUrl ? 'Bấm vào ảnh để phóng to' : ''}
+          </span>
           <button
             type="button"
             onClick={onClose}
             data-testid="close-panel-btn"
-            className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 transition"
+            className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 transition cursor-pointer"
           >
             Đóng
           </button>

@@ -753,26 +753,28 @@ function sanitizeInspectionForRole(inspection, isReviewer = false) {
   if (!inspection || typeof inspection !== 'object') return inspection;
   if (isReviewer) return inspection;
 
+  const warnings = Array.isArray(inspection.warnings) ? inspection.warnings : [];
+
   return {
     status: inspection.status,
     status_label: inspection.status_label,
     can_evaluate: inspection.can_evaluate,
     has_sufficient_data: inspection.has_sufficient_data,
     summary: inspection.summary,
-    warnings_count: inspection.warnings?.length || 0,
-    warnings: (inspection.warnings || []).map((w) => ({
-      code: w.code,
-      title: w.title,
-      severity: w.severity,
-      reason: w.reason,
+    warnings_count: warnings.length,
+    warnings: warnings.map((w) => ({
+      code: w?.code,
+      title: w?.title,
+      severity: w?.severity,
+      reason: w?.reason,
       // Không để lộ actual_value, comparison_value đối chiếu kỹ thuật cho người gửi
     })),
     metadata: {
-      width: inspection.metadata?.width,
-      height: inspection.metadata?.height,
-      aspect_ratio: inspection.metadata?.aspect_ratio,
-      file_size: inspection.metadata?.file_size,
-      mime_type: inspection.metadata?.mime_type,
+      width: inspection.metadata?.width || null,
+      height: inspection.metadata?.height || null,
+      aspect_ratio: inspection.metadata?.aspect_ratio || null,
+      file_size: inspection.metadata?.file_size || null,
+      mime_type: inspection.metadata?.mime_type || null,
     },
     inspected_at: inspection.inspected_at,
   };

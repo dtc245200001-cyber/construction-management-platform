@@ -82,7 +82,7 @@ router.get(
                de.created_at AS entry_created_at,
                de.entry_date,
                u.full_name AS uploaded_by_name,
-               '/api/projects/' || $2 || '/diary/attachments/' || dea.id AS url
+               CONCAT('/api/projects/', $2::text, '/diary/attachments/', dea.id) AS url
         FROM diary_entry_attachments dea
         JOIN diary_entries de ON dea.diary_entry_id = de.id
         LEFT JOIN users u ON de.created_by = u.id
@@ -101,7 +101,7 @@ router.get(
                av.batch_name,
                av.id AS voucher_id,
                u.full_name AS uploaded_by_name,
-               '/api/projects/' || $2 || '/acceptance-vouchers/' || avp.voucher_id || '/photos/' || avp.id AS url
+               CONCAT('/api/projects/', $2::text, '/acceptance-vouchers/', avp.voucher_id, '/photos/', avp.id) AS url
         FROM acceptance_voucher_photos avp
         JOIN acceptance_vouchers av ON avp.voucher_id = av.id
         LEFT JOIN users u ON avp.uploaded_by = u.id
@@ -118,19 +118,42 @@ router.get(
 
     const row = result.rows[0];
     const hasGps = row.gps_latitude !== null && row.gps_longitude !== null;
-    const canViewGps = can(req.projectRole, "photo.view_gps");
+    const canViewGps = Boolean(
+      can(req.projectRole, "photo.view_gps") || (req.user && req.user.is_system_admin)
+    );
 
-    const isReviewer =
+    const isReviewer = Boolean(
       can(req.projectRole, "acceptance.review_internal") ||
       can(req.projectRole, "acceptance.approve_official") ||
       req.projectRole === "chu_dau_tu" ||
-      req.projectRole === "ban_quan_ly";
+      req.projectRole === "ban_quan_ly" ||
+      (req.user && req.user.is_system_admin)
+    );
 
     // Đánh giá dấu hiệu bất thường (Story S-42 / T-109)
-    const inspectionRaw = inspectVoucherPhotoRecord(row, {
-      created_at: row.voucher_created_at || row.entry_created_at,
-    });
-    const inspection = sanitizeInspectionForRole(inspectionRaw, isReviewer);
+    let inspection = null;
+    try {
+      const inspectionRaw = inspectVoucherPhotoRecord(row, {
+        created_at: row.voucher_created_at || row.entry_created_at,
+      });
+      inspection = sanitizeInspectionForRole(inspectionRaw, isReviewer);
+    } catch (_inspErr) {
+      inspection = {
+        status: "incomplete_data",
+        can_evaluate: false,
+        has_sufficient_data: false,
+        summary: "Dữ liệu không đầy đủ để đánh giá toàn diện",
+        warnings: [],
+        metadata: {},
+        inspected_at: new Date().toISOString(),
+      };
+    }
+
+    const photoUrl =
+      row.url ||
+      (kind === "diary"
+        ? `/api/projects/${projectId}/diary/attachments/${row.id}`
+        : `/api/projects/${projectId}/acceptance-vouchers/${row.voucher_id}/photos/${row.id}`);
 
     const responsePayload = {
       id: row.id,
@@ -140,7 +163,7 @@ router.get(
       uploaded_at: row.uploaded_at,
       uploaded_by_name: row.uploaded_by_name || "Người dùng hệ thống",
       batch_name: row.batch_name || (row.entry_date ? `Nhật ký ${row.entry_date}` : null),
-      url: row.url,
+      url: photoUrl,
       status: row.metadata_status,
       status_label: STATUS_LABELS[row.metadata_status] || "Không xác định",
       captured_at: row.captured_at,
@@ -150,7 +173,10 @@ router.get(
       is_reviewer: isReviewer,
       geofence: {
         status: row.geofence_status || "not_checked",
-        distance_m: row.geofence_distance_m !== null ? parseFloat(row.geofence_distance_m) : null,
+        distance_m:
+          row.geofence_distance_m !== null && !isNaN(row.geofence_distance_m)
+            ? parseFloat(row.geofence_distance_m)
+            : null,
         checked_at: row.geofence_checked_at || null,
       },
       inspection,
@@ -158,11 +184,18 @@ router.get(
 
     // Chỉ đính kèm toạ độ thô nếu người dùng có quyền photo.view_gps VÀ ảnh có toạ độ
     if (canViewGps && hasGps) {
-      responsePayload.gps = {
-        latitude: parseFloat(row.gps_latitude),
-        longitude: parseFloat(row.gps_longitude),
-        accuracy_m: row.gps_accuracy_m ? parseFloat(row.gps_accuracy_m) : null,
-      };
+      const lat = parseFloat(row.gps_latitude);
+      const lng = parseFloat(row.gps_longitude);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        responsePayload.gps = {
+          latitude: lat,
+          longitude: lng,
+          accuracy_m:
+            row.gps_accuracy_m !== null && !isNaN(row.gps_accuracy_m)
+              ? parseFloat(row.gps_accuracy_m)
+              : null,
+        };
+      }
     }
 
     return res.status(200).json(responsePayload);
