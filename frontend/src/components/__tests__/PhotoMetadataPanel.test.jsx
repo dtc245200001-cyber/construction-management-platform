@@ -1173,6 +1173,184 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       expect(screen.getByText('Nghi vấn ảnh chụp lại màn hình')).toBeInTheDocument();
       expect(screen.getByTestId('close-panel-btn')).toBeInTheDocument();
     });
+
+    it('10. Người gửi (is_reviewer = false): xem thông tin tệp, trạng thái; thiết bị EXIF hiển thị "Không có dữ liệu"', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'evidence_01.jpg',
+          file_size: 1048576,
+          mime_type: 'image/jpeg',
+          uploaded_by_name: 'Kỹ sư Giám sát',
+          is_reviewer: false,
+          has_gps: true,
+          status: 'complete',
+          captured_at: '2026-03-15T07:30:00.000Z',
+          inspection: {
+            status: 'warning',
+            summary: 'Phát hiện dấu hiệu cần xác minh',
+            warnings: [
+              {
+                code: 'SCREENSHOT_SUSPECTED',
+                title: 'Dấu hiệu ảnh chụp lại màn hình',
+                reason: 'Kích thước ảnh tương ứng với tỷ lệ màn hình điện thoại',
+                severity: 'high',
+              },
+            ],
+            metadata: {
+              width: 1080,
+              height: 2400,
+              aspect_ratio: '9:20',
+              file_size: 1048576,
+              mime_type: 'image/jpeg',
+            },
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={101}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('evidence_01.jpg')).toBeInTheDocument();
+      });
+
+      // Xem được thông tin tệp và trạng thái
+      expect(screen.getByText('JPEG')).toBeInTheDocument();
+      expect(screen.getByTestId('photo-resolution')).toHaveTextContent('1080 × 2400 px');
+      expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Cần xác minh');
+      expect(screen.getByText('Dấu hiệu ảnh chụp lại màn hình')).toBeInTheDocument();
+
+      // GPS thô bị ẩn đối với người gửi, chỉ hiển thị thông báo quyền riêng tư
+      expect(screen.getByTestId('gps-restricted-section')).toBeInTheDocument();
+
+      // Các trường máy ảnh EXIF không lộ cho người gửi và hiển thị "Không có dữ liệu"
+      const missingDataElements = screen.getAllByText('Không có dữ liệu');
+      expect(missingDataElements.length).toBeGreaterThanOrEqual(3); // Thiết bị, Phần mềm, ISO, Khẩu độ, Tốc độ
+    });
+
+    it('11. Người duyệt (is_reviewer = true): xem đầy đủ thông số máy ảnh, toạ độ GPS và cảnh báo chi tiết', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          file_name: 'canon_full_exif.jpg',
+          file_size: 2097152,
+          mime_type: 'image/jpeg',
+          uploaded_by_name: 'Kỹ sư Giám sát',
+          is_reviewer: true,
+          has_gps: true,
+          status: 'complete',
+          captured_at: '2026-03-15T07:30:00.000Z',
+          gps: {
+            latitude: 10.762622,
+            longitude: 106.660172,
+            accuracy_m: 3.5,
+          },
+          inspection: {
+            status: 'warning',
+            summary: 'Cần kiểm tra đối chiếu',
+            warnings: [
+              {
+                code: 'DATE_TOO_FAR',
+                title: 'Thời điểm chụp cách xa ngày lập phiếu',
+                reason: 'Ảnh chụp trước ngày lập phiếu 40 ngày',
+                severity: 'high',
+                actual_value: '2026-02-04',
+                comparison_value: '2026-03-16',
+                action_suggestion: 'Đối chiếu nhật ký thi công',
+                confidence: 'high',
+              },
+            ],
+            metadata: {
+              width: 1920,
+              height: 1080,
+              aspect_ratio: '16:9',
+              make: 'Canon',
+              model: 'EOS R5',
+              software: 'v1.5.0',
+              iso: '200',
+              aperture: 'f/2.8',
+              shutter_speed: '1/125s',
+            },
+          },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={102}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('canon_full_exif.jpg')).toBeInTheDocument();
+      });
+
+      // Người duyệt xem được toạ độ GPS và link Google Maps
+      expect(screen.getByTestId('gps-coordinates-section')).toBeInTheDocument();
+      expect(screen.getByText(/10.762622/)).toBeInTheDocument();
+      expect(screen.getByText(/106.660172/)).toBeInTheDocument();
+      expect(screen.getByText(/Xem trên bản đồ/)).toBeInTheDocument();
+
+      // Người duyệt xem được chi tiết thiết bị và thông số camera
+      expect(screen.getByText('Canon EOS R5')).toBeInTheDocument();
+      expect(screen.getByText('v1.5.0')).toBeInTheDocument();
+      expect(screen.getByText('ISO 200')).toBeInTheDocument();
+      expect(screen.getByText('f/2.8')).toBeInTheDocument();
+      expect(screen.getByText('1/125s')).toBeInTheDocument();
+
+      // Xem được thông số đối chiếu của cảnh báo
+      expect(screen.getByText('2026-02-04')).toBeInTheDocument();
+      expect(screen.getByText('2026-03-16')).toBeInTheDocument();
+      expect(screen.getByText(/Đối chiếu nhật ký thi công/)).toBeInTheDocument();
+    });
+
+    it('12. Nút "Thử lại" khi API kiểm tra thất bại: gọi lại hàm fetchMetadata', async () => {
+      api.get
+        .mockRejectedValueOnce({
+          response: { status: 500, data: { message: 'Lỗi kết nối máy chủ' } },
+        })
+        .mockResolvedValueOnce({
+          data: {
+            file_name: 'retry_success.jpg',
+            status: 'clean',
+            inspection: { status: 'clean' },
+          },
+        });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={103}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Lỗi kết nối máy chủ')).toBeInTheDocument();
+      });
+
+      expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Lỗi kiểm tra');
+
+      const retryBtn = screen.getByTestId('retry-metadata-btn');
+      fireEvent.click(retryBtn);
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledTimes(2);
+        expect(screen.getByText('retry_success.jpg')).toBeInTheDocument();
+      });
+    });
   });
 });
 

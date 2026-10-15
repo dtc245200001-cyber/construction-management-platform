@@ -8,6 +8,10 @@ const {
   createJpegWithExif,
   createPlainJpeg,
   createCorruptedExifJpeg,
+  createPngWithExif,
+  createPlainPng,
+  createWebpWithExif,
+  createPlainWebp,
 } = require('./jpegWithExif');
 
 /**
@@ -62,4 +66,8 @@ module.exports = {
   createCorruptedExifJpeg,
   createPngBuffer,
   createJpegWithDimensions,
+  createPngWithExif,
+  createPlainPng,
+  createWebpWithExif,
+  createPlainWebp,
 };

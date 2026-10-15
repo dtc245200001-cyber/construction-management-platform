@@ -28,6 +28,10 @@ const {
   createCorruptedExifJpeg,
   createPngBuffer,
   createJpegWithDimensions,
+  createPngWithExif,
+  createPlainPng,
+  createWebpWithExif,
+  createPlainWebp,
 } = require('./helpers/photoInspectionHelpers');
 
 describe('photoInspection service (Story S-42 / T-109)', () => {
@@ -462,6 +466,141 @@ describe('photoInspection service (Story S-42 / T-109)', () => {
       expect(result.warnings[0].actual_value).toBeUndefined();
       expect(result.warnings[0].comparison_value).toBeUndefined();
       expect(result.metadata.file_hash).toBeUndefined();
+    });
+  });
+
+  describe('Kiểm thử định dạng PNG và WebP (Metadata vs Non-metadata)', () => {
+    test('1. PNG có metadata EXIF (eXIf chunk) -> status clean, trích xuất đầy đủ máy ảnh và toạ độ', async () => {
+      const pngBuf = createPngWithExif({
+        make: 'Sony',
+        model: 'A7 IV',
+        dateTimeOriginal: '2026-03-15T07:30:00.000Z',
+        latitude: 21.028511,
+        longitude: 105.804817,
+        iso: 400,
+        fNumber: 4.0,
+        exposureTime: 0.004,
+        width: 1920,
+        height: 1080,
+      });
+
+      const res = await inspectPhotoMetadata({
+        buffer: pngBuf,
+        mimeType: 'image/png',
+        fileName: 'site_survey.png',
+        voucherCreatedAt: '2026-03-16T00:00:00.000Z',
+      });
+
+      expect(res.status).toBe('clean');
+      expect(res.has_sufficient_data).toBe(true);
+      expect(res.metadata.make).toBe('Sony');
+      expect(res.metadata.model).toBe('A7 IV');
+      expect(res.metadata.iso).toBe('400');
+      expect(res.metadata.aperture).toBe('f/4');
+      expect(res.metadata.shutter_speed).toBe('1/250s');
+      expect(res.metadata.width).toBe(1920);
+      expect(res.metadata.height).toBe(1080);
+      expect(res.metadata.aspect_ratio).toBe('16:9');
+      expect(res.warnings).toHaveLength(0);
+    });
+
+    test('2. PNG không có metadata (plain PNG) -> status incomplete_data, KHÔNG gây lỗi server', async () => {
+      const pngBuf = createPlainPng(1600, 1200);
+
+      const res = await inspectPhotoMetadata({
+        buffer: pngBuf,
+        mimeType: 'image/png',
+        fileName: 'construction_drawing.png',
+      });
+
+      expect(res.status).toBe('incomplete_data');
+      expect(res.can_evaluate).toBe(true);
+      expect(res.summary).toContain('thiếu một số siêu dữ liệu gốc');
+      expect(res.metadata.width).toBe(1600);
+      expect(res.metadata.height).toBe(1200);
+      expect(res.metadata.aspect_ratio).toBe('4:3');
+      expect(res.metadata.make).toBeNull();
+      expect(res.metadata.has_exif).toBe(false);
+    });
+
+    test('3. WebP có metadata EXIF (VP8X + EXIF chunk) -> status clean, trích xuất đầy đủ máy ảnh', async () => {
+      const webpBuf = createWebpWithExif({
+        make: 'Google',
+        model: 'Pixel 8 Pro',
+        dateTimeOriginal: '2026-03-15T07:30:00.000Z',
+        latitude: 10.762622,
+        longitude: 106.660172,
+        iso: 100,
+        fNumber: 1.8,
+        exposureTime: 0.008,
+        width: 1920,
+        height: 1080,
+      });
+
+      const res = await inspectPhotoMetadata({
+        buffer: webpBuf,
+        mimeType: 'image/webp',
+        fileName: 'site_photo.webp',
+        voucherCreatedAt: '2026-03-16T00:00:00.000Z',
+      });
+
+      expect(res.status).toBe('clean');
+      expect(res.metadata.make).toBe('Google');
+      expect(res.metadata.model).toBe('Pixel 8 Pro');
+      expect(res.metadata.iso).toBe('100');
+      expect(res.metadata.aperture).toBe('f/1.8');
+      expect(res.metadata.shutter_speed).toBe('1/125s');
+      expect(res.metadata.aspect_ratio).toBe('16:9');
+    });
+
+    test('4. WebP không có metadata (plain WebP VP8) -> status incomplete_data, đọc kích thước độc lập', async () => {
+      const webpBuf = createPlainWebp(1200, 900);
+
+      const res = await inspectPhotoMetadata({
+        buffer: webpBuf,
+        mimeType: 'image/webp',
+        fileName: 'drawing.webp',
+      });
+
+      expect(res.status).toBe('incomplete_data');
+      expect(res.can_evaluate).toBe(true);
+      expect(res.metadata.width).toBe(1200);
+      expect(res.metadata.height).toBe(900);
+      expect(res.metadata.aspect_ratio).toBe('4:3');
+    });
+
+    test('5. Tích hợp trực tiếp photoMeta từ upload handler -> đồng bộ toàn bộ trường và toạ độ GPS', async () => {
+      const jpegBuf = createJpegWithExif({
+        dateTimeOriginal: '2026:03:15 14:30:00',
+        offsetTimeOriginal: '+07:00',
+        latitude: 10.762622,
+        longitude: 106.660172,
+        accuracy: 4.5,
+        make: 'Nikon',
+        model: 'Z9',
+        width: 3840,
+        height: 2160,
+      });
+
+      // Giả lập photoMeta được trích xuất tại upload route
+      const { extractPhotoMetadata } = require('../services/photoMetadata');
+      const photoMeta = await extractPhotoMetadata(jpegBuf, 'image/jpeg');
+
+      const res = await inspectPhotoMetadata({
+        buffer: jpegBuf,
+        mimeType: 'image/jpeg',
+        fileName: 'high_res_nikon.jpg',
+        photoMeta,
+      });
+
+      expect(res.metadata.make).toBe('Nikon');
+      expect(res.metadata.model).toBe('Z9');
+      expect(res.metadata.gps_latitude).toBeCloseTo(10.762622, 5);
+      expect(res.metadata.gps_longitude).toBeCloseTo(106.660172, 5);
+      expect(res.metadata.gps_accuracy_m).toBe(4.5);
+      expect(res.metadata.width).toBe(3840);
+      expect(res.metadata.height).toBe(2160);
+      expect(res.metadata.aspect_ratio).toBe('16:9');
     });
   });
 });
