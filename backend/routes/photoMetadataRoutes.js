@@ -23,7 +23,10 @@ const {
 const asyncHandler = require("../utils/asyncHandler");
 const { parsePositiveInt } = require("../utils/validators");
 const { can } = require("../utils/permissions");
-const { inspectVoucherPhotoRecord } = require("../services/photoInspection");
+const {
+  inspectVoucherPhotoRecord,
+  sanitizeInspectionForRole,
+} = require("../services/photoInspection");
 
 const router = createProjectRouter();
 
@@ -117,10 +120,17 @@ router.get(
     const hasGps = row.gps_latitude !== null && row.gps_longitude !== null;
     const canViewGps = can(req.projectRole, "photo.view_gps");
 
+    const isReviewer =
+      can(req.projectRole, "acceptance.review_internal") ||
+      can(req.projectRole, "acceptance.approve_official") ||
+      req.projectRole === "chu_dau_tu" ||
+      req.projectRole === "ban_quan_ly";
+
     // Đánh giá dấu hiệu bất thường (Story S-42 / T-109)
-    const inspection = inspectVoucherPhotoRecord(row, {
+    const inspectionRaw = inspectVoucherPhotoRecord(row, {
       created_at: row.voucher_created_at || row.entry_created_at,
     });
+    const inspection = sanitizeInspectionForRole(inspectionRaw, isReviewer);
 
     const responsePayload = {
       id: row.id,
@@ -137,6 +147,7 @@ router.get(
       captured_at_source: row.captured_at_source,
       source: row.metadata_source,
       has_gps: hasGps,
+      is_reviewer: isReviewer,
       geofence: {
         status: row.geofence_status || "not_checked",
         distance_m: row.geofence_distance_m !== null ? parseFloat(row.geofence_distance_m) : null,
