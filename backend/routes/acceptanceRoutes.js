@@ -32,6 +32,10 @@ const {
 } = require("../utils/acceptanceHelpers");
 const { extractPhotoMetadata } = require("../services/photoMetadata");
 const { evaluateGeofence } = require("../utils/geo");
+const {
+  inspectPhotoMetadata,
+  inspectVoucherPhotoRecord,
+} = require("../services/photoInspection");
 
 const router = createProjectRouter();
 
@@ -512,6 +516,7 @@ router.get(
          geofence_status,
          geofence_distance_m,
          geofence_checked_at,
+         exif_metadata,
          '/api/projects/' || $2 || '/acceptance-vouchers/' || voucher_id || '/photos/' || id AS url
        FROM acceptance_voucher_photos
        WHERE voucher_id = $1
@@ -525,6 +530,10 @@ router.get(
       outside: 0,
       no_gps: 0,
       no_site_config: 0,
+      anomalies_count: 0,
+      clean_count: 0,
+      incomplete_count: 0,
+      error_count: 0,
     };
 
     const photos = photosRes.rows.map((p) => {
@@ -534,11 +543,18 @@ router.get(
       else if (status === "no_gps") photo_flags.no_gps++;
       else photo_flags.no_site_config++;
 
+      const inspection = inspectVoucherPhotoRecord(p, voucher);
+      if (inspection.status === "warning") photo_flags.anomalies_count++;
+      else if (inspection.status === "clean") photo_flags.clean_count++;
+      else if (inspection.status === "incomplete_data") photo_flags.incomplete_count++;
+      else if (inspection.status === "error") photo_flags.error_count++;
+
       return {
         ...p,
         geofence_distance_m:
           p.geofence_distance_m !== null ? parseFloat(p.geofence_distance_m) : null,
         radius_m: siteRadius,
+        inspection,
       };
     });
 
@@ -1311,6 +1327,17 @@ router.post(
       },
     });
 
+    // Phân tích và phát hiện dấu hiệu bất thường của ảnh bằng chứng (S-42 / T-109)
+    const inspection = await inspectPhotoMetadata({
+      buffer: req.file.buffer,
+      mimeType: detectedMime,
+      fileName: req.file.originalname,
+      fileSize: req.file.size,
+      capturedAt: photoMeta.captured_at,
+      voucherCreatedAt: voucherCheck.rows[0].created_at,
+      clientFallback: req.body,
+    });
+
     const caption = req.body.caption
       ? String(req.body.caption).trim().slice(0, 500)
       : null;
@@ -1324,14 +1351,15 @@ router.post(
        RETURNING id, file_name, file_size, mime_type, caption, uploaded_by, created_at,
                  captured_at, captured_at_source, metadata_status, metadata_source,
                  (gps_latitude IS NOT NULL) AS has_gps,
-                 geofence_status, geofence_distance_m, geofence_checked_at`,
+                 geofence_status, geofence_distance_m, geofence_checked_at,
+                 exif_metadata`,
       [
         voucherId,
         req.file.originalname,
         req.file.size,
         detectedMime,
         req.file.buffer,
-        null,
+        JSON.stringify(inspection),
         caption,
         req.user.id,
         photoMeta.captured_at,
@@ -1356,6 +1384,7 @@ router.post(
         voucherCheck.rows[0].site_radius_m !== null
           ? parseInt(voucherCheck.rows[0].site_radius_m, 10)
           : null,
+      inspection,
       url: `/api/projects/${projectId}/acceptance-vouchers/${voucherId}/photos/${photo.id}`,
     });
   })
