@@ -1389,6 +1389,24 @@ export default function AcceptancePage({ user }) {
                 </div>
               )}
 
+              {/* Cảnh báo ảnh chụp ngoài bán kính công trường (S-41 / T-108) */}
+              {viewingVoucher.photo_flags?.outside > 0 && (
+                <div
+                  data-testid="geofence-warning-banner"
+                  className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2.5 text-amber-900 text-xs"
+                >
+                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-semibold text-amber-950">
+                      Cảnh báo vị trí ảnh hiện trường
+                    </div>
+                    <p className="mt-0.5 text-amber-800">
+                      Phát hiện {viewingVoucher.photo_flags.outside} ảnh chụp ngoài bán kính công trường. Dấu hiệu này nhằm tham khảo khi đối chiếu bằng chứng (không chặn quy trình duyệt phiếu).
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Bảng chi tiết hạng mục */}
               <div className="space-y-2">
                 <h4 className="font-semibold text-slate-800 text-sm">
@@ -1493,6 +1511,41 @@ export default function AcceptancePage({ user }) {
                               {photo.caption}
                             </p>
                           )}
+
+                          {/* Nhãn trạng thái phạm vi công trường (S-41 / T-108) */}
+                          {photo.geofence_status === "outside" && (
+                            <div
+                              data-testid={`geofence-badge-${photo.id}`}
+                              className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700 border border-red-200"
+                            >
+                              ⚠️ Ngoài phạm vi {photo.geofence_distance_m !== null ? `(${Number(photo.geofence_distance_m).toLocaleString("vi-VN")} m)` : ""}
+                            </div>
+                          )}
+                          {photo.geofence_status === "inside" && (
+                            <div
+                              data-testid={`geofence-badge-${photo.id}`}
+                              className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700 border border-emerald-200"
+                            >
+                              ✓ Đúng vị trí {photo.geofence_distance_m !== null ? `(${Number(photo.geofence_distance_m).toLocaleString("vi-VN")} m)` : ""}
+                            </div>
+                          )}
+                          {photo.geofence_status === "no_gps" && (
+                            <div
+                              data-testid={`geofence-badge-${photo.id}`}
+                              className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-slate-500 bg-slate-100"
+                            >
+                              Không có GPS
+                            </div>
+                          )}
+                          {photo.geofence_status === "no_site_config" && (
+                            <div
+                              data-testid={`geofence-badge-${photo.id}`}
+                              className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-slate-500 bg-slate-100"
+                            >
+                              Chưa cấu hình tâm
+                            </div>
+                          )}
+
                           <button
                             type="button"
                             data-testid={`photo-meta-btn-${photo.id}`}
@@ -1500,7 +1553,7 @@ export default function AcceptancePage({ user }) {
                               e.stopPropagation();
                               setSelectedMetadataPhoto({ id: photo.id, kind: "acceptance" });
                             }}
-                            className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                            className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 hover:underline font-medium block"
                           >
                             ℹ️ Thông tin ảnh
                           </button>

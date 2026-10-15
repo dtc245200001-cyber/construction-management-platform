@@ -13,6 +13,7 @@ const {
 } = require("../utils/diaryValidators");
 const { logAudit } = require("../utils/auditLogger");
 const { extractPhotoMetadata } = require("../services/photoMetadata");
+const { evaluateGeofence } = require("../utils/geo");
 
 const router = createProjectRouter();
 const diaryImageUpload = multer({
@@ -899,7 +900,10 @@ router.post(
     }
 
     const entry = await db.query(
-      "SELECT id, entry_date, entry_at FROM diary_entries WHERE id = $1 AND project_id = $2",
+      `SELECT de.id, de.entry_date, de.entry_at, p.site_latitude, p.site_longitude, p.site_radius_m
+       FROM diary_entries de
+       JOIN projects p ON p.id = de.project_id
+       WHERE de.id = $1 AND de.project_id = $2`,
       [entryId, projectId]
     );
     if (entry.rows.length === 0) {
@@ -926,15 +930,31 @@ router.post(
       req.body
     );
 
+    // Đánh giá geofence so với tâm và bán kính công trường (S-41 / T-108)
+    const geofenceEval = evaluateGeofence({
+      photo: {
+        gps_latitude: photoMeta.gps_latitude,
+        gps_longitude: photoMeta.gps_longitude,
+        gps_accuracy_m: photoMeta.gps_accuracy_m,
+      },
+      site: {
+        site_latitude: entryRow.site_latitude,
+        site_longitude: entryRow.site_longitude,
+        site_radius_m: entryRow.site_radius_m,
+      },
+    });
+
     const result = await db.query(
       `INSERT INTO diary_entry_attachments
          (diary_entry_id, client_id, file_name, file_size, mime_type, file_data,
-          captured_at, captured_at_source, gps_latitude, gps_longitude, gps_accuracy_m, metadata_status, metadata_source)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          captured_at, captured_at_source, gps_latitude, gps_longitude, gps_accuracy_m, metadata_status, metadata_source,
+          geofence_status, geofence_distance_m, geofence_checked_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        ON CONFLICT (diary_entry_id, client_id) DO NOTHING
        RETURNING id, file_name, file_size, mime_type, created_at,
                  captured_at, captured_at_source, metadata_status, metadata_source,
-                 (gps_latitude IS NOT NULL) AS has_gps`,
+                 (gps_latitude IS NOT NULL) AS has_gps,
+                 geofence_status, geofence_distance_m, geofence_checked_at`,
       [
         entryId,
         clientId,
@@ -949,6 +969,9 @@ router.post(
         photoMeta.gps_accuracy_m,
         photoMeta.metadata_status,
         photoMeta.metadata_source,
+        geofenceEval.status,
+        geofenceEval.distance_m,
+        geofenceEval.checked_at,
       ]
     );
 
@@ -958,7 +981,8 @@ router.post(
         await db.query(
           `SELECT id, file_name, file_size, mime_type, created_at,
                   captured_at, captured_at_source, metadata_status, metadata_source,
-                  (gps_latitude IS NOT NULL) AS has_gps
+                  (gps_latitude IS NOT NULL) AS has_gps,
+                  geofence_status, geofence_distance_m, geofence_checked_at
            FROM diary_entry_attachments
            WHERE diary_entry_id = $1 AND client_id = $2`,
           [entryId, clientId]
@@ -967,6 +991,8 @@ router.post(
 
     return res.status(result.rows.length ? 201 : 200).json({
       ...attachment,
+      geofence_distance_m:
+        attachment.geofence_distance_m !== null ? parseFloat(attachment.geofence_distance_m) : null,
       url: `/api/projects/${projectId}/diary-entries/${entryId}/attachments/${attachment.id}`,
     });
   })

@@ -150,6 +150,10 @@ const PERMISSIONS = {
   "photo.view_metadata": ALL_MEMBERS,
   // Bảo vệ vị trí người lao động: chỉ Chủ đầu tư và Ban quản lý được xem toạ độ thô
   "photo.view_gps": [CHU_DAU_TU, BAN_QUAN_LY],
+
+  // ── S-41 / T-107: Cấu hình phạm vi công trường (geofence) ──
+  // Chủ đầu tư và Ban quản lý được cấu hình tâm và bán kính công trường
+  "site_geofence.manage": [CHU_DAU_TU, BAN_QUAN_LY],
 };
 
 // Tên tiếng Việt hiển thị trong message 403.

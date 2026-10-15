@@ -24,6 +24,7 @@ import {
   Calendar,
   Coins,
   History,
+  MapPin,
 } from "lucide-react";
 
 
@@ -173,6 +174,14 @@ export const MENU_CONFIG = [
     group: "manage",
     roles: [BAN_QUAN_LY, CHI_HUY_TRUONG, CHU_DAU_TU],
   },
+  {
+    key: "site-geofence",
+    label: "Phạm vi công trường",
+    path: "/site-geofence",
+    icon: MapPin,
+    group: "manage",
+    roles: ALL_ROLES,
+  },
 ];
 
 // action -> danh sách vai trò được phép.
@@ -197,6 +206,9 @@ export const PERMISSIONS = {
   "diary.create": [BAN_QUAN_LY, CHI_HUY_TRUONG, KY_SU_GIAM_SAT, DOI_TRUONG],
   "diary.lock": [KY_SU_GIAM_SAT],
   "diary.unlock": [BAN_QUAN_LY],
+
+  // S-41 / T-107: Cấu hình phạm vi công trường
+  "site_geofence.manage": [BAN_QUAN_LY, CHU_DAU_TU],
 };
 
 function isKnownRole(role) {

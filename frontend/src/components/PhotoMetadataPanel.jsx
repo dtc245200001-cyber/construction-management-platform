@@ -254,6 +254,55 @@ export default function PhotoMetadataPanel({
                   </p>
                 )}
               </div>
+
+              {/* Đối chiếu phạm vi công trường (Geofence - S-41 / T-108) */}
+              <div className="rounded-lg border border-gray-100 bg-gray-50/70 p-3" data-testid="geofence-evaluation-section">
+                <span className="text-xs font-medium text-gray-500 uppercase tracking-wider block">
+                  Đối chiếu phạm vi công trường
+                </span>
+                {metadata.geofence?.status === 'inside' ? (
+                  <div className="mt-1 flex items-center gap-2">
+                    <span
+                      data-testid="geofence-status-inside"
+                      className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 border border-green-200"
+                    >
+                      ✓ Trong phạm vi công trường
+                    </span>
+                    {metadata.geofence.distance_m !== null && (
+                      <span className="text-xs text-gray-600">
+                        (cách tâm {Number(metadata.geofence.distance_m).toLocaleString('vi-VN')} m)
+                      </span>
+                    )}
+                  </div>
+                ) : metadata.geofence?.status === 'outside' ? (
+                  <div className="mt-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span
+                        data-testid="geofence-status-outside"
+                        className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800 border border-red-200"
+                      >
+                        ⚠️ Ngoài phạm vi công trường
+                      </span>
+                      {metadata.geofence.distance_m !== null && (
+                        <span className="text-xs font-semibold text-red-700">
+                          (cách tâm {Number(metadata.geofence.distance_m).toLocaleString('vi-VN')} m)
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-red-600">
+                      Ảnh được chụp ngoài bán kính công trường quy định, cần kiểm tra đối chiếu khi nghiệm thu.
+                    </p>
+                  </div>
+                ) : metadata.geofence?.status === 'no_site_config' ? (
+                  <p className="mt-1 text-sm italic text-gray-500">
+                    Dự án chưa cấu hình toạ độ tâm và bán kính công trường
+                  </p>
+                ) : (
+                  <p className="mt-1 text-sm italic text-gray-500">
+                    Không có toạ độ GPS để đối chiếu với phạm vi công trường
+                  </p>
+                )}
+              </div>
             </div>
           )}
         </div>

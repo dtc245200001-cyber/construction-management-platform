@@ -205,6 +205,8 @@ const acceptanceRoutes = require("./routes/acceptanceRoutes");
 app.use("/api/projects", acceptanceRoutes);
 const photoMetadataRoutes = require("./routes/photoMetadataRoutes");
 app.use("/api/projects", photoMetadataRoutes);
+const siteGeofenceRoutes = require("./routes/siteGeofenceRoutes");
+app.use("/api/projects", siteGeofenceRoutes);
 
 // â”€â”€â”€ ERROR HANDLERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(notFoundHandler);

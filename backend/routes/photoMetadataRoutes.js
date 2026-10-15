@@ -71,7 +71,8 @@ router.get(
       query = `
         SELECT dea.id, dea.captured_at, dea.captured_at_source,
                dea.gps_latitude, dea.gps_longitude, dea.gps_accuracy_m,
-               dea.metadata_status, dea.metadata_source
+               dea.metadata_status, dea.metadata_source,
+               dea.geofence_status, dea.geofence_distance_m, dea.geofence_checked_at
         FROM diary_entry_attachments dea
         JOIN diary_entries de ON dea.diary_entry_id = de.id
         WHERE dea.id = $1 AND de.project_id = $2
@@ -80,7 +81,8 @@ router.get(
       query = `
         SELECT avp.id, avp.captured_at, avp.captured_at_source,
                avp.gps_latitude, avp.gps_longitude, avp.gps_accuracy_m,
-               avp.metadata_status, avp.metadata_source
+               avp.metadata_status, avp.metadata_source,
+               avp.geofence_status, avp.geofence_distance_m, avp.geofence_checked_at
         FROM acceptance_voucher_photos avp
         JOIN acceptance_vouchers av ON avp.voucher_id = av.id
         WHERE avp.id = $1 AND av.project_id = $2
@@ -105,6 +107,11 @@ router.get(
       captured_at_source: row.captured_at_source,
       source: row.metadata_source,
       has_gps: hasGps,
+      geofence: {
+        status: row.geofence_status || "not_checked",
+        distance_m: row.geofence_distance_m !== null ? parseFloat(row.geofence_distance_m) : null,
+        checked_at: row.geofence_checked_at || null,
+      },
     };
 
     // Chỉ đính kèm toạ độ thô nếu người dùng có quyền photo.view_gps VÀ ảnh có toạ độ

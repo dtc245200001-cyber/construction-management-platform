@@ -31,6 +31,7 @@ const {
   detectMimeFromBuffer,
 } = require("../utils/acceptanceHelpers");
 const { extractPhotoMetadata } = require("../services/photoMetadata");
+const { evaluateGeofence } = require("../utils/geo");
 
 const router = createProjectRouter();
 
@@ -445,15 +446,17 @@ router.get(
 
     res.setHeader("Cache-Control", "no-store");
 
-    // Lấy phiếu
+    // Lấy phiếu kèm cấu hình bán kính công trường
     const voucherRes = await db.query(
       `SELECT
          av.*,
          u.name AS created_by_name,
-         reviewer.name AS reviewed_by_name
+         reviewer.name AS reviewed_by_name,
+         p.site_radius_m
        FROM acceptance_vouchers av
        JOIN users u ON u.id = av.created_by
        LEFT JOIN users reviewer ON reviewer.id = av.reviewed_by
+       JOIN projects p ON p.id = av.project_id
        WHERE av.id = $1 AND av.project_id = $2`,
       [voucherId, projectId]
     );
@@ -463,6 +466,7 @@ router.get(
     }
 
     const voucher = voucherRes.rows[0];
+    const siteRadius = voucher.site_radius_m !== null ? parseInt(voucher.site_radius_m, 10) : null;
 
     // Lấy chi tiết hạng mục kèm thông tin từ S-26 (khối lượng đội báo)
     const itemsRes = await db.query(
@@ -501,6 +505,13 @@ router.get(
          caption,
          uploaded_by,
          created_at,
+         captured_at,
+         captured_at_source,
+         metadata_status,
+         metadata_source,
+         geofence_status,
+         geofence_distance_m,
+         geofence_checked_at,
          '/api/projects/' || $2 || '/acceptance-vouchers/' || voucher_id || '/photos/' || id AS url
        FROM acceptance_voucher_photos
        WHERE voucher_id = $1
@@ -508,10 +519,34 @@ router.get(
       [voucherId, projectId]
     );
 
+    const photo_flags = {
+      total: photosRes.rows.length,
+      inside: 0,
+      outside: 0,
+      no_gps: 0,
+      no_site_config: 0,
+    };
+
+    const photos = photosRes.rows.map((p) => {
+      const status = p.geofence_status || "no_site_config";
+      if (status === "inside") photo_flags.inside++;
+      else if (status === "outside") photo_flags.outside++;
+      else if (status === "no_gps") photo_flags.no_gps++;
+      else photo_flags.no_site_config++;
+
+      return {
+        ...p,
+        geofence_distance_m:
+          p.geofence_distance_m !== null ? parseFloat(p.geofence_distance_m) : null,
+        radius_m: siteRadius,
+      };
+    });
+
     return res.json({
       voucher,
       items: itemsRes.rows,
-      photos: photosRes.rows,
+      photos,
+      photo_flags,
     });
   })
 );
@@ -1222,9 +1257,12 @@ router.post(
       });
     }
 
-    // Kiểm tra phiếu tồn tại và thuộc dự án
+    // Kiểm tra phiếu tồn tại và thuộc dự án (kèm thông tin phạm vi công trường)
     const voucherCheck = await db.query(
-      "SELECT id, status FROM acceptance_vouchers WHERE id = $1 AND project_id = $2",
+      `SELECT av.id, av.status, p.site_latitude, p.site_longitude, p.site_radius_m
+       FROM acceptance_vouchers av
+       JOIN projects p ON p.id = av.project_id
+       WHERE av.id = $1 AND av.project_id = $2`,
       [voucherId, projectId]
     );
     if (voucherCheck.rows.length === 0) {
@@ -1259,6 +1297,20 @@ router.post(
       req.body
     );
 
+    // Đánh giá geofence so với tâm và bán kính công trường (S-41 / T-108)
+    const geofenceEval = evaluateGeofence({
+      photo: {
+        gps_latitude: photoMeta.gps_latitude,
+        gps_longitude: photoMeta.gps_longitude,
+        gps_accuracy_m: photoMeta.gps_accuracy_m,
+      },
+      site: {
+        site_latitude: voucherCheck.rows[0].site_latitude,
+        site_longitude: voucherCheck.rows[0].site_longitude,
+        site_radius_m: voucherCheck.rows[0].site_radius_m,
+      },
+    });
+
     const caption = req.body.caption
       ? String(req.body.caption).trim().slice(0, 500)
       : null;
@@ -1266,11 +1318,13 @@ router.post(
     const insertRes = await db.query(
       `INSERT INTO acceptance_voucher_photos
          (voucher_id, file_name, file_size, mime_type, file_data, exif_metadata, caption, uploaded_by,
-          captured_at, captured_at_source, gps_latitude, gps_longitude, gps_accuracy_m, metadata_status, metadata_source)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+          captured_at, captured_at_source, gps_latitude, gps_longitude, gps_accuracy_m, metadata_status, metadata_source,
+          geofence_status, geofence_distance_m, geofence_checked_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
        RETURNING id, file_name, file_size, mime_type, caption, uploaded_by, created_at,
                  captured_at, captured_at_source, metadata_status, metadata_source,
-                 (gps_latitude IS NOT NULL) AS has_gps`,
+                 (gps_latitude IS NOT NULL) AS has_gps,
+                 geofence_status, geofence_distance_m, geofence_checked_at`,
       [
         voucherId,
         req.file.originalname,
@@ -1287,12 +1341,21 @@ router.post(
         photoMeta.gps_accuracy_m,
         photoMeta.metadata_status,
         photoMeta.metadata_source,
+        geofenceEval.status,
+        geofenceEval.distance_m,
+        geofenceEval.checked_at,
       ]
     );
 
     const photo = insertRes.rows[0];
     return res.status(201).json({
       ...photo,
+      geofence_distance_m:
+        photo.geofence_distance_m !== null ? parseFloat(photo.geofence_distance_m) : null,
+      radius_m:
+        voucherCheck.rows[0].site_radius_m !== null
+          ? parseInt(voucherCheck.rows[0].site_radius_m, 10)
+          : null,
       url: `/api/projects/${projectId}/acceptance-vouchers/${voucherId}/photos/${photo.id}`,
     });
   })
