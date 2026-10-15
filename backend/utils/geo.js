@@ -58,10 +58,11 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
  *   distance_m: number | null,
  *   threshold_m: number | null,
  *   tolerance_m: number | null,
- *   checked_at: string
+ *   checked_at: string,
+ *   basis: 'file_exif' | 'client_reported' | null
  * }}
  */
-function evaluateGeofence({ photo, site } = {}) {
+function evaluateGeofence({ photo, site, basis } = {}) {
   const checked_at = new Date().toISOString();
 
   // 1. Kiểm tra cấu hình công trường
@@ -88,6 +89,7 @@ function evaluateGeofence({ photo, site } = {}) {
       threshold_m: null,
       tolerance_m: null,
       checked_at,
+      basis: null,
     };
   }
 
@@ -111,20 +113,32 @@ function evaluateGeofence({ photo, site } = {}) {
       threshold_m: null,
       tolerance_m: null,
       checked_at,
+      basis: null,
     };
   }
+
+  // Xác định cơ sở nguồn toạ độ (basis)
+  const rawBasis = basis ?? photo?.basis ?? photo?.gps_source ?? photo?.geofence_basis;
+  const effectiveBasis = rawBasis === 'client_reported' ? 'client_reported' : 'file_exif';
 
   // 3. Tính khoảng cách
   const rawDistance = haversineMeters(photoLat, photoLon, siteLat, siteLon);
   const distance_m = Math.round(rawDistance * 10) / 10; // Làm tròn 1 chữ số thập phân
 
   // 4. Tính dung sai định vị
-  const parsedAcc = Number(photoAcc);
-  const rawTolerance = Number.isFinite(parsedAcc) && parsedAcc > 0 ? parsedAcc : 0;
-  const tolerance_m = Math.min(
-    GEOFENCE_MAX_TOLERANCE_M,
-    Math.max(GEOFENCE_MIN_TOLERANCE_M, rawTolerance)
-  );
+  // S-41 Hardening: khi basis = client_reported, dung sai cố định ở mức tối thiểu 30m,
+  // BỎ QUA exif_accuracy_m do client gửi. Chỉ sai số lấy từ EXIF của file mới được dùng.
+  let tolerance_m;
+  if (effectiveBasis === 'client_reported') {
+    tolerance_m = GEOFENCE_MIN_TOLERANCE_M;
+  } else {
+    const parsedAcc = Number(photoAcc);
+    const rawTolerance = Number.isFinite(parsedAcc) && parsedAcc > 0 ? parsedAcc : 0;
+    tolerance_m = Math.min(
+      GEOFENCE_MAX_TOLERANCE_M,
+      Math.max(GEOFENCE_MIN_TOLERANCE_M, rawTolerance)
+    );
+  }
 
   // 5. Ngưỡng chấp nhận
   const threshold_m = Math.round((Number(siteRadius) + tolerance_m) * 10) / 10;
@@ -138,6 +152,7 @@ function evaluateGeofence({ photo, site } = {}) {
     threshold_m,
     tolerance_m,
     checked_at,
+    basis: effectiveBasis,
   };
 }
 

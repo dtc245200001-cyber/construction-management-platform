@@ -204,6 +204,14 @@ export default function PhotoMetadataPanel({
                   Vị trí địa lý (GPS)
                 </span>
 
+                {metadata.has_gps && (
+                  <p className="text-xs font-medium mt-1 mb-2 text-slate-700" data-testid="gps-source-text">
+                    {metadata.gps_source === 'client_reported' || metadata.source === 'client'
+                      ? 'Toạ độ do thiết bị báo, chưa xác thực từ ảnh gốc'
+                      : 'Toạ độ từ ảnh gốc'}
+                  </p>
+                )}
+
                 {metadata.gps ? (
                   /* Có quyền xem toạ độ thô */
                   <div className="mt-1 space-y-1.5" data-testid="gps-coordinates-section">
@@ -249,9 +257,14 @@ export default function PhotoMetadataPanel({
                   </div>
                 ) : (
                   /* Không có GPS */
-                  <p className="mt-1 text-sm italic text-gray-500">
-                    Ảnh không có thông tin toạ độ GPS
-                  </p>
+                  <div>
+                    <p className="mt-1 text-sm italic text-gray-500">
+                      Ảnh không có thông tin toạ độ GPS
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      (Không có dữ liệu)
+                    </p>
+                  </div>
                 )}
               </div>
 
@@ -261,19 +274,40 @@ export default function PhotoMetadataPanel({
                   Đối chiếu phạm vi công trường
                 </span>
                 {metadata.geofence?.status === 'inside' ? (
-                  <div className="mt-1 flex items-center gap-2">
-                    <span
-                      data-testid="geofence-status-inside"
-                      className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 border border-green-200"
-                    >
-                      ✓ Trong phạm vi công trường
-                    </span>
-                    {metadata.geofence.distance_m !== null && (
-                      <span className="text-xs text-gray-600">
-                        (cách tâm {Number(metadata.geofence.distance_m).toLocaleString('vi-VN')} m)
+                  metadata.geofence?.basis === 'client_reported' || metadata.gps_source === 'client_reported' ? (
+                    <div className="mt-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span
+                          data-testid="geofence-status-inside"
+                          className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 border border-amber-300"
+                        >
+                          ✓ Trong phạm vi (chưa xác thực)
+                        </span>
+                        {metadata.geofence.distance_m !== null && (
+                          <span className="text-xs text-gray-600">
+                            (cách tâm {Number(metadata.geofence.distance_m).toLocaleString('vi-VN')} m)
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-amber-700">
+                        Toạ độ do thiết bị báo, chưa xác thực từ ảnh gốc.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mt-1 flex items-center gap-2">
+                      <span
+                        data-testid="geofence-status-inside"
+                        className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 border border-green-200"
+                      >
+                        ✓ Trong phạm vi công trường
                       </span>
-                    )}
-                  </div>
+                      {metadata.geofence.distance_m !== null && (
+                        <span className="text-xs text-gray-600">
+                          (cách tâm {Number(metadata.geofence.distance_m).toLocaleString('vi-VN')} m)
+                        </span>
+                      )}
+                    </div>
+                  )
                 ) : metadata.geofence?.status === 'outside' ? (
                   <div className="mt-1 space-y-1">
                     <div className="flex items-center gap-2">

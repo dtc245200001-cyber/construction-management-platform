@@ -1390,7 +1390,7 @@ export default function AcceptancePage({ user }) {
               )}
 
               {/* Cảnh báo ảnh chụp ngoài bán kính công trường (S-41 / T-108) */}
-              {viewingVoucher.photo_flags?.outside > 0 && (
+              {(viewingVoucher.photo_flags?.outside > 0 || viewingVoucher.photo_flags?.unverified > 0) && (
                 <div
                   data-testid="geofence-warning-banner"
                   className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2.5 text-amber-900 text-xs"
@@ -1400,9 +1400,16 @@ export default function AcceptancePage({ user }) {
                     <div className="font-semibold text-amber-950">
                       Cảnh báo vị trí ảnh hiện trường
                     </div>
-                    <p className="mt-0.5 text-amber-800">
-                      Phát hiện {viewingVoucher.photo_flags.outside} ảnh chụp ngoài bán kính công trường. Dấu hiệu này nhằm tham khảo khi đối chiếu bằng chứng (không chặn quy trình duyệt phiếu).
-                    </p>
+                    {viewingVoucher.photo_flags?.outside > 0 && (
+                      <p className="mt-0.5 text-amber-800">
+                        Phát hiện {viewingVoucher.photo_flags.outside} ảnh chụp ngoài bán kính công trường. Dấu hiệu này nhằm tham khảo khi đối chiếu bằng chứng (không chặn quy trình duyệt phiếu).
+                      </p>
+                    )}
+                    {viewingVoucher.photo_flags?.unverified > 0 && (
+                      <p className="mt-1 text-amber-800" data-testid="unverified-banner-text">
+                        {viewingVoucher.photo_flags.unverified} ảnh có toạ độ do thiết bị báo, chưa xác thực.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -1514,19 +1521,42 @@ export default function AcceptancePage({ user }) {
 
                           {/* Nhãn trạng thái phạm vi công trường (S-41 / T-108) */}
                           {photo.geofence_status === "outside" && (
-                            <div
-                              data-testid={`geofence-badge-${photo.id}`}
-                              className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700 border border-red-200"
-                            >
-                              ⚠️ Ngoài phạm vi {photo.geofence_distance_m !== null ? `(${Number(photo.geofence_distance_m).toLocaleString("vi-VN")} m)` : ""}
+                            <div className="mt-1">
+                              <div
+                                data-testid={`geofence-badge-${photo.id}`}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700 border border-red-200"
+                              >
+                                ⚠️ Ngoài phạm vi {photo.geofence_distance_m !== null ? `(${Number(photo.geofence_distance_m).toLocaleString("vi-VN")} m)` : ""}
+                              </div>
+                              <p className="text-[10px] text-slate-500 mt-0.5" data-testid={`photo-gps-source-${photo.id}`}>
+                                {photo.geofence_basis === 'client_reported' || photo.gps_source === 'client_reported'
+                                  ? 'Toạ độ do thiết bị báo, chưa xác thực từ ảnh gốc'
+                                  : 'Toạ độ từ ảnh gốc'}
+                              </p>
                             </div>
                           )}
                           {photo.geofence_status === "inside" && (
-                            <div
-                              data-testid={`geofence-badge-${photo.id}`}
-                              className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700 border border-emerald-200"
-                            >
-                              ✓ Đúng vị trí {photo.geofence_distance_m !== null ? `(${Number(photo.geofence_distance_m).toLocaleString("vi-VN")} m)` : ""}
+                            <div className="mt-1">
+                              {photo.geofence_basis === 'client_reported' || photo.gps_source === 'client_reported' ? (
+                                <div
+                                  data-testid={`geofence-badge-${photo.id}`}
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 border border-amber-300"
+                                >
+                                  ✓ Đúng vị trí (chưa xác thực) {photo.geofence_distance_m !== null ? `(${Number(photo.geofence_distance_m).toLocaleString("vi-VN")} m)` : ""}
+                                </div>
+                              ) : (
+                                <div
+                                  data-testid={`geofence-badge-${photo.id}`}
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700 border border-emerald-200"
+                                >
+                                  ✓ Đúng vị trí {photo.geofence_distance_m !== null ? `(${Number(photo.geofence_distance_m).toLocaleString("vi-VN")} m)` : ""}
+                                </div>
+                              )}
+                              <p className="text-[10px] text-slate-500 mt-0.5" data-testid={`photo-gps-source-${photo.id}`}>
+                                {photo.geofence_basis === 'client_reported' || photo.gps_source === 'client_reported'
+                                  ? 'Toạ độ do thiết bị báo, chưa xác thực từ ảnh gốc'
+                                  : 'Toạ độ từ ảnh gốc'}
+                              </p>
                             </div>
                           )}
                           {photo.geofence_status === "no_gps" && (

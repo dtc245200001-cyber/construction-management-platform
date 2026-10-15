@@ -509,9 +509,11 @@ router.get(
          captured_at_source,
          metadata_status,
          metadata_source,
+         gps_source,
          geofence_status,
          geofence_distance_m,
          geofence_checked_at,
+         geofence_basis,
          '/api/projects/' || $2 || '/acceptance-vouchers/' || voucher_id || '/photos/' || id AS url
        FROM acceptance_voucher_photos
        WHERE voucher_id = $1
@@ -525,6 +527,7 @@ router.get(
       outside: 0,
       no_gps: 0,
       no_site_config: 0,
+      unverified: 0,
     };
 
     const photos = photosRes.rows.map((p) => {
@@ -533,6 +536,13 @@ router.get(
       else if (status === "outside") photo_flags.outside++;
       else if (status === "no_gps") photo_flags.no_gps++;
       else photo_flags.no_site_config++;
+
+      if (
+        (status === "inside" || status === "outside") &&
+        p.geofence_basis === "client_reported"
+      ) {
+        photo_flags.unverified++;
+      }
 
       return {
         ...p,
@@ -1303,12 +1313,14 @@ router.post(
         gps_latitude: photoMeta.gps_latitude,
         gps_longitude: photoMeta.gps_longitude,
         gps_accuracy_m: photoMeta.gps_accuracy_m,
+        gps_source: photoMeta.gps_source,
       },
       site: {
         site_latitude: voucherCheck.rows[0].site_latitude,
         site_longitude: voucherCheck.rows[0].site_longitude,
         site_radius_m: voucherCheck.rows[0].site_radius_m,
       },
+      basis: photoMeta.gps_source,
     });
 
     const caption = req.body.caption
@@ -1319,12 +1331,13 @@ router.post(
       `INSERT INTO acceptance_voucher_photos
          (voucher_id, file_name, file_size, mime_type, file_data, exif_metadata, caption, uploaded_by,
           captured_at, captured_at_source, gps_latitude, gps_longitude, gps_accuracy_m, metadata_status, metadata_source,
-          geofence_status, geofence_distance_m, geofence_checked_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+          geofence_status, geofence_distance_m, geofence_checked_at, gps_source, geofence_basis)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
        RETURNING id, file_name, file_size, mime_type, caption, uploaded_by, created_at,
                  captured_at, captured_at_source, metadata_status, metadata_source,
                  (gps_latitude IS NOT NULL) AS has_gps,
-                 geofence_status, geofence_distance_m, geofence_checked_at`,
+                 geofence_status, geofence_distance_m, geofence_checked_at,
+                 gps_source, geofence_basis`,
       [
         voucherId,
         req.file.originalname,
@@ -1344,6 +1357,8 @@ router.post(
         geofenceEval.status,
         geofenceEval.distance_m,
         geofenceEval.checked_at,
+        photoMeta.gps_source,
+        geofenceEval.basis,
       ]
     );
 

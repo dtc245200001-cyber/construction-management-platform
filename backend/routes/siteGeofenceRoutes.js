@@ -87,23 +87,26 @@ async function batchUpdatePhotoGeofence(client, tableName, photos, siteConfig) {
           gps_latitude: p.gps_latitude,
           gps_longitude: p.gps_longitude,
           gps_accuracy_m: p.gps_accuracy_m,
+          gps_source: p.gps_source,
         },
         site: siteConfig,
+        basis: p.gps_source,
       });
 
       valuesPlaceholders.push(
-        `($${pIdx}::int, $${pIdx + 1}::varchar, $${pIdx + 2}::numeric, $${pIdx + 3}::timestamptz)`
+        `($${pIdx}::int, $${pIdx + 1}::varchar, $${pIdx + 2}::numeric, $${pIdx + 3}::timestamptz, $${pIdx + 4}::varchar)`
       );
-      valuesParams.push(p.id, evalRes.status, evalRes.distance_m, evalRes.checked_at);
-      pIdx += 4;
+      valuesParams.push(p.id, evalRes.status, evalRes.distance_m, evalRes.checked_at, evalRes.basis);
+      pIdx += 5;
     }
 
     const query = `
       UPDATE ${tableName} AS t
       SET geofence_status = v.geofence_status,
           geofence_distance_m = v.geofence_distance_m,
-          geofence_checked_at = v.geofence_checked_at
-      FROM (VALUES ${valuesPlaceholders.join(", ")}) AS v(id, geofence_status, geofence_distance_m, geofence_checked_at)
+          geofence_checked_at = v.geofence_checked_at,
+          geofence_basis = v.geofence_basis
+      FROM (VALUES ${valuesPlaceholders.join(", ")}) AS v(id, geofence_status, geofence_distance_m, geofence_checked_at, geofence_basis)
       WHERE t.id = v.id
     `;
     await client.query(query, valuesParams);
@@ -253,7 +256,7 @@ router.put(
 
       // 1. Tính lại cho acceptance_voucher_photos (chỉ lấy toạ độ, TUYỆT ĐỐI không file_data)
       const accPhotosRes = await client.query(
-        `SELECT avp.id, avp.gps_latitude, avp.gps_longitude, avp.gps_accuracy_m
+        `SELECT avp.id, avp.gps_latitude, avp.gps_longitude, avp.gps_accuracy_m, avp.gps_source
          FROM acceptance_voucher_photos avp
          JOIN acceptance_vouchers av ON avp.voucher_id = av.id
          WHERE av.project_id = $1`,
@@ -268,7 +271,7 @@ router.put(
 
       // 2. Tính lại cho diary_entry_attachments
       const diaryPhotosRes = await client.query(
-        `SELECT dea.id, dea.gps_latitude, dea.gps_longitude, dea.gps_accuracy_m
+        `SELECT dea.id, dea.gps_latitude, dea.gps_longitude, dea.gps_accuracy_m, dea.gps_source
          FROM diary_entry_attachments dea
          JOIN diary_entries de ON dea.diary_entry_id = de.id
          WHERE de.project_id = $1`,
@@ -373,7 +376,7 @@ router.delete(
 
       // Cập nhật lại ảnh với siteConfig = null
       const accPhotosRes = await client.query(
-        `SELECT avp.id, avp.gps_latitude, avp.gps_longitude, avp.gps_accuracy_m
+        `SELECT avp.id, avp.gps_latitude, avp.gps_longitude, avp.gps_accuracy_m, avp.gps_source
          FROM acceptance_voucher_photos avp
          JOIN acceptance_vouchers av ON avp.voucher_id = av.id
          WHERE av.project_id = $1`,
@@ -387,7 +390,7 @@ router.delete(
       );
 
       const diaryPhotosRes = await client.query(
-        `SELECT dea.id, dea.gps_latitude, dea.gps_longitude, dea.gps_accuracy_m
+        `SELECT dea.id, dea.gps_latitude, dea.gps_longitude, dea.gps_accuracy_m, dea.gps_source
          FROM diary_entry_attachments dea
          JOIN diary_entries de ON dea.diary_entry_id = de.id
          WHERE de.project_id = $1`,

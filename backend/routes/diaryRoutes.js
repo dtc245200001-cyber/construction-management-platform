@@ -232,6 +232,16 @@ router.get(
                   'file_size', a.file_size,
                   'mime_type', a.mime_type,
                   'created_at', a.created_at,
+                  'captured_at', a.captured_at,
+                  'captured_at_source', a.captured_at_source,
+                  'metadata_status', a.metadata_status,
+                  'metadata_source', a.metadata_source,
+                  'has_gps', (a.gps_latitude IS NOT NULL),
+                  'gps_source', a.gps_source,
+                  'geofence_status', a.geofence_status,
+                  'geofence_distance_m', a.geofence_distance_m,
+                  'geofence_checked_at', a.geofence_checked_at,
+                  'geofence_basis', a.geofence_basis,
                   'url', '/api/projects/' || d.project_id || '/diary-entries/' || d.id || '/attachments/' || a.id
                 ) ORDER BY a.id)
                 FROM diary_entry_attachments a
@@ -462,6 +472,16 @@ router.put(
               'file_size', a.file_size,
               'mime_type', a.mime_type,
               'created_at', a.created_at,
+              'captured_at', a.captured_at,
+              'captured_at_source', a.captured_at_source,
+              'metadata_status', a.metadata_status,
+              'metadata_source', a.metadata_source,
+              'has_gps', (a.gps_latitude IS NOT NULL),
+              'gps_source', a.gps_source,
+              'geofence_status', a.geofence_status,
+              'geofence_distance_m', a.geofence_distance_m,
+              'geofence_checked_at', a.geofence_checked_at,
+              'geofence_basis', a.geofence_basis,
               'url', '/api/projects/' || d.project_id || '/diary-entries/' || d.id || '/attachments/' || a.id
             ) ORDER BY a.id),
             '[]'::json
@@ -936,25 +956,28 @@ router.post(
         gps_latitude: photoMeta.gps_latitude,
         gps_longitude: photoMeta.gps_longitude,
         gps_accuracy_m: photoMeta.gps_accuracy_m,
+        gps_source: photoMeta.gps_source,
       },
       site: {
         site_latitude: entryRow.site_latitude,
         site_longitude: entryRow.site_longitude,
         site_radius_m: entryRow.site_radius_m,
       },
+      basis: photoMeta.gps_source,
     });
 
     const result = await db.query(
       `INSERT INTO diary_entry_attachments
          (diary_entry_id, client_id, file_name, file_size, mime_type, file_data,
           captured_at, captured_at_source, gps_latitude, gps_longitude, gps_accuracy_m, metadata_status, metadata_source,
-          geofence_status, geofence_distance_m, geofence_checked_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+          geofence_status, geofence_distance_m, geofence_checked_at, gps_source, geofence_basis)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
        ON CONFLICT (diary_entry_id, client_id) DO NOTHING
        RETURNING id, file_name, file_size, mime_type, created_at,
                  captured_at, captured_at_source, metadata_status, metadata_source,
                  (gps_latitude IS NOT NULL) AS has_gps,
-                 geofence_status, geofence_distance_m, geofence_checked_at`,
+                 geofence_status, geofence_distance_m, geofence_checked_at,
+                 gps_source, geofence_basis`,
       [
         entryId,
         clientId,
@@ -972,6 +995,8 @@ router.post(
         geofenceEval.status,
         geofenceEval.distance_m,
         geofenceEval.checked_at,
+        photoMeta.gps_source,
+        geofenceEval.basis,
       ]
     );
 
@@ -982,7 +1007,8 @@ router.post(
           `SELECT id, file_name, file_size, mime_type, created_at,
                   captured_at, captured_at_source, metadata_status, metadata_source,
                   (gps_latitude IS NOT NULL) AS has_gps,
-                  geofence_status, geofence_distance_m, geofence_checked_at
+                  geofence_status, geofence_distance_m, geofence_checked_at,
+                  gps_source, geofence_basis
            FROM diary_entry_attachments
            WHERE diary_entry_id = $1 AND client_id = $2`,
           [entryId, clientId]
