@@ -18,6 +18,13 @@ function validateCoordinate(val, name, min, max) {
   if (typeof val === "boolean" || Array.isArray(val)) {
     return `${name} phải là số hợp lệ`;
   }
+  const str = String(val).trim();
+  if (str.includes(",")) {
+    return `${name} không được chứa dấu phẩy, dùng dấu chấm thập phân`;
+  }
+  if (/[eE]/.test(str)) {
+    return `${name} không được dùng định dạng khoa học (e/E)`;
+  }
   const num = Number(val);
   if (!Number.isFinite(num)) {
     return `${name} phải là số hợp lệ`;
@@ -26,7 +33,6 @@ function validateCoordinate(val, name, min, max) {
     return `${name} phải nằm trong khoảng từ ${min} đến ${max}`;
   }
 
-  const str = String(val).trim();
   if (str.includes(".")) {
     const decimals = str.split(".")[1];
     if (decimals && decimals.length > 6) {
@@ -44,6 +50,10 @@ function validateRadius(val) {
     return "Bán kính công trường không được để trống";
   }
   if (typeof val === "boolean" || Array.isArray(val)) {
+    return "Bán kính phải là số nguyên (mét)";
+  }
+  const str = String(val).trim();
+  if (str.includes(",") || str.includes(".") || /[eE]/.test(str)) {
     return "Bán kính phải là số nguyên (mét)";
   }
   const num = Number(val);
@@ -115,10 +125,12 @@ router.get(
     const { projectId } = req.params;
 
     const result = await db.query(
-      `SELECT site_latitude, site_longitude, site_radius_m,
-              site_geofence_updated_at, site_geofence_updated_by
-       FROM projects
-       WHERE id = $1`,
+      `SELECT p.site_latitude, p.site_longitude, p.site_radius_m,
+              p.site_geofence_updated_at, p.site_geofence_updated_by,
+              u.name AS updated_by_name
+       FROM projects p
+       LEFT JOIN users u ON u.id = p.site_geofence_updated_by
+       WHERE p.id = $1`,
       [projectId]
     );
 
@@ -127,11 +139,22 @@ router.get(
     }
 
     const row = result.rows[0];
+    const configured =
+      row.site_latitude !== null &&
+      row.site_longitude !== null &&
+      row.site_radius_m !== null;
+
     return res.status(200).json({
+      configured,
+      latitude: row.site_latitude !== null ? parseFloat(row.site_latitude) : null,
+      longitude: row.site_longitude !== null ? parseFloat(row.site_longitude) : null,
+      radius_m: row.site_radius_m !== null ? parseInt(row.site_radius_m, 10) : null,
       site_latitude: row.site_latitude !== null ? parseFloat(row.site_latitude) : null,
       site_longitude: row.site_longitude !== null ? parseFloat(row.site_longitude) : null,
       site_radius_m: row.site_radius_m !== null ? parseInt(row.site_radius_m, 10) : null,
+      updated_at: row.site_geofence_updated_at,
       site_geofence_updated_at: row.site_geofence_updated_at,
+      updated_by_name: row.updated_by_name || null,
       site_geofence_updated_by: row.site_geofence_updated_by,
     });
   })

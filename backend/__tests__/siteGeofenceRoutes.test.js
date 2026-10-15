@@ -68,6 +68,7 @@ describe("siteGeofenceRoutes Unit Tests (Story S-41 / T-107 & T-108)", () => {
             site_radius_m: 250,
             site_geofence_updated_at: "2026-03-20T10:00:00.000Z",
             site_geofence_updated_by: 1,
+            updated_by_name: "Ban Quản Lý",
           },
         ],
       });
@@ -75,13 +76,15 @@ describe("siteGeofenceRoutes Unit Tests (Story S-41 / T-107 & T-108)", () => {
       const res = await request(app).get("/api/projects/1/site-geofence");
 
       expect(res.status).toBe(200);
+      expect(res.body.configured).toBe(true);
       expect(res.body.site_latitude).toBe(20.845);
       expect(res.body.site_longitude).toBe(106.688);
       expect(res.body.site_radius_m).toBe(250);
+      expect(res.body.updated_by_name).toBe("Ban Quản Lý");
       expect(res.body.site_geofence_updated_at).toBe("2026-03-20T10:00:00.000Z");
     });
 
-    test("Trả về null nếu dự án chưa thiết lập phạm vi", async () => {
+    test("Trả về configured = false và null nếu dự án chưa thiết lập phạm vi", async () => {
       mockQuery.mockResolvedValueOnce({
         rows: [
           {
@@ -90,6 +93,7 @@ describe("siteGeofenceRoutes Unit Tests (Story S-41 / T-107 & T-108)", () => {
             site_radius_m: null,
             site_geofence_updated_at: null,
             site_geofence_updated_by: null,
+            updated_by_name: null,
           },
         ],
       });
@@ -97,6 +101,7 @@ describe("siteGeofenceRoutes Unit Tests (Story S-41 / T-107 & T-108)", () => {
       const res = await request(app).get("/api/projects/1/site-geofence");
 
       expect(res.status).toBe(200);
+      expect(res.body.configured).toBe(false);
       expect(res.body.site_latitude).toBeNull();
       expect(res.body.site_longitude).toBeNull();
       expect(res.body.site_radius_m).toBeNull();
@@ -189,6 +194,24 @@ describe("siteGeofenceRoutes Unit Tests (Story S-41 / T-107 & T-108)", () => {
       expect(res.status).toBe(400);
       expect(res.body.errors).toEqual(
         expect.arrayContaining([expect.stringContaining("Null Island")])
+      );
+    });
+
+    test("Từ chối định dạng số khoa học (e/E) và dấu phẩy", async () => {
+      const res1 = await request(app)
+        .put("/api/projects/1/site-geofence")
+        .send({ latitude: "1e2", longitude: 106.688, radius_m: 100 });
+      expect(res1.status).toBe(400);
+      expect(res1.body.errors).toEqual(
+        expect.arrayContaining([expect.stringContaining("định dạng khoa học")])
+      );
+
+      const res2 = await request(app)
+        .put("/api/projects/1/site-geofence")
+        .send({ latitude: "20,845", longitude: 106.688, radius_m: 100 });
+      expect(res2.status).toBe(400);
+      expect(res2.body.errors).toEqual(
+        expect.arrayContaining([expect.stringContaining("dấu phẩy")])
       );
     });
 
@@ -328,6 +351,64 @@ describe("siteGeofenceRoutes Unit Tests (Story S-41 / T-107 & T-108)", () => {
       expect(queryCalls[0]).toBe("BEGIN");
       expect(queryCalls[queryCalls.length - 1]).toBe("COMMIT");
       expect(mockClientRelease).toHaveBeenCalled();
+    });
+
+    test("Xóa cấu hình khi dự án chưa từng cấu hình vẫn trả về 200 (idempotent)", async () => {
+      mockClientQuery
+        .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({
+          rows: [
+            { id: 1, site_latitude: null, site_longitude: null, site_radius_m: null },
+          ],
+        }) // FOR UPDATE
+        .mockResolvedValueOnce({}) // UPDATE projects
+        .mockResolvedValueOnce({ rows: [] }) // SELECT acceptance
+        .mockResolvedValueOnce({ rows: [] }) // SELECT diary
+        .mockResolvedValueOnce({}) // INSERT audit_logs
+        .mockResolvedValueOnce({}); // COMMIT
+
+      const res = await request(app).delete("/api/projects/1/site-geofence");
+      expect(res.status).toBe(200);
+    });
+
+    test("Hiệu năng: Tính toán lại 5000 ảnh chạy dưới 2 giây", async () => {
+      // Dựng danh sách 5000 ảnh giả lập
+      const mockPhotos5000 = Array.from({ length: 5000 }, (_, i) => ({
+        id: i + 1,
+        gps_latitude: (20.845 + (i % 100) * 0.0001).toFixed(6),
+        gps_longitude: (106.688 + (i % 100) * 0.0001).toFixed(6),
+        gps_accuracy_m: "15",
+      }));
+
+      mockClientQuery
+        .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({
+          rows: [{ id: 1, site_latitude: null, site_longitude: null, site_radius_m: null }],
+        })
+        .mockResolvedValueOnce({
+          rows: [{ site_latitude: "20.845000", site_longitude: "106.688000", site_radius_m: 100, site_geofence_updated_at: new Date().toISOString(), site_geofence_updated_by: 1 }],
+        })
+        .mockResolvedValueOnce({ rows: mockPhotos5000 }); // 5000 photos
+
+      // 10 batch updates (500 photos/batch)
+      for (let i = 0; i < 10; i++) {
+        mockClientQuery.mockResolvedValueOnce({});
+      }
+
+      mockClientQuery
+        .mockResolvedValueOnce({ rows: [] }) // diary photos
+        .mockResolvedValueOnce({}) // audit log
+        .mockResolvedValueOnce({}); // COMMIT
+
+      const startTime = Date.now();
+      const res = await request(app)
+        .put("/api/projects/1/site-geofence")
+        .send({ latitude: 20.845, longitude: 106.688, radius_m: 100 });
+      const durationMs = Date.now() - startTime;
+
+      expect(res.status).toBe(200);
+      expect(res.body.recalculated.acceptance_photos).toBe(5000);
+      expect(durationMs).toBeLessThan(2000); // Đo thời gian thật < 2000ms
     });
   });
 });
