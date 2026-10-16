@@ -83,9 +83,9 @@ describe("S-38 / T-100 acceptance review UI", () => {
     });
   });
 
-  test("Ban quản lý không truy cập được chức năng nghiệm thu", async () => {
-    mockBaseGet("ban_quan_ly");
-    render(<AcceptancePage user={{ id: 21, name: "Ban quản lý" }} />);
+  test("Đội trưởng không truy cập được chức năng nghiệm thu", async () => {
+    mockBaseGet("doi_truong");
+    render(<AcceptancePage user={{ id: 21, name: "Đội trưởng" }} />);
 
     expect(
       await screen.findByText(/không có quyền truy cập chức năng nghiệm thu/i)

@@ -43,7 +43,7 @@ const PERMISSIONS = {
   "work_item.manage": [BAN_QUAN_LY, CHI_HUY_TRUONG],
   // S-43 / T-112: Lập và xem đề nghị thanh toán từ phiếu nghiệm thu đã duyệt
   "payment_request.create": [BAN_QUAN_LY],
-  "payment_request.view": [BAN_QUAN_LY, CHU_DAU_TU],
+  "payment_request.view": [BAN_QUAN_LY, CHU_DAU_TU, KE_TOAN],
   // TREO: duyệt nghiệm thu NỘI BỘ — bước riêng, không gộp bảng/trạng thái với
   // acceptance.approve_official của Chủ đầu tư.
   "acceptance.review_internal": [BAN_QUAN_LY],
@@ -77,7 +77,7 @@ const PERMISSIONS = {
   // (không gán acceptance.review_internal hay acceptance.approve_official).
   "acceptance.create_dossier": [KY_SU_GIAM_SAT],
   "acceptance.update_dossier": [KY_SU_GIAM_SAT],
-  "acceptance.access": [KY_SU_GIAM_SAT, CHU_DAU_TU],
+  "acceptance.access": [KY_SU_GIAM_SAT, CHU_DAU_TU, BAN_QUAN_LY],
 
   // ── Đội trưởng thi công ────────────────────────────────────────────
   // TREO: route GET /my-team/tasks hiện phục vụ 4 role (đội trưởng bị ép về đúng

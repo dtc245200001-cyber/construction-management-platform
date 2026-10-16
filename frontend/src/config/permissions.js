@@ -113,7 +113,7 @@ export const MENU_CONFIG = [
     path: "/warnings",
     icon: Bell,
     group: "planning",
-    roles: [CHU_DAU_TU],
+    roles: [CHU_DAU_TU, BAN_QUAN_LY],
   },
   {
     key: "calendar",
@@ -147,7 +147,7 @@ export const MENU_CONFIG = [
     path: "/acceptance",
     icon: CheckSquare,
     group: "site",
-    roles: [BAN_QUAN_LY, CHI_HUY_TRUONG, KY_SU_GIAM_SAT, CHU_DAU_TU],
+    roles: [BAN_QUAN_LY, KY_SU_GIAM_SAT, CHU_DAU_TU],
   },
   {
   key: "audit",
@@ -194,11 +194,11 @@ export const MENU_CONFIG = [
 
 // action -> danh sách vai trò được phép.
 export const PERMISSIONS = {
-  "member.invite": [BAN_QUAN_LY, CHU_DAU_TU],
+  "member.invite": [BAN_QUAN_LY],
   "team.manage": [BAN_QUAN_LY, CHI_HUY_TRUONG, CHU_DAU_TU], // khu "Đội thi công"
   "work.assign": [CHI_HUY_TRUONG], // khu "Giao việc"
 
-  "wbs.manage": [BAN_QUAN_LY],
+  "wbs.manage": [BAN_QUAN_LY, CHI_HUY_TRUONG],
   "contract_quantity.edit": [BAN_QUAN_LY, CHU_DAU_TU],
 
   "calendar.edit": [BAN_QUAN_LY, CHI_HUY_TRUONG, CHU_DAU_TU],
