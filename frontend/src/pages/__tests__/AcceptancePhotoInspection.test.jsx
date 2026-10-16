@@ -250,7 +250,7 @@ describe("AcceptancePage Evidence Inspection (Story S-42 / T-110)", () => {
         return Promise.resolve({ data: mockVoucherDetailWithInspection });
       }
       if (url.match(/\/projects\/\d+$/)) {
-        return Promise.resolve({ data: { membership: "chu_dau_tu" } });
+        return Promise.resolve({ data: { membership: "ban_quan_ly" } });
       }
       return Promise.reject(new Error("Not found"));
     });

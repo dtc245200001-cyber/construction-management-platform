@@ -26,7 +26,7 @@ const pendingVoucher = {
   photo_count: 1,
 };
 
-function mockBaseGet(role = "chu_dau_tu") {
+function mockBaseGet(role = "ban_quan_ly") {
   api.get.mockImplementation((url) => {
     if (url === "/projects/1") {
       return Promise.resolve({ data: { membership: role } });
@@ -45,7 +45,7 @@ describe("S-38 / T-100 acceptance review UI", () => {
     mockBaseGet();
   });
 
-  test("Chủ đầu tư thấy danh sách chờ duyệt và nút Duyệt/Trả lại", async () => {
+  test("Ban quản lý thấy danh sách chờ duyệt và nút Duyệt/Trả lại", async () => {
     render(<AcceptancePage user={{ id: 20, name: "Ban quản lý" }} />);
 
     expect(await screen.findByText("Phiếu chờ duyệt")).toBeInTheDocument();
@@ -54,8 +54,18 @@ describe("S-38 / T-100 acceptance review UI", () => {
     expect(screen.getAllByRole("button", { name: /Trả lại/i }).length).toBeGreaterThan(0);
   });
 
-  test("Chủ đầu tư bấm Duyệt mở dialog và chỉ gọi API sau khi xác nhận", async () => {
+  test("Chủ đầu tư xem được phiếu nhưng không có nút Duyệt/Trả lại", async () => {
     mockBaseGet("chu_dau_tu");
+    render(<AcceptancePage user={{ id: 30, name: "Chủ đầu tư" }} />);
+
+    expect(await screen.findByRole("heading", { name: /Nghiệm thu khối lượng đợt/i })).toBeInTheDocument();
+    expect(screen.queryByText("Phiếu chờ duyệt")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Duyệt$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Trả lại$/i })).not.toBeInTheDocument();
+  });
+
+  test("Ban quản lý bấm Duyệt mở dialog và chỉ gọi API sau khi xác nhận", async () => {
+    mockBaseGet("ban_quan_ly");
     const user = userEvent.setup();
     api.post.mockResolvedValueOnce({
       data: {
@@ -64,7 +74,7 @@ describe("S-38 / T-100 acceptance review UI", () => {
       },
     });
 
-    render(<AcceptancePage user={{ id: 20, name: "Chủ đầu tư" }} />);
+    render(<AcceptancePage user={{ id: 20, name: "Ban quản lý" }} />);
     const approveButtons = await screen.findAllByRole("button", { name: /^Duyệt$/i });
     await user.click(approveButtons[0]);
 
@@ -111,7 +121,7 @@ describe("S-38 / T-100 acceptance review UI", () => {
       data: { message: "Đã trả lại phiếu nghiệm thu", voucher: { ...pendingVoucher, status: "returned" } },
     });
 
-    render(<AcceptancePage user={{ id: 20, name: "Chủ đầu tư" }} />);
+    render(<AcceptancePage user={{ id: 20, name: "Ban quản lý" }} />);
     const returnButtons = await screen.findAllByRole("button", { name: /Trả lại/i });
     await user.click(returnButtons[0]);
 

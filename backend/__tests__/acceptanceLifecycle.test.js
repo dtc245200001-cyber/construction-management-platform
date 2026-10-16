@@ -197,8 +197,8 @@ describe("S-39: Acceptance Voucher Lifecycle & Audit Portal", () => {
   // APPROVE
   // ═════════════════════════════════════════════════════════════════════
   describe("POST /:voucherId/approve", () => {
-    test("chu_dau_tu approves pending_review and updates reviewed fields", async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [{ role: "chu_dau_tu" }] });
+    test("ban_quan_ly approves pending_review and updates reviewed fields", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] });
       const voucher = voucherRow({ status: "pending_review" });
       const approved = {
         ...voucher,
@@ -229,8 +229,8 @@ describe("S-39: Acceptance Voucher Lifecycle & Audit Portal", () => {
       expect(call.details.new_value.status).toBe("approved");
     });
 
-    test("ban_quan_ly gets 403 on approve", async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] });
+    test("chu_dau_tu gets 403 on approve", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "chu_dau_tu" }] });
       const res = await request(app)
         .post("/api/projects/1/acceptance-vouchers/100/approve")
         .send({});
@@ -238,7 +238,7 @@ describe("S-39: Acceptance Voucher Lifecycle & Audit Portal", () => {
     });
 
     test("approve returns 409 when voucher is not pending_review", async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [{ role: "chu_dau_tu" }] });
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] });
       const voucher = voucherRow({ status: "draft" });
       mockClient.query
         .mockResolvedValueOnce({})
@@ -256,8 +256,8 @@ describe("S-39: Acceptance Voucher Lifecycle & Audit Portal", () => {
   // RETURN
   // ═════════════════════════════════════════════════════════════════════
   describe("POST /:voucherId/return", () => {
-    test("CĐT trả lại phiếu với lý do → returned", async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [{ role: "chu_dau_tu" }] });
+    test("BQL trả lại phiếu với lý do → returned", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] });
       const voucher = voucherRow({ status: "pending_review" });
       const returned = {
         ...voucher,
@@ -287,23 +287,16 @@ describe("S-39: Acceptance Voucher Lifecycle & Audit Portal", () => {
       );
     });
 
-    test("CĐT cũng có thể trả lại phiếu", async () => {
+    test("CĐT không có quyền trả lại phiếu", async () => {
       mockQuery.mockResolvedValueOnce({ rows: [{ role: "chu_dau_tu" }] });
-      const voucher = voucherRow({ status: "pending_review" });
-      mockClient.query
-        .mockResolvedValueOnce({})
-        .mockResolvedValueOnce({ rows: [voucher] })
-        .mockResolvedValueOnce({ rows: [{ ...voucher, status: "returned" }] })
-        .mockResolvedValueOnce({});
-
       const res = await request(app)
         .post("/api/projects/1/acceptance-vouchers/100/return")
         .send({ reason: "Sai khối lượng" });
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(403);
     });
 
     test("400 khi thiếu lý do", async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [{ role: "chu_dau_tu" }] });
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] });
       const res = await request(app)
         .post("/api/projects/1/acceptance-vouchers/100/return")
         .send({ reason: "   " });
@@ -320,7 +313,7 @@ describe("S-39: Acceptance Voucher Lifecycle & Audit Portal", () => {
     });
 
     test("404 khi phiếu không tồn tại trong dự án", async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [{ role: "chu_dau_tu" }] });
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] });
       mockClient.query
         .mockResolvedValueOnce({})
         .mockResolvedValueOnce({ rows: [] }) // voucher không tìm thấy

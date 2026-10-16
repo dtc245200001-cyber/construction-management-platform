@@ -62,8 +62,8 @@ export default function AcceptancePage({ user: propUser } = {}) {
   );
   const hasAccess = isSystemAdmin || can(projectRole, "acceptance.access");
   const isSupervisor = isSystemAdmin || can(projectRole, "acceptance.create_dossier");
-  const isInvestor = isSystemAdmin || can(projectRole, "acceptance.approve_official");
-  const canApprove = isInvestor;
+  const isInvestor = isSystemAdmin || can(projectRole, "acceptance.approve_official") || projectRole === "chu_dau_tu";
+  const canApprove = isSystemAdmin || can(projectRole, "acceptance.approve_official");
   const canReturn = isSystemAdmin || can(projectRole, "acceptance.return_official");
 
   // Dữ liệu danh sách phiếu
@@ -147,7 +147,7 @@ export default function AcceptancePage({ user: propUser } = {}) {
   const [returnReason, setReturnReason] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
-  const canReviewInternal = isInvestor || isSystemAdmin;
+  const canReviewInternal = canApprove;
   const pendingReviewVouchers = vouchers.filter((v) => v.status === "pending_review");
   const [reviewError, setReviewError] = useState("");
 
