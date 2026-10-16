@@ -223,6 +223,8 @@ const siteGeofenceRoutes = require("./routes/siteGeofenceRoutes");
 app.use("/api/projects", siteGeofenceRoutes);
 const paymentRequestRoutes = require("./routes/paymentRequestRoutes");
 app.use("/api/projects", paymentRequestRoutes);
+const actualCostRoutes = require("./routes/actualCostRoutes");
+app.use("/api/projects", actualCostRoutes);
 
 // â”€â”€â”€ ERROR HANDLERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(notFoundHandler);
