@@ -3,6 +3,7 @@ import {
   normalizeDecimalInput,
   multiplyAndRoundVND,
   formatMoneyVND,
+  formatVND,
   formatQuantityVN,
   formatInputDisplayVN,
 } from "../decimal";
@@ -120,6 +121,37 @@ describe("T-87 Unit Test: decimal.js", () => {
       expect(formatMoneyVND(null)).toBe("—");
       expect(formatMoneyVND(undefined)).toBe("—");
       expect(formatMoneyVND("")).toBe("—");
+    });
+
+    it("noDecimals option -> không hiển thị phần lẻ", () => {
+      expect(formatMoneyVND("15432088", { noDecimals: true })).toBe("15.432.088 ₫");
+      expect(formatMoneyVND("15432088.00", { noDecimals: true })).toBe("15.432.088 ₫");
+    });
+  });
+
+  describe("3b. formatVND (Định dạng tiền VND không lẻ thập phân - T-113)", () => {
+    it("15432088 -> '15.432.088 ₫'", () => {
+      expect(formatVND("15432088")).toBe("15.432.088 ₫");
+    });
+
+    it("15432088.00 -> '15.432.088 ₫'", () => {
+      expect(formatVND("15432088.00")).toBe("15.432.088 ₫");
+    });
+
+    it("0 -> '0 ₫'", () => {
+      expect(formatVND(0)).toBe("0 ₫");
+      expect(formatVND("0")).toBe("0 ₫");
+      expect(formatVND("0.00")).toBe("0 ₫");
+    });
+
+    it("Số lớn không dùng float", () => {
+      expect(formatVND("99999999999999")).toBe("99.999.999.999.999 ₫");
+    });
+
+    it("null, undefined, rỗng -> '—'", () => {
+      expect(formatVND(null)).toBe("—");
+      expect(formatVND(undefined)).toBe("—");
+      expect(formatVND("")).toBe("—");
     });
   });
 

@@ -8,6 +8,7 @@ Tài liệu này ghi nhận rõ ràng các quyết định thiết kế đã áp
 - **Quyết định:** Chỉ có vai trò **Chủ đầu tư (`chu_dau_tu`)** và **Ban quản lý (`ban_quan_ly`)** mới được phép xem toạ độ GPS thô (kinh độ, vĩ độ dạng thập phân và đường dẫn mở Google Maps).
 - **Các vai trò khác:** Kỹ sư giám sát (`ky_su_giam_sat`), Chỉ huy trưởng (`chi_huy_truong`), Đội trưởng (`doi_truong`), Kế toán (`ke_toan`) chỉ được biết ảnh chụp lúc nào, trạng thái có toạ độ hay không (`has_gps: true/false`), và kết quả đối chiếu phạm vi (`inside`/`outside`/`no_gps`/`no_site_config`).
 - **Lý do:** Toạ độ GPS là dữ liệu vị trí cá nhân của người lao động tại hiện trường, cần bảo vệ quyền riêng tư theo quy định pháp luật và tránh lạm dụng giám sát vị trí cá nhân chi tiết. Mọi API danh sách ảnh công khai (nhật ký, phiếu nghiệm thu) tuyệt đối không trả về `gps_latitude`/`gps_longitude`.
+- **Ghi nhận điểm lệch cần người hướng dẫn xác nhận:** Ma trận phân quyền trung tâm `backend/utils/permissions.js` ghi nhận `photo.view_gps: [CHU_DAU_TU, BAN_QUAN_LY]`. Tuy nhiên trong mã nguồn hiện hành của `main` (route `photoMetadataRoutes.js`), endpoint xem chi tiết ảnh nghiệm thu (`GET /photo-metadata/acceptance/:photoId`) chặn 403 với mọi vai trò khác `chu_dau_tu` (`if (kind === 'acceptance' && req.projectRole !== ROLES.CHU_DAU_TU)`). Do đó, `ban_quan_ly` hiện chỉ xem được toạ độ thô đối với ảnh nhật ký (`diary`), còn ảnh nghiệm thu chỉ `chu_dau_tu` được xem chi tiết. Nhánh giữ nguyên logic của `main` và ghi nhận điểm này để chờ người hướng dẫn thống nhất.
 
 ---
 
@@ -33,12 +34,20 @@ Tài liệu này ghi nhận rõ ràng các quyết định thiết kế đã áp
 ---
 
 ## 4. Dấu nghi vấn geofence không chặn quy trình duyệt phiếu
-- **Quyết định:** Khi phát hiện ảnh chụp ngoài phạm vi công trường hoặc có ảnh chưa xác thực toạ độ, hệ thống chỉ hiển thị banner và badge cảnh báo tham khảo cho người duyệt phiếu (Chủ đầu tư / Ban quản lý), **không chặn** thao tác gửi duyệt hoặc phê duyệt phiếu nghiệm thu.
+- **Quyết định:** Khi phát hiện ảnh chụp ngoài phạm vi công trường hoặc có ảnh chưa xác thực toạ độ, hệ thống hiển thị banner và badge cảnh báo tham khảo cho người duyệt phiếu (Chủ đầu tư / Ban quản lý), **không chặn** thao tác gửi duyệt hoặc phê duyệt phiếu nghiệm thu.
+- **Quyền xem cờ geofence (AC S-41):** Cả `chu_dau_tu` và `ban_quan_ly` (người có quyền duyệt `acceptance.approve_official`) đều thấy banner `photo_flags` và khoảng cách ngoài bán kính của từng ảnh để phục vụ duyệt phiếu. Kỹ sư giám sát hoặc vai trò khác không nhận các trường này.
 - **Giọng văn giao diện:** Giữ giọng văn trung tính, khách quan: *"Dấu hiệu này nhằm tham khảo khi đối chiếu bằng chứng (không chặn quy trình duyệt phiếu)"*, không sử dụng từ ngữ mang tính quy chụp, kết luận gian lận.
 - **Lý do:** Trên thực tế có thể xảy ra trường hợp trôi GPS (GPS drift) dưới tầng hầm, công trình nhà cao tầng che khuất sóng vệ tinh, hoặc chụp cấu kiện gia công sẵn tại bãi đúc lân cận công trường. Quyết định cuối cùng thuộc về người có thẩm quyền nghiệm thu.
 
 ---
 
-## 5. Phạm vi Story S-40 & S-41 tách biệt với Story S-42
-- **Quyết định:** Các tính năng phát hiện bất thường ảnh chuyên sâu (chụp lại màn hình, ảnh thiếu EXIF máy ảnh chuẩn, thời điểm chụp cách quá xa ngày lập biên bản nghiệm thu) thuộc về **Story S-42 (Dấu hiệu bất thường ảnh)** và **chưa làm** trong đợt triển khai này.
-- **Tập trung:** Lần này giải quyết triệt để vấn đề xác thực nguồn toạ độ (`file_exif` vs `client_reported`), chống giả mạo GPS và hoàn thiện kiểm thử upload ảnh thực tế.
+## 5. Đổi tên Migration tránh xung đột
+- Migration bổ sung `gps_source` và `geofence_basis` được đổi tên từ `1799800000000_add-photo-gps-source-and-basis.js` sang `1800000000000_add-photo-gps-source-and-basis.js` để đứng sau tất cả các migration mới của `main` (`1799800000000_create-payment-requests.js` và `1799900000000_create-actual-costs.js`).
+- **Lưu ý triển khai:** Bất kỳ ai đã chạy migration tên cũ trên DB local cá nhân cần chạy `npm run migrate:down` hoặc xoá bản ghi cũ tương ứng trong bảng `pgmigrations`.
+
+---
+
+## 6. Rủi ro ngoài phạm vi: Giả mạo siêu dữ liệu máy ảnh client báo (S-42)
+- **Hiện trạng:** Trên `main`, `services/photoMetadata.js` cho phép nhận `make`, `model`, `software`, `iso` do client gửi lên khi file ảnh thiếu EXIF.
+- **Rủi ro:** Kẻ gian có thể lợi dụng cơ chế này để qua mặt quy tắc kiểm tra ảnh của Story S-42 (như quy tắc cảnh báo thiếu metadata máy ảnh) bằng cách chủ động gửi các trường giả mạo từ client.
+- **Đề xuất giải pháp cho giai đoạn sau:** Tương tự như toạ độ GPS (`gps_source`), cần bổ sung trường đánh dấu nguồn gốc thiết bị (`camera_source: 'file_exif' | 'client_reported'`), đồng thời không coi metadata máy ảnh do client báo là dữ liệu đã xác thực khi chạy kiểm tra bất thường.

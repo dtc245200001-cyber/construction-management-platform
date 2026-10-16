@@ -49,12 +49,22 @@ describe("S-38 / T-100 acceptance review UI", () => {
     render(<AcceptancePage user={{ id: 20, name: "Ban quản lý" }} />);
 
     expect(await screen.findByText("Phiếu chờ duyệt")).toBeInTheDocument();
-    expect(screen.getByText(/#98 · Đợt nghiệm thu S-38/)).toBeInTheDocument();
+    expect(await screen.findAllByText(/Đợt nghiệm thu S-38/)).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: /Duyệt/i }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: /Trả lại/i }).length).toBeGreaterThan(0);
   });
 
-  test("bấm Duyệt mở dialog và chỉ gọi API sau khi xác nhận", async () => {
+  test("Chủ đầu tư xem được phiếu nhưng không có nút Duyệt/Trả lại", async () => {
+    mockBaseGet("chu_dau_tu");
+    render(<AcceptancePage user={{ id: 30, name: "Chủ đầu tư" }} />);
+
+    expect(await screen.findByRole("heading", { name: /Nghiệm thu khối lượng đợt/i })).toBeInTheDocument();
+    expect(screen.queryByText("Phiếu chờ duyệt")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Duyệt$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Trả lại$/i })).not.toBeInTheDocument();
+  });
+
+  test("Ban quản lý bấm Duyệt mở dialog và chỉ gọi API sau khi xác nhận", async () => {
     mockBaseGet("ban_quan_ly");
     const user = userEvent.setup();
     api.post.mockResolvedValueOnce({
@@ -83,12 +93,26 @@ describe("S-38 / T-100 acceptance review UI", () => {
     });
   });
 
-  test("Chủ đầu tư không thấy nút Duyệt", async () => {
-    mockBaseGet("chu_dau_tu");
-    render(<AcceptancePage user={{ id: 21, name: "Chủ đầu tư" }} />);
+  test("Đội trưởng không truy cập được chức năng nghiệm thu", async () => {
+    mockBaseGet("doi_truong");
+    render(<AcceptancePage user={{ id: 21, name: "Đội trưởng" }} />);
 
-    expect(await screen.findByText("Phiếu chờ duyệt")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Duyệt$/i })).not.toBeInTheDocument();
+    expect(
+      await screen.findByText(/không có quyền truy cập chức năng nghiệm thu/i)
+    ).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledTimes(1);
+  });
+
+  test("Quản trị hệ thống (is_system_admin) truy cập được chức năng nghiệm thu", async () => {
+    mockBaseGet("system_admin");
+    render(<AcceptancePage user={{ id: 1, name: "System Admin", is_system_admin: true }} />);
+
+    expect(
+      screen.queryByText(/không có quyền truy cập chức năng nghiệm thu/i)
+    ).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: /Nghiệm thu khối lượng đợt/i })
+    ).toBeInTheDocument();
   });
 
   test("Trả lại bắt buộc nhập lý do và gửi đúng reason", async () => {

@@ -106,6 +106,18 @@ describe("S-38 / T-99 return, edit and resubmit acceptance voucher", () => {
     }));
   });
 
+  test("chu_dau_tu không được trả lại phiếu", async () => {
+    const app = makeApp({ id: 20, is_system_admin: false });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "chu_dau_tu" }] });
+
+    const res = await request(app)
+      .post("/api/projects/1/acceptance-vouchers/9/return")
+      .send({ reason: "Thiếu ảnh hiện trường" });
+
+    expect(res.status).toBe(403);
+    expect(mockClient.query).not.toHaveBeenCalled();
+  });
+
   test("người lập sửa được phiếu returned và nội dung được tính lại", async () => {
     const app = makeApp({ id: 10, is_system_admin: false });
     mockQuery.mockResolvedValueOnce({ rows: [{ role: "ky_su_giam_sat" }] });
@@ -176,6 +188,7 @@ describe("S-38 / T-99 return, edit and resubmit acceptance voucher", () => {
         rows: [{ id: 9, status: "returned", created_by: 10, has_negative_delta: false }],
       })
       .mockResolvedValueOnce({ rows: [{ count: 1 }] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ id: 9, status: "pending_review", created_by: 10 }] })
       .mockResolvedValueOnce({});
 

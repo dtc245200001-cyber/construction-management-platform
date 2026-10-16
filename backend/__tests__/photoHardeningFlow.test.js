@@ -118,6 +118,7 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
           {
             id: 10,
             project_id: 1,
+            created_by: 1,
             status: "draft",
             site_latitude: "20.845000",
             site_longitude: "106.688000",
@@ -127,12 +128,16 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
       });
       // Mock insert photo
       mockQuery.mockImplementationOnce((sql, params) => {
-        // params: [voucherId, origName, size, mime, buf, null, caption, userId, captured_at, captured_at_source, lat, lon, acc, status, source, geofence_status, geofence_dist, geofence_time, gps_source, geofence_basis]
         return Promise.resolve({
           rows: [
             {
               id: 501,
               file_name: params[1],
+              file_size: params[2],
+              mime_type: params[3],
+              caption: params[6],
+              uploaded_by: params[7],
+              created_at: new Date().toISOString(),
               captured_at: params[8],
               captured_at_source: params[9],
               metadata_status: params[13],
@@ -160,11 +165,13 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
         .attach("photo", validJpeg, "site_valid.jpg");
 
       expect(res.status).toBe(201);
-      expect(res.body.geofence_status).toBe("inside");
-      expect(res.body.geofence_basis).toBe("file_exif");
-      expect(res.body.gps_source).toBe("file_exif");
-      expect(res.body.metadata_status).toBe("complete");
-      expect(res.body.captured_at).toBe("2026-03-15T07:30:00.000Z");
+      const insertCall = mockQuery.mock.calls.find(c => c[0] && c[0].includes("INSERT INTO acceptance_voucher_photos"));
+      expect(insertCall).toBeDefined();
+      expect(insertCall[1][15]).toBe("inside"); // geofence_status
+      expect(insertCall[1][19]).toBe("file_exif"); // geofence_basis
+      expect(insertCall[1][18]).toBe("file_exif"); // gps_source
+      expect(insertCall[1][13]).toBe("complete"); // metadata_status
+      expect(insertCall[1][8]).toBe("2026-03-15T07:30:00.000Z"); // captured_at
     });
 
     test("2. EXIF có GPS ngoài bán kính: status='outside' kèm khoảng cách tính độc lập, ca sát ngưỡng", async () => {
@@ -176,6 +183,7 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
             {
               id: 10,
               project_id: 1,
+              created_by: 1,
               status: "draft",
               site_latitude: "20.845000",
               site_longitude: "106.688000",
@@ -188,6 +196,12 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
             rows: [
               {
                 id: 502,
+                file_name: params[1],
+                file_size: params[2],
+                mime_type: params[3],
+                caption: params[6],
+                uploaded_by: params[7],
+                created_at: new Date().toISOString(),
                 geofence_status: params[15],
                 geofence_distance_m: params[16],
                 geofence_basis: params[19],
@@ -207,10 +221,12 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
         .attach("photo", outsideJpeg, "outside.jpg");
 
       expect(res.status).toBe(201);
-      expect(res.body.geofence_status).toBe("outside");
-      expect(res.body.geofence_basis).toBe("file_exif");
+      const insertCall = mockQuery.mock.calls.find(c => c[0] && c[0].includes("INSERT INTO acceptance_voucher_photos"));
+      expect(insertCall).toBeDefined();
+      expect(insertCall[1][15]).toBe("outside");
+      expect(insertCall[1][19]).toBe("file_exif");
       // Khoảng cách thực tế phải khớp công thức độc lập R * Δφ với sai số < 0.5 m
-      expect(Math.abs(res.body.geofence_distance_m - EXPECTED_DIST_111M)).toBeLessThan(0.5);
+      expect(Math.abs(Number(insertCall[1][16]) - EXPECTED_DIST_111M)).toBeLessThan(0.5);
     });
 
     test("3. Ảnh JPEG không có EXIF: vẫn 201, metadata_status='none', geofence_status='no_gps'", async () => {
@@ -220,6 +236,7 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
             {
               id: 10,
               project_id: 1,
+              created_by: 1,
               status: "draft",
               site_latitude: "20.845000",
               site_longitude: "106.688000",
@@ -232,6 +249,12 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
             rows: [
               {
                 id: 503,
+                file_name: params[1],
+                file_size: params[2],
+                mime_type: params[3],
+                caption: params[6],
+                uploaded_by: params[7],
+                created_at: new Date().toISOString(),
                 metadata_status: params[13],
                 geofence_status: params[15],
                 geofence_distance_m: params[16],
@@ -247,9 +270,11 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
         .attach("photo", plainJpeg, "no_exif.jpg");
 
       expect(res.status).toBe(201);
-      expect(res.body.metadata_status).toBe("none");
-      expect(res.body.geofence_status).toBe("no_gps");
-      expect(res.body.geofence_basis).toBeNull();
+      const insertCall = mockQuery.mock.calls.find(c => c[0] && c[0].includes("INSERT INTO acceptance_voucher_photos"));
+      expect(insertCall).toBeDefined();
+      expect(insertCall[1][13]).toBe("none");
+      expect(insertCall[1][15]).toBe("no_gps");
+      expect(insertCall[1][19]).toBeNull();
     });
 
     test("4. Dự án chưa cấu hình công trường: geofence_status='no_site_config'", async () => {
@@ -259,6 +284,7 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
             {
               id: 10,
               project_id: 1,
+              created_by: 1,
               status: "draft",
               site_latitude: null,
               site_longitude: null,
@@ -271,6 +297,12 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
             rows: [
               {
                 id: 504,
+                file_name: params[1],
+                file_size: params[2],
+                mime_type: params[3],
+                caption: params[6],
+                uploaded_by: params[7],
+                created_at: new Date().toISOString(),
                 geofence_status: params[15],
               },
             ],
@@ -287,7 +319,9 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
         .attach("photo", validJpeg, "no_site.jpg");
 
       expect(res.status).toBe(201);
-      expect(res.body.geofence_status).toBe("no_site_config");
+      const insertCall = mockQuery.mock.calls.find(c => c[0] && c[0].includes("INSERT INTO acceptance_voucher_photos"));
+      expect(insertCall).toBeDefined();
+      expect(insertCall[1][15]).toBe("no_site_config");
     });
 
     test("5. EXIF hỏng: tải lên vẫn thành công 201, metadata_status='unreadable', không 500", async () => {
@@ -297,6 +331,7 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
             {
               id: 10,
               project_id: 1,
+              created_by: 1,
               status: "draft",
               site_latitude: "20.845",
               site_longitude: "106.688",
@@ -306,7 +341,18 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
         })
         .mockImplementationOnce((_sql, params) => {
           return Promise.resolve({
-            rows: [{ id: 505, metadata_status: params[13] }],
+            rows: [
+              {
+                id: 505,
+                file_name: params[1],
+                file_size: params[2],
+                mime_type: params[3],
+                caption: params[6],
+                uploaded_by: params[7],
+                created_at: new Date().toISOString(),
+                metadata_status: params[13],
+              },
+            ],
           });
         });
 
@@ -316,7 +362,9 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
         .attach("photo", corrupted, "corrupted.jpg");
 
       expect(res.status).toBe(201);
-      expect(res.body.metadata_status).toBe("unreadable");
+      const insertCall = mockQuery.mock.calls.find(c => c[0] && c[0].includes("INSERT INTO acceptance_voucher_photos"));
+      expect(insertCall).toBeDefined();
+      expect(insertCall[1][13]).toBe("unreadable");
     });
 
     test("6. Client gửi toạ độ khi file không có EXIF: lưu gps_source='client_reported', bỏ qua exif_accuracy_m=500 và dùng dung sai 30m", async () => {
@@ -329,6 +377,7 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
             {
               id: 10,
               project_id: 1,
+              created_by: 1,
               status: "draft",
               site_latitude: "20.845000",
               site_longitude: "106.688000",
@@ -341,6 +390,12 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
             rows: [
               {
                 id: 506,
+                file_name: params[1],
+                file_size: params[2],
+                mime_type: params[3],
+                caption: params[6],
+                uploaded_by: params[7],
+                created_at: new Date().toISOString(),
                 gps_source: params[18],
                 geofence_basis: params[19],
                 geofence_status: params[15],
@@ -358,9 +413,11 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
         .attach("photo", plainJpeg, "client_reported.jpg");
 
       expect(res.status).toBe(201);
-      expect(res.body.gps_source).toBe("client_reported");
-      expect(res.body.geofence_basis).toBe("client_reported");
-      expect(res.body.geofence_status).toBe("outside");
+      const insertCall = mockQuery.mock.calls.find(c => c[0] && c[0].includes("INSERT INTO acceptance_voucher_photos"));
+      expect(insertCall).toBeDefined();
+      expect(insertCall[1][18]).toBe("client_reported");
+      expect(insertCall[1][19]).toBe("client_reported");
+      expect(insertCall[1][15]).toBe("outside");
     });
 
     test("7. Client gửi toạ độ khi file CÓ EXIF GPS khác: dùng toạ độ trong file, bỏ qua body", async () => {
@@ -372,6 +429,7 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
             {
               id: 10,
               project_id: 1,
+              created_by: 1,
               status: "draft",
               site_latitude: "20.845000",
               site_longitude: "106.688000",
@@ -405,9 +463,10 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
         .attach("photo", validJpeg, "file_wins.jpg");
 
       expect(res.status).toBe(201);
-      expect(res.body.gps_source).toBe("file_exif");
-      expect(res.body.geofence_status).toBe("inside");
-      expect(res.body.gps_latitude).toBeCloseTo(20.845, 3);
+      const insertCall = mockQuery.mock.calls[1];
+      expect(insertCall[1][18]).toBe("file_exif"); // param $19 gps_source
+      expect(insertCall[1][10]).toBeCloseTo(20.845, 3); // param $11 gps_latitude
+      expect(insertCall[1][15]).toBe("inside"); // param $16 geofence_status
     });
   });
 
@@ -479,7 +538,7 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
       expect(res.status).toBe(403);
     });
 
-    test("GET photo-metadata/:kind/:photoId trả toạ độ thô cho chu_dau_tu & ban_quan_ly; ẨN toạ độ thô cho ky_su_giam_sat", async () => {
+    test("GET photo-metadata/:kind/:photoId: acceptance chỉ mở cho chu_dau_tu; diary theo photo.view_gps", async () => {
       const mockPhotoDb = {
         id: 501,
         captured_at: "2026-03-15T07:30:00Z",
@@ -496,7 +555,7 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
         geofence_basis: "file_exif",
       };
 
-      // 1. chu_dau_tu -> CÓ toạ độ thô
+      // 1. acceptance: chu_dau_tu -> CÓ toạ độ thô
       mockCurrentProjectRole = "chu_dau_tu";
       mockQuery.mockResolvedValueOnce({ rows: [mockPhotoDb] });
       const resCdt = await request(app).get("/api/projects/1/photo-metadata/acceptance/501");
@@ -504,20 +563,80 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
       expect(resCdt.body.gps).toBeDefined();
       expect(resCdt.body.gps.latitude).toBe(20.845);
 
-      // 2. ban_quan_ly -> CÓ toạ độ thô
+      // 2. acceptance: ban_quan_ly -> 403 (Quy tắc hiện hành của main: chỉ Chủ đầu tư được xem chi tiết ảnh nghiệm thu)
+      mockCurrentProjectRole = "ban_quan_ly";
+      const resBql = await request(app).get("/api/projects/1/photo-metadata/acceptance/501");
+      expect(resBql.status).toBe(403);
+
+      // 3. diary: ban_quan_ly -> 200, CÓ toạ độ thô (thuộc photo.view_gps)
       mockCurrentProjectRole = "ban_quan_ly";
       mockQuery.mockResolvedValueOnce({ rows: [mockPhotoDb] });
-      const resBql = await request(app).get("/api/projects/1/photo-metadata/acceptance/501");
-      expect(resBql.status).toBe(200);
-      expect(resBql.body.gps).toBeDefined();
+      const resBqlDiary = await request(app).get("/api/projects/1/photo-metadata/diary/501");
+      expect(resBqlDiary.status).toBe(200);
+      expect(resBqlDiary.body.gps).toBeDefined();
+      expect(resBqlDiary.body.gps.latitude).toBe(20.845);
 
-      // 3. ky_su_giam_sat -> KHÔNG có toạ độ thô (bảo vệ quyền riêng tư)
+      // 4. diary: ky_su_giam_sat -> 200, KHÔNG có toạ độ thô (bảo vệ quyền riêng tư)
       mockCurrentProjectRole = "ky_su_giam_sat";
       mockQuery.mockResolvedValueOnce({ rows: [mockPhotoDb] });
-      const resKgs = await request(app).get("/api/projects/1/photo-metadata/acceptance/501");
+      const resKgs = await request(app).get("/api/projects/1/photo-metadata/diary/501");
       expect(resKgs.status).toBe(200);
       expect(resKgs.body.has_gps).toBe(true);
       expect(resKgs.body.gps).toBeUndefined(); // Bị giấu
+    });
+
+    test("AC S-41: Người duyệt (ban_quan_ly, chu_dau_tu) thấy photo_flags và khoảng cách geofence; ky_su_giam_sat không nhận các trường này", async () => {
+      const mockVoucher = { id: 10, batch_name: "Phiếu 1", site_radius_m: 100 };
+      const mockPhotos = [
+        {
+          id: 501,
+          file_name: "p1.jpg",
+          captured_at: "2026-03-15T07:30:00Z",
+          geofence_status: "outside",
+          geofence_distance_m: "150.5",
+          gps_source: "file_exif",
+          geofence_basis: "file_exif",
+        },
+      ];
+
+      // 1. ban_quan_ly -> Thấy photo_flags.outside và geofence_distance_m
+      mockCurrentProjectRole = "ban_quan_ly";
+      mockQuery
+        .mockResolvedValueOnce({ rows: [mockVoucher] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: mockPhotos });
+      const resBql = await request(app).get("/api/projects/1/acceptance-vouchers/10");
+      expect(resBql.status).toBe(200);
+      expect(resBql.body.photo_flags).toBeDefined();
+      expect(resBql.body.photo_flags.outside).toBe(1);
+      expect(resBql.body.photos[0].geofence_status).toBe("outside");
+      expect(resBql.body.photos[0].geofence_distance_m).toBe(150.5);
+      expect(resBql.body.photos[0].geofence_basis).toBe("file_exif");
+
+      // 2. chu_dau_tu -> Thấy photo_flags.outside và geofence_distance_m
+      mockCurrentProjectRole = "chu_dau_tu";
+      mockQuery
+        .mockResolvedValueOnce({ rows: [mockVoucher] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: mockPhotos });
+      const resCdt = await request(app).get("/api/projects/1/acceptance-vouchers/10");
+      expect(resCdt.status).toBe(200);
+      expect(resCdt.body.photo_flags).toBeDefined();
+      expect(resCdt.body.photo_flags.outside).toBe(1);
+      expect(resCdt.body.photos[0].geofence_distance_m).toBe(150.5);
+
+      // 3. ky_su_giam_sat -> KHÔNG nhận photo_flags và các trường geofence
+      mockCurrentProjectRole = "ky_su_giam_sat";
+      mockQuery
+        .mockResolvedValueOnce({ rows: [mockVoucher] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: mockPhotos });
+      const resKgs = await request(app).get("/api/projects/1/acceptance-vouchers/10");
+      expect(resKgs.status).toBe(200);
+      expect(resKgs.body.photo_flags).toBeUndefined();
+      expect(resKgs.body.photos[0].geofence_status).toBeUndefined();
+      expect(resKgs.body.photos[0].geofence_distance_m).toBeUndefined();
+      expect(resKgs.body.photos[0].geofence_basis).toBeUndefined();
     });
 
     test("Mọi API danh sách ảnh KHÔNG chứa khoá gps_latitude / gps_longitude", async () => {
@@ -590,6 +709,7 @@ describe("Hardening S-40 & S-41: Tải ảnh thật và bảo vệ toạ độ G
             {
               id: 10,
               project_id: 1,
+              created_by: 1,
               status: "draft",
               site_latitude: "20.845000",
               site_longitude: "106.688000",

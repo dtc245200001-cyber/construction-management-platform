@@ -41,6 +41,9 @@ const PERMISSIONS = {
   "member.manage": [BAN_QUAN_LY],
   // Điều chỉnh: bổ sung CHI_HUY_TRUONG (tạo/sửa/xóa Hạng mục WBS).
   "work_item.manage": [BAN_QUAN_LY, CHI_HUY_TRUONG],
+  // S-43 / T-112: Lập và xem đề nghị thanh toán từ phiếu nghiệm thu đã duyệt
+  "payment_request.create": [BAN_QUAN_LY],
+  "payment_request.view": [BAN_QUAN_LY, CHU_DAU_TU, KE_TOAN],
   // TREO: duyệt nghiệm thu NỘI BỘ — bước riêng, không gộp bảng/trạng thái với
   // acceptance.approve_official của Chủ đầu tư.
   "acceptance.review_internal": [BAN_QUAN_LY],
@@ -74,6 +77,7 @@ const PERMISSIONS = {
   // (không gán acceptance.review_internal hay acceptance.approve_official).
   "acceptance.create_dossier": [KY_SU_GIAM_SAT],
   "acceptance.update_dossier": [KY_SU_GIAM_SAT],
+  "acceptance.access": [KY_SU_GIAM_SAT, CHU_DAU_TU, BAN_QUAN_LY],
 
   // ── Đội trưởng thi công ────────────────────────────────────────────
   // TREO: route GET /my-team/tasks hiện phục vụ 4 role (đội trưởng bị ép về đúng
@@ -99,9 +103,9 @@ const PERMISSIONS = {
   // chỉ tài khoản được giao thẩm quyền mới được duyệt chính thức; nếu quyền ký
   // được giao cho Tư vấn giám sát đại diện Chủ đầu tư, hệ thống phải phân quyền
   // đúng NGƯỜI cụ thể được uỷ quyền chứ không gán cứng theo role chu_dau_tu.
-  // Đây là quyết định kiến trúc lớn (có thể cần bảng `approval_delegations`
-  // riêng) — ĐỪNG tự code cơ chế uỷ quyền khi chưa có thiết kế được duyệt.
-  "acceptance.approve_official": [CHU_DAU_TU],
+  // S-38: Ban quản lý duyệt hoặc trả lại phiếu nghiệm thu kèm lý do
+  "acceptance.approve_official": [BAN_QUAN_LY],
+  "acceptance.return_official": [BAN_QUAN_LY],
   // TREO: duyệt hoặc trả lại đề nghị thanh toán.
   "payment.approve": [CHU_DAU_TU],
   // S-39: Chủ đầu tư / Ban quản lý xem toàn bộ nhật ký thao tác của dự án

@@ -43,6 +43,12 @@ import AuditPortalPage from './pages/AuditPortalPage';
 // S-41 / T-107: Cấu hình phạm vi công trường
 import SiteGeofencePage from './pages/SiteGeofencePage';
 
+// S-51 / T-128 & T-129
+import SystemStatusPage from './pages/SystemStatusPage';
+
+// S-43 / T-113: Đề nghị thanh toán
+import PaymentRequestsPage from './pages/PaymentRequestsPage';
+
 
 // S-33 / T-80 / T-82 Upload Queue
 import { UploadQueueProvider } from './context/UploadQueueContext';
@@ -121,6 +127,9 @@ function App() {
         <Route element={<AuthLayout />}>
           <Route path="/login" element={<LoginPage setUser={setUser} />} />
         </Route>
+
+        {/* ================= HỆ THỐNG / HEALTH CHECK (T-128 & T-129) ================= */}
+        <Route path="/system-status" element={<SystemStatusPage />} />
 
         <Route
           path="/invitations/:token/accept"
@@ -292,6 +301,20 @@ function App() {
           <Route
             path="/site-geofence"
             element={<SiteGeofencePage user={user} />}
+          />
+
+          {/* S-43 / T-113: Đề nghị thanh toán */}
+          <Route
+            path="/payment-requests"
+            element={<PaymentRequestsPage user={user} />}
+          />
+          <Route
+            path="/payment-requests/:id"
+            element={<PaymentRequestsPage user={user} />}
+          />
+          <Route
+            path="/finance"
+            element={<Navigate to="/payment-requests" replace />}
           />
         </Route>
 
