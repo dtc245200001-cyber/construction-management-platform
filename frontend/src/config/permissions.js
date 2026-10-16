@@ -218,8 +218,8 @@ export const PERMISSIONS = {
   // S-36, S-38: Nghiệm thu khối lượng
   "acceptance.access": [BAN_QUAN_LY, KY_SU_GIAM_SAT, CHU_DAU_TU],
   "acceptance.create": [KY_SU_GIAM_SAT],
-  "acceptance.approve": [BAN_QUAN_LY, CHU_DAU_TU],
-  "acceptance.return": [BAN_QUAN_LY, CHU_DAU_TU],
+  "acceptance.approve": [CHU_DAU_TU],
+  "acceptance.return": [CHU_DAU_TU],
 
   // S-41 / T-107: Cấu hình phạm vi công trường
   "site_geofence.manage": [BAN_QUAN_LY, CHU_DAU_TU],
