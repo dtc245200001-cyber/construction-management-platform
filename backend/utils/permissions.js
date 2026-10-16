@@ -41,6 +41,9 @@ const PERMISSIONS = {
   "member.manage": [BAN_QUAN_LY],
   // Điều chỉnh: bổ sung CHI_HUY_TRUONG (tạo/sửa/xóa Hạng mục WBS).
   "work_item.manage": [BAN_QUAN_LY, CHI_HUY_TRUONG],
+  // S-43 / T-112: Lập và xem đề nghị thanh toán từ phiếu nghiệm thu đã duyệt
+  "payment_request.create": [BAN_QUAN_LY],
+  "payment_request.view": [BAN_QUAN_LY, CHU_DAU_TU],
   // TREO: duyệt nghiệm thu NỘI BỘ — bước riêng, không gộp bảng/trạng thái với
   // acceptance.approve_official của Chủ đầu tư.
   "acceptance.review_internal": [BAN_QUAN_LY],
