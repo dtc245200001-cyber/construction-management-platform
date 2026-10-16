@@ -48,12 +48,7 @@ const MAX_PHOTO_SIZE_BYTES = MAX_PHOTO_SIZE_MB * 1024 * 1024;
 export default function AcceptancePage({ user: propUser } = {}) {
   const projectId = localStorage.getItem("currentProjectId") || 1;
 
-  let outletContext = null;
-  try {
-    outletContext = useOutletContext();
-  } catch {
-    outletContext = null;
-  }
+  const outletContext = useOutletContext();
   const user = propUser || outletContext?.user;
 
   // Quyền truy cập

@@ -211,14 +211,21 @@ export const PERMISSIONS = {
   "field.report": [DOI_TRUONG],
   "field.viewAll": ALL_ROLES.filter((r) => r !== DOI_TRUONG),
 
-  "diary.create": [BAN_QUAN_LY, CHI_HUY_TRUONG, KY_SU_GIAM_SAT, DOI_TRUONG],
+  "diary.create": [BAN_QUAN_LY, CHI_HUY_TRUONG, KY_SU_GIAM_SAT],
   "diary.lock": [KY_SU_GIAM_SAT],
   "diary.unlock": [BAN_QUAN_LY],
+
+  // S-36, S-38: Nghiệm thu khối lượng
+  "acceptance.access": [BAN_QUAN_LY, KY_SU_GIAM_SAT, CHU_DAU_TU],
+  "acceptance.create": [KY_SU_GIAM_SAT],
+  "acceptance.approve": [CHU_DAU_TU],
+  "acceptance.return": [CHU_DAU_TU],
 
   // S-41 / T-107: Cấu hình phạm vi công trường
   "site_geofence.manage": [BAN_QUAN_LY, CHU_DAU_TU],
 
   // S-43 / T-113: Đề nghị thanh toán
+  "payment_request.create": [BAN_QUAN_LY],
   "payment_request.view": [BAN_QUAN_LY, CHU_DAU_TU, KE_TOAN],
 };
 

@@ -59,12 +59,7 @@ export default function PaymentRequestsPage({ user: propUser } = {}) {
   const navigate = useNavigate();
   const projectId = localStorage.getItem("currentProjectId") || "1";
 
-  let outletContext = null;
-  try {
-    outletContext = useOutletContext();
-  } catch {
-    outletContext = null;
-  }
+  const outletContext = useOutletContext();
   const user = propUser || outletContext?.user;
   const projectRole = outletContext?.projectRole;
 
