@@ -26,7 +26,7 @@ const asyncHandler = require("../utils/asyncHandler");
 const { parsePositiveInt } = require("../utils/validators");
 const { parseDecimalInput } = require("../utils/decimalInput");
 const { logAudit } = require("../utils/auditLogger");
-const { PERMISSIONS, ROLE_LABELS } = require("../utils/permissions");
+const { PERMISSIONS, ROLE_LABELS, can } = require("../utils/permissions");
 const { ROLES } = require("../utils/constants");
 const {
   computeVoucherItems,
@@ -548,9 +548,11 @@ router.get(
          captured_at_source,
          metadata_status,
          metadata_source,
+         gps_source,
          geofence_status,
          geofence_distance_m,
          geofence_checked_at,
+         geofence_basis,
          exif_metadata,
          CONCAT('/api/projects/', $2::text, '/acceptance-vouchers/', voucher_id, '/photos/', id) AS url
        FROM acceptance_voucher_photos
@@ -565,6 +567,7 @@ router.get(
       outside: 0,
       no_gps: 0,
       no_site_config: 0,
+      unverified: 0,
       anomalies_count: 0,
       clean_count: 0,
       incomplete_count: 0,
@@ -572,6 +575,11 @@ router.get(
     };
 
     const isReviewer = req.projectRole === ROLES.CHU_DAU_TU;
+    const canSeeEvidenceFlags = Boolean(
+      req.projectRole === ROLES.CHU_DAU_TU ||
+      can(req.projectRole, "acceptance.approve_official") ||
+      (req.user && req.user.is_system_admin)
+    );
 
     const photos = photosRes.rows.map((p) => {
       const status = p.geofence_status || "no_site_config";
@@ -579,6 +587,13 @@ router.get(
       else if (status === "outside") photo_flags.outside++;
       else if (status === "no_gps") photo_flags.no_gps++;
       else photo_flags.no_site_config++;
+
+      if (
+        (status === "inside" || status === "outside") &&
+        p.geofence_basis === "client_reported"
+      ) {
+        photo_flags.unverified++;
+      }
 
       const inspectionRaw = inspectVoucherPhotoRecord(p, voucher);
       if (inspectionRaw.status === "warning") photo_flags.anomalies_count++;
@@ -590,23 +605,42 @@ router.get(
         ? inspectionRaw
         : { data_status_label: inspectionRaw.data_status_label || null };
 
+      let basePhoto;
+      if (isReviewer) {
+        basePhoto = { ...p };
+      } else if (canSeeEvidenceFlags) {
+        basePhoto = {
+          id: p.id,
+          file_name: p.file_name,
+          file_size: p.file_size,
+          mime_type: p.mime_type,
+          caption: p.caption,
+          created_at: p.created_at,
+          url: p.url,
+          geofence_status: p.geofence_status,
+          geofence_checked_at: p.geofence_checked_at,
+          geofence_basis: p.geofence_basis,
+          gps_source: p.gps_source,
+        };
+      } else {
+        basePhoto = {
+          id: p.id,
+          file_name: p.file_name,
+          file_size: p.file_size,
+          mime_type: p.mime_type,
+          caption: p.caption,
+          created_at: p.created_at,
+          url: p.url,
+        };
+      }
+
       return {
-        ...(isReviewer
-          ? p
-          : {
-              id: p.id,
-              file_name: p.file_name,
-              file_size: p.file_size,
-              mime_type: p.mime_type,
-              caption: p.caption,
-              created_at: p.created_at,
-              url: p.url,
-            }),
+        ...basePhoto,
         geofence_distance_m:
-          isReviewer && p.geofence_distance_m !== null
+          canSeeEvidenceFlags && p.geofence_distance_m !== null
             ? parseFloat(p.geofence_distance_m)
             : undefined,
-        ...(isReviewer ? { radius_m: siteRadius } : {}),
+        ...(canSeeEvidenceFlags ? { radius_m: siteRadius } : {}),
         inspection,
       };
     });
@@ -615,7 +649,7 @@ router.get(
       voucher,
       items: itemsRes.rows,
       photos,
-      ...(isReviewer ? { photo_flags } : {}),
+      ...(canSeeEvidenceFlags ? { photo_flags } : {}),
     });
   })
 );
@@ -1404,7 +1438,7 @@ router.post(
     const photoMeta = await extractPhotoMetadata(
       req.file.buffer,
       detectedMime,
-      {}
+      req.body
     );
 
     // Đánh giá geofence so với tâm và bán kính công trường (S-41 / T-108)
@@ -1413,12 +1447,14 @@ router.post(
         gps_latitude: photoMeta.gps_latitude,
         gps_longitude: photoMeta.gps_longitude,
         gps_accuracy_m: photoMeta.gps_accuracy_m,
+        gps_source: photoMeta.gps_source,
       },
       site: {
         site_latitude: voucherCheck.rows[0].site_latitude,
         site_longitude: voucherCheck.rows[0].site_longitude,
         site_radius_m: voucherCheck.rows[0].site_radius_m,
       },
+      basis: photoMeta.gps_source,
     });
 
     // Phân tích và phát hiện dấu hiệu bất thường của ảnh bằng chứng (S-42 / T-109)
@@ -1429,7 +1465,7 @@ router.post(
       fileSize: req.file.size,
       capturedAt: photoMeta.captured_at,
       voucherCreatedAt: voucherCheck.rows[0].created_at,
-      clientFallback: {},
+      clientFallback: req.body,
       photoMeta,
     });
 
@@ -1441,13 +1477,13 @@ router.post(
       `INSERT INTO acceptance_voucher_photos
          (voucher_id, file_name, file_size, mime_type, file_data, exif_metadata, caption, uploaded_by,
           captured_at, captured_at_source, gps_latitude, gps_longitude, gps_accuracy_m, metadata_status, metadata_source,
-          geofence_status, geofence_distance_m, geofence_checked_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+          geofence_status, geofence_distance_m, geofence_checked_at, gps_source, geofence_basis)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
        RETURNING id, file_name, file_size, mime_type, caption, uploaded_by, created_at,
                  captured_at, captured_at_source, metadata_status, metadata_source,
                  (gps_latitude IS NOT NULL) AS has_gps,
                  geofence_status, geofence_distance_m, geofence_checked_at,
-                 exif_metadata`,
+                 gps_source, geofence_basis, exif_metadata`,
       [
         voucherId,
         req.file.originalname,
@@ -1467,6 +1503,8 @@ router.post(
         geofenceEval.status,
         geofenceEval.distance_m,
         geofenceEval.checked_at,
+        photoMeta.gps_source,
+        geofenceEval.basis,
       ]
     );
 

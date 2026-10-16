@@ -82,9 +82,9 @@ router.get(
       query = `
         SELECT dea.id, dea.file_name, dea.file_size, dea.mime_type,
                dea.captured_at, dea.captured_at_source,
-               dea.gps_latitude, dea.gps_longitude, dea.gps_accuracy_m,
+               dea.gps_latitude, dea.gps_longitude, dea.gps_accuracy_m, dea.gps_source,
                dea.metadata_status, dea.metadata_source,
-               dea.geofence_status, dea.geofence_distance_m, dea.geofence_checked_at,
+               dea.geofence_status, dea.geofence_distance_m, dea.geofence_checked_at, dea.geofence_basis,
                dea.created_at AS uploaded_at,
                de.created_at AS entry_created_at,
                de.entry_date,
@@ -99,9 +99,9 @@ router.get(
       query = `
         SELECT avp.id, avp.file_name, avp.file_size, avp.mime_type,
                avp.captured_at, avp.captured_at_source,
-               avp.gps_latitude, avp.gps_longitude, avp.gps_accuracy_m,
+               avp.gps_latitude, avp.gps_longitude, avp.gps_accuracy_m, avp.gps_source,
                avp.metadata_status, avp.metadata_source,
-               avp.geofence_status, avp.geofence_distance_m, avp.geofence_checked_at,
+               avp.geofence_status, avp.geofence_distance_m, avp.geofence_checked_at, avp.geofence_basis,
                avp.exif_metadata,
                avp.created_at AS uploaded_at,
                av.created_at AS voucher_created_at,
@@ -167,6 +167,7 @@ router.get(
       captured_at: row.captured_at,
       captured_at_source: row.captured_at_source,
       source: row.metadata_source,
+      gps_source: row.gps_source || null,
       has_gps: hasGps,
       is_reviewer: isReviewer,
       geofence: {
@@ -176,6 +177,7 @@ router.get(
             ? parseFloat(row.geofence_distance_m)
             : null,
         checked_at: row.geofence_checked_at || null,
+        basis: row.geofence_basis || null,
       },
       inspection,
     };

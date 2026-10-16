@@ -125,5 +125,93 @@ describe("AcceptancePage Geofence Warnings (Story S-41 / T-108)", () => {
     expect(screen.getByTestId("geofence-badge-501")).toHaveTextContent("Ngoài phạm vi (133,4 m)");
     expect(screen.getByTestId("geofence-badge-502")).toHaveTextContent("Đúng vị trí (89 m)");
     expect(screen.getByTestId("geofence-badge-503")).toHaveTextContent("Không có GPS");
+
+    // Kiểm tra nguồn toạ độ hiển thị bằng chữ
+    expect(screen.getByTestId("photo-gps-source-501")).toHaveTextContent("Toạ độ từ ảnh gốc");
+    expect(screen.getByTestId("photo-gps-source-502")).toHaveTextContent("Toạ độ từ ảnh gốc");
+  });
+
+  test("Hardening S-40 & S-41: Hiển thị dòng N ảnh chưa xác thực trong banner và badge chưa xác thực cho ảnh client", async () => {
+    const mockDetailWithUnverified = {
+      voucher: {
+        id: 11,
+        batch_name: "Nghiệm thu đợt 2",
+        status: "submitted",
+        site_radius_m: 100,
+      },
+      items: [],
+      photos: [
+        {
+          id: 601,
+          file_name: "client_photo.jpg",
+          url: "/photos/601",
+          geofence_status: "inside",
+          geofence_distance_m: 75.0,
+          geofence_basis: "client_reported",
+          gps_source: "client_reported",
+          radius_m: 100,
+        },
+      ],
+      photo_flags: {
+        total: 1,
+        inside: 1,
+        outside: 0,
+        no_gps: 0,
+        no_site_config: 0,
+        unverified: 1,
+      },
+    };
+
+    api.get.mockImplementation((url) => {
+      if (url.includes("/summary")) return Promise.resolve({ data: [] });
+      if (url.endsWith("/acceptance-vouchers")) {
+        return Promise.resolve({
+          data: {
+            vouchers: [
+              {
+                id: 11,
+                batch_name: "Nghiệm thu đợt 2",
+                status: "submitted",
+                item_count: 0,
+                photo_count: 1,
+              },
+            ],
+          },
+        });
+      }
+      if (url.includes("/acceptance-vouchers/11")) {
+        return Promise.resolve({ data: mockDetailWithUnverified });
+      }
+      if (url.match(/\/projects\/\d+$/)) {
+        return Promise.resolve({ data: { membership: "chu_dau_tu" } });
+      }
+      return Promise.reject(new Error("Not found"));
+    });
+
+    render(<AcceptancePage user={{ id: 1, role: "chu_dau_tu" }} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Nghiệm thu đợt 2")).toBeInTheDocument();
+    });
+
+    const detailBtn = screen.getByRole("button", { name: /chi tiết/i });
+    fireEvent.click(detailBtn);
+
+    // Kiểm tra dòng "N ảnh có toạ độ do thiết bị báo, chưa xác thực" trong banner
+    await waitFor(() => {
+      expect(screen.getByTestId("unverified-banner-text")).toHaveTextContent(
+        "1 ảnh có toạ độ do thiết bị báo, chưa xác thực."
+      );
+    });
+
+    // Badge ảnh nguồn client không hiện như đã xác thực
+    const badge = screen.getByTestId("geofence-badge-601");
+    expect(badge).toHaveTextContent("Đúng vị trí (chưa xác thực) (75 m)");
+    expect(badge).toHaveClass("bg-amber-100"); // không dùng emerald xanh
+
+    // Chữ nguồn toạ độ hiển thị rõ
+    expect(screen.getByTestId("photo-gps-source-601")).toHaveTextContent(
+      "Toạ độ do thiết bị báo, chưa xác thực từ ảnh gốc"
+    );
   });
 });

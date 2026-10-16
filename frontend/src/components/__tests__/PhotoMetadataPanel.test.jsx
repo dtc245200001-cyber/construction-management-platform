@@ -1430,6 +1430,82 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
         expect(screen.getByText('retry_success.jpg')).toBeInTheDocument();
       });
     });
+
+    it('Hardening: hiển thị nguồn toạ độ bằng chữ từ ảnh gốc', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          status: 'complete',
+          has_gps: true,
+          gps_source: 'file_exif',
+          geofence: { status: 'inside', distance_m: 50, basis: 'file_exif' },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={104}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('gps-source-text')).toHaveTextContent('Toạ độ từ ảnh gốc');
+      });
+    });
+
+    it('Hardening: hiển thị nguồn toạ độ client báo và nhãn chưa xác thực', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          status: 'complete',
+          has_gps: true,
+          gps_source: 'client_reported',
+          geofence: { status: 'inside', distance_m: 50, basis: 'client_reported' },
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={105}
+          kind="acceptance"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('gps-source-text')).toHaveTextContent(
+          'Toạ độ do thiết bị báo, chưa xác thực từ ảnh gốc'
+        );
+      });
+    });
+
+    it('Hardening: ảnh thiếu metadata hiện thông báo Không có dữ liệu', async () => {
+      api.get.mockResolvedValueOnce({
+        data: {
+          status: 'none',
+          status_label: 'Ảnh không có siêu dữ liệu gốc',
+          has_gps: false,
+        },
+      });
+
+      render(
+        <PhotoMetadataPanel
+          projectId={1}
+          photoId={106}
+          kind="diary"
+          isOpen={true}
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getAllByText(/Không có dữ liệu/i).length).toBeGreaterThan(0);
+      });
+    });
   });
 
   describe('Kiểm thử 15 yêu cầu bắt buộc (Mục VII)', () => {

@@ -611,6 +611,13 @@ export default function PhotoMetadataPanel({
               <div className="py-2 flex items-center justify-between">
                 <span className="text-slate-600">Vị trí GPS</span>
                 <div className="text-right">
+                  {metadata?.has_gps && (
+                    <p className="text-xs font-medium mb-1 text-slate-700 text-right" data-testid="gps-source-text">
+                      {metadata.gps_source === 'client_reported' || metadata.source === 'client'
+                        ? 'Toạ độ do thiết bị báo, chưa xác thực từ ảnh gốc'
+                        : 'Toạ độ từ ảnh gốc'}
+                    </p>
+                  )}
                   {metadata?.gps ? (
                     <div data-testid="gps-coordinates-section" className="space-y-0.5">
                       <div>

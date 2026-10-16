@@ -385,10 +385,41 @@ describe('photoMetadata service', () => {
 
       const meta = await extractPhotoMetadata(buf, 'image/jpeg', clientFallback);
       expect(meta.metadata_source).toBe('file');
+      expect(meta.gps_source).toBe('file_exif');
       expect(meta.captured_at).toBe('2026-03-15T07:30:00.000Z');
       expect(meta.gps_latitude).toBeCloseTo(10.762622, 5);
+      expect(meta.gps_longitude).toBeCloseTo(106.660172, 5);
       expect(meta.make).toBe('Sony');
       expect(meta.model).toBe('FX3');
+    });
+
+    test('Hardening S-40: Client gửi toạ độ khi file không có EXIF -> gps_source = client_reported', async () => {
+      const buf = createPlainJpeg();
+      const clientFallback = {
+        exif_captured_at: '2026-03-15T07:30:00.000Z',
+        exif_latitude: 10.762622,
+        exif_longitude: 106.660172,
+      };
+
+      const meta = await extractPhotoMetadata(buf, 'image/jpeg', clientFallback);
+      expect(meta.gps_source).toBe('client_reported');
+      expect(meta.metadata_source).toBe('client');
+      expect(meta.gps_latitude).toBeCloseTo(10.762622, 5);
+    });
+
+    test('Hardening S-40: Client gửi thời gian vượt quá hiện tại 15 phút -> bị bỏ qua', async () => {
+      const buf = createPlainJpeg();
+      const futureTime = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+      const clientFallback = {
+        exif_captured_at: futureTime,
+        exif_latitude: 10.762622,
+        exif_longitude: 106.660172,
+      };
+
+      const meta = await extractPhotoMetadata(buf, 'image/jpeg', clientFallback);
+      // Thời gian tương lai > 10 phút bị loại bỏ -> captured_at = null, metadata_status = 'gps_only'
+      expect(meta.captured_at).toBeNull();
+      expect(meta.metadata_status).toBe('gps_only');
     });
   });
 });

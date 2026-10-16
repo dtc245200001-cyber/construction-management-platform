@@ -476,6 +476,7 @@ async function extractPhotoMetadata(buffer, _mimeType = null, clientFallback = {
     gps_latitude: null,
     gps_longitude: null,
     gps_accuracy_m: null,
+    gps_source: null,
     metadata_status: 'none',
     metadata_source: 'file',
     // Thông tin thiết bị & camera EXIF
@@ -657,20 +658,24 @@ async function extractPhotoMetadata(buffer, _mimeType = null, clientFallback = {
   }
 
   // Fallback từ client nếu file không có thời gian chụp
+  // Quy tắc Hardening: Bỏ qua nếu thời gian client gửi lớn hơn hiện tại quá 10 phút
   let usedClientTime = false;
   if (!capturedAt && clientFallback && clientFallback.exif_captured_at) {
     const dClient = new Date(clientFallback.exif_captured_at);
-    if (!isNaN(dClient.getTime()) && dClient.getUTCFullYear() >= 2000) {
+    const clientMaxFuture = new Date(Date.now() + 10 * 60 * 1000);
+    if (isValidCaptureDate(dClient) && dClient <= clientMaxFuture) {
       capturedAt = dClient;
       capturedAtSource = 'client_reported';
       usedClientTime = true;
     }
   }
 
-  // 8. Xử lý Toạ độ GPS
+  // 8. Xử lý Toạ độ GPS (File EXIF luôn thắng client)
   let lat = null;
   let lon = null;
   let acc = null;
+  let gpsSource = null;
+  let usedClientGps = false;
 
   if (parsedExif) {
     const rawLat = parseCoordinate(parsedExif.GPSLatitude, parsedExif.GPSLatitudeRef);
@@ -681,9 +686,11 @@ async function extractPhotoMetadata(buffer, _mimeType = null, clientFallback = {
     acc = validateAccuracy(parsedExif.GPSHPositioningError);
   }
 
-  // Fallback từ client nếu file không có GPS
-  let usedClientGps = false;
-  if ((lat === null || lon === null) && clientFallback) {
+  if (lat !== null && lon !== null) {
+    // Đã có toạ độ hợp lệ từ file EXIF -> bỏ qua hoàn toàn dữ liệu GPS client gửi
+    gpsSource = 'file_exif';
+  } else if (clientFallback) {
+    // File không có GPS -> xem xét dữ liệu client báo
     const validatedClient = validateAndFormatGps(
       clientFallback.exif_latitude,
       clientFallback.exif_longitude
@@ -693,6 +700,7 @@ async function extractPhotoMetadata(buffer, _mimeType = null, clientFallback = {
       lon = validatedClient.longitude;
       acc = validateAccuracy(clientFallback.exif_accuracy_m);
       usedClientGps = true;
+      gpsSource = 'client_reported';
     }
   }
 
@@ -705,6 +713,7 @@ async function extractPhotoMetadata(buffer, _mimeType = null, clientFallback = {
   result.gps_latitude = lat;
   result.gps_longitude = lon;
   result.gps_accuracy_m = acc;
+  result.gps_source = gpsSource;
 
   if (usedClientTime || usedClientGps || usedClientMake || usedClientModel) {
     result.metadata_source = 'client';
