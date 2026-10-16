@@ -705,7 +705,7 @@ export default function AcceptancePage({ user: propUser } = {}) {
                 Phiếu chờ duyệt
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                Chủ đầu tư xem bằng chứng, duyệt hoặc trả lại phiếu đang chờ duyệt.
+                Ban quản lý hoặc Chủ đầu tư xem bằng chứng, duyệt hoặc trả lại phiếu đang chờ duyệt.
               </p>
             </div>
             <Badge className="bg-blue-100 text-blue-800 border-blue-200">

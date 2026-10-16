@@ -47,16 +47,15 @@ describe("permissions matrix (phân quyền 6 vai trò)", () => {
       expect(can(ROLES.KY_SU_GIAM_SAT, "acceptance.view_verified")).toBe(false);
       expect(can(ROLES.KY_SU_GIAM_SAT, "acceptance.return_official")).toBe(false);
     });
-    test("kỹ sư giám sát, chủ đầu tư, ban quản lý truy cập nghiệm thu; chỉ chủ đầu tư duyệt/trả lại", () => {
+    test("kỹ sư giám sát, chủ đầu tư, ban quản lý truy cập nghiệm thu; ban quản lý và chủ đầu tư duyệt/trả lại", () => {
       expect(can(ROLES.KY_SU_GIAM_SAT, "acceptance.access")).toBe(true);
       expect(can(ROLES.CHU_DAU_TU, "acceptance.access")).toBe(true);
       expect(can(ROLES.BAN_QUAN_LY, "acceptance.access")).toBe(true);
 
-      // BQL truy cập được nghiệm thu (duyệt nội bộ + lập thanh toán)
-      // nhưng KHÔNG tạo hồ sơ, KHÔNG duyệt/trả lại chính thức
+      // BQL không tạo hồ sơ, nhưng duyệt và trả lại được phiếu nghiệm thu (S-38)
       expect(can(ROLES.BAN_QUAN_LY, "acceptance.create_dossier")).toBe(false);
-      expect(can(ROLES.BAN_QUAN_LY, "acceptance.approve_official")).toBe(false);
-      expect(can(ROLES.BAN_QUAN_LY, "acceptance.return_official")).toBe(false);
+      expect(can(ROLES.BAN_QUAN_LY, "acceptance.approve_official")).toBe(true);
+      expect(can(ROLES.BAN_QUAN_LY, "acceptance.return_official")).toBe(true);
 
       for (const role of [
         ROLES.CHI_HUY_TRUONG,

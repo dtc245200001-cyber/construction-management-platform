@@ -103,10 +103,9 @@ const PERMISSIONS = {
   // chỉ tài khoản được giao thẩm quyền mới được duyệt chính thức; nếu quyền ký
   // được giao cho Tư vấn giám sát đại diện Chủ đầu tư, hệ thống phải phân quyền
   // đúng NGƯỜI cụ thể được uỷ quyền chứ không gán cứng theo role chu_dau_tu.
-  // Đây là quyết định kiến trúc lớn (có thể cần bảng `approval_delegations`
-  // riêng) — ĐỪNG tự code cơ chế uỷ quyền khi chưa có thiết kế được duyệt.
-  "acceptance.approve_official": [CHU_DAU_TU],
-  "acceptance.return_official": [CHU_DAU_TU],
+  // S-38: Ban quản lý hoặc Chủ đầu tư duyệt / trả lại phiếu nghiệm thu.
+  "acceptance.approve_official": [CHU_DAU_TU, BAN_QUAN_LY],
+  "acceptance.return_official": [CHU_DAU_TU, BAN_QUAN_LY],
   // TREO: duyệt hoặc trả lại đề nghị thanh toán.
   "payment.approve": [CHU_DAU_TU],
   // S-39: Chủ đầu tư / Ban quản lý xem toàn bộ nhật ký thao tác của dự án
