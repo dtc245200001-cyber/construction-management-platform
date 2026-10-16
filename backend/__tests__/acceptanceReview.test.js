@@ -39,9 +39,9 @@ function makeApp(user) {
 describe("S-38 / T-98 acceptance approval RBAC", () => {
   beforeEach(() => jest.clearAllMocks());
 
-  test("ban_quan_ly can approve a pending_review voucher", async () => {
+  test("chu_dau_tu can approve a pending_review voucher", async () => {
     const app = makeApp({ id: 20, is_system_admin: false });
-    mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "chu_dau_tu" }] });
     mockClient.query
       .mockResolvedValueOnce({}) // BEGIN
       .mockResolvedValueOnce({
@@ -70,9 +70,9 @@ describe("S-38 / T-98 acceptance approval RBAC", () => {
     expect(mockClient.query).toHaveBeenCalledWith("COMMIT");
   });
 
-  test("chu_dau_tu is blocked by server-side approval RBAC", async () => {
+  test("ban_quan_ly is blocked by server-side approval RBAC", async () => {
     const app = makeApp({ id: 10, is_system_admin: false });
-    mockQuery.mockResolvedValueOnce({ rows: [{ role: "chu_dau_tu" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] });
 
     const res = await request(app)
       .post("/api/projects/1/acceptance-vouchers/9/approve")
@@ -84,7 +84,7 @@ describe("S-38 / T-98 acceptance approval RBAC", () => {
 
   test("a non-pending voucher cannot be approved again", async () => {
     const app = makeApp({ id: 20, is_system_admin: false });
-    mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "chu_dau_tu" }] });
     mockClient.query
       .mockResolvedValueOnce({})
       .mockResolvedValueOnce({

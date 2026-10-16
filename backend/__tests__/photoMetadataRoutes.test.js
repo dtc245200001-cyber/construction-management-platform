@@ -80,11 +80,11 @@ describe("photoMetadataRoutes Unit Tests (S-40 / T-106)", () => {
       });
     });
 
-    test("Ban quản lý (ban_quan_ly) ĐƯỢC XEM toạ độ thô", async () => {
+    test("Ban quản lý (ban_quan_ly) ĐƯỢC XEM toạ độ thô trong nhật ký", async () => {
       mockCurrentProjectRole = "ban_quan_ly";
       mockQuery.mockResolvedValueOnce({ rows: [mockDbPhotoWithGps] });
 
-      const res = await request(app).get("/api/projects/1/photo-metadata/acceptance/202");
+      const res = await request(app).get("/api/projects/1/photo-metadata/diary/202");
       expect(res.status).toBe(200);
       expect(res.headers["cache-control"]).toBe("no-store");
       expect(res.body.has_gps).toBe(true);
@@ -120,7 +120,7 @@ describe("photoMetadataRoutes Unit Tests (S-40 / T-106)", () => {
       mockCurrentProjectRole = "ke_toan";
       mockQuery.mockResolvedValueOnce({ rows: [mockDbPhotoWithGps] });
 
-      const res = await request(app).get("/api/projects/1/photo-metadata/acceptance/202");
+      const res = await request(app).get("/api/projects/1/photo-metadata/diary/202");
       expect(res.status).toBe(200);
       expect(res.body.has_gps).toBe(true);
       expect(res.body.gps).toBeUndefined();
@@ -259,24 +259,13 @@ describe("photoMetadataRoutes Unit Tests (S-40 / T-106)", () => {
       },
     };
 
-    test("Người gửi (ky_su_giam_sat): xem được tóm tắt và lý do, nhưng KHÔNG xem thông số đối chiếu nội bộ và toạ độ thô", async () => {
+    test("Người gửi (ky_su_giam_sat) bị từ chối API chi tiết ảnh nghiệm thu", async () => {
       mockCurrentProjectRole = "ky_su_giam_sat";
-      mockQuery.mockResolvedValueOnce({ rows: [mockAcceptancePhotoWithWarnings] });
 
       const res = await request(app).get("/api/projects/1/photo-metadata/acceptance/301");
-      expect(res.status).toBe(200);
-      expect(res.body.is_reviewer).toBe(false);
-      expect(res.body.has_gps).toBe(true);
-      // Toạ độ thô bị ẩn để bảo vệ quyền riêng tư
-      expect(res.body.gps).toBeUndefined();
-
-      // Kết quả kiểm tra đã được lược bỏ thông số kỹ thuật đối chiếu
-      expect(res.body.inspection.status).toBe("warning");
-      expect(res.body.inspection.warnings).toHaveLength(1);
-      expect(res.body.inspection.warnings[0].title).toBe("Thời điểm chụp cách xa ngày lập phiếu");
-      expect(res.body.inspection.warnings[0].reason).toBe("Ảnh được chụp trước ngày lập phiếu 45 ngày");
-      expect(res.body.inspection.warnings[0].actual_value).toBeUndefined();
-      expect(res.body.inspection.warnings[0].comparison_value).toBeUndefined();
+      expect(res.status).toBe(403);
+      expect(res.body.message).toMatch(/Chủ đầu tư/i);
+      expect(mockQuery).not.toHaveBeenCalled();
     });
 
     test("Người duyệt (chu_dau_tu): xem được TOÀN BỘ thông số kỹ thuật, đối chiếu và toạ độ thô", async () => {
@@ -303,7 +292,7 @@ describe("photoMetadataRoutes Unit Tests (S-40 / T-106)", () => {
     });
 
     test("Bản ghi ảnh cũ hoặc thiếu exif_metadata: xử lý an toàn không gây lỗi 500", async () => {
-      mockCurrentProjectRole = "ban_quan_ly";
+      mockCurrentProjectRole = "chu_dau_tu";
       mockQuery.mockResolvedValueOnce({
         rows: [
           {
@@ -339,7 +328,7 @@ describe("photoMetadataRoutes Unit Tests (S-40 / T-106)", () => {
     });
 
     test("Đảm bảo câu truy vấn SQL dùng u.name và KHÔNG dùng u.full_name gây lỗi PostgreSQL", async () => {
-      mockCurrentProjectRole = "ban_quan_ly";
+      mockCurrentProjectRole = "chu_dau_tu";
       mockQuery.mockResolvedValueOnce({
         rows: [
           {
@@ -359,7 +348,7 @@ describe("photoMetadataRoutes Unit Tests (S-40 / T-106)", () => {
     });
 
     test("Hỗ trợ ảnh WebP (như download.webp) và trả về cấu trúc thống nhất", async () => {
-      mockCurrentProjectRole = "ban_quan_ly";
+      mockCurrentProjectRole = "chu_dau_tu";
       mockQuery.mockResolvedValueOnce({
         rows: [
           {
@@ -392,7 +381,7 @@ describe("photoMetadataRoutes Unit Tests (S-40 / T-106)", () => {
     });
 
     test("Lỗi database khi truy vấn: trả về lỗi 500 an toàn qua middleware", async () => {
-      mockCurrentProjectRole = "ban_quan_ly";
+      mockCurrentProjectRole = "chu_dau_tu";
       mockQuery.mockRejectedValueOnce(new Error("PostgreSQL connection failure"));
 
       const res = await request(app).get("/api/projects/1/photo-metadata/acceptance/999");
@@ -431,18 +420,11 @@ describe("photoMetadataRoutes Unit Tests (S-40 / T-106)", () => {
         },
       };
 
-      // 1. Người gửi (ky_su_giam_sat): make, model, software, iso bị lọc bỏ khỏi inspection.metadata
+      // 1. Kỹ sư giám sát: API chi tiết ảnh nghiệm thu bị từ chối trước khi truy vấn.
       mockCurrentProjectRole = "ky_su_giam_sat";
-      mockQuery.mockResolvedValueOnce({ rows: [photoWithCameraExif] });
       const submitterRes = await request(app).get("/api/projects/1/photo-metadata/acceptance/501");
-      expect(submitterRes.status).toBe(200);
-      expect(submitterRes.body.is_reviewer).toBe(false);
-      expect(submitterRes.body.inspection.metadata.width).toBe(4000);
-      expect(submitterRes.body.inspection.metadata.height).toBe(3000);
-      expect(submitterRes.body.inspection.metadata.aspect_ratio).toBe("4:3");
-      expect(submitterRes.body.inspection.metadata.make).toBeUndefined();
-      expect(submitterRes.body.inspection.metadata.model).toBeUndefined();
-      expect(submitterRes.body.inspection.metadata.iso).toBeUndefined();
+      expect(submitterRes.status).toBe(403);
+      expect(mockQuery).not.toHaveBeenCalled();
 
       // 2. Người duyệt (chu_dau_tu): xem được toàn bộ thông số máy ảnh EXIF
       mockCurrentProjectRole = "chu_dau_tu";

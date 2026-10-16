@@ -43,6 +43,7 @@ export const PERMISSIONS = {
   "quantity.verify": [ROLES.KY_SU_GIAM_SAT],
   "acceptance.create_dossier": [ROLES.KY_SU_GIAM_SAT],
   "acceptance.update_dossier": [ROLES.KY_SU_GIAM_SAT],
+  "acceptance.access": [ROLES.KY_SU_GIAM_SAT, ROLES.CHU_DAU_TU],
 
   // ── Đội trưởng thi công ────────────────────────────────────────────
   "task.view_own_team": [ROLES.DOI_TRUONG],
@@ -54,6 +55,7 @@ export const PERMISSIONS = {
   "project.view": [ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY],
   "acceptance.view_verified": [ROLES.CHU_DAU_TU],
   "acceptance.approve_official": [ROLES.CHU_DAU_TU],
+  "acceptance.return_official": [ROLES.CHU_DAU_TU],
   "payment.approve": [ROLES.CHU_DAU_TU],
   // S-39: Audit Portal cho Chủ đầu tư / Ban quản lý.
   "audit.view_project": [ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY],

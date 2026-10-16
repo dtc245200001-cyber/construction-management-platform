@@ -222,7 +222,7 @@ export default function PhotoMetadataPanel({
   const uploaderName =
     metadata?.uploaded_by_name ||
     photo?.uploaded_by_name ||
-    'Nguyễn Văn A';
+    'Không có dữ liệu';
   const uploadTime = formatDateTime(metadata?.uploaded_at || photo?.created_at);
   const batchName = metadata?.batch_name || photo?.batch_name;
   const imageUrl = photo?.url || metadata?.url;
@@ -257,11 +257,6 @@ export default function PhotoMetadataPanel({
   const aperture = techMeta.aperture || null;
   const shutterSpeed = techMeta.shutter_speed || null;
   const fileHash = techMeta.file_hash || metadata?.file_hash || null;
-
-  const missingFields =
-    metadata?.missing_fields ||
-    inspection?.missing_fields ||
-    [];
 
   const warnings = Array.isArray(inspection?.warnings) ? inspection.warnings : [];
   const anomalyWarnings = warnings.filter(
@@ -303,6 +298,10 @@ export default function PhotoMetadataPanel({
         label: 'Dữ liệu không đầy đủ và cảnh báo',
         className: 'bg-amber-50 text-amber-800 border border-amber-300',
       };
+    }
+
+    if (kind === 'acceptance') {
+      return null;
     }
 
     // Fallback theo inspection.status cũ
@@ -683,24 +682,7 @@ export default function PhotoMetadataPanel({
             </div>
           </div>
 
-          {/* MỤC 3: DANH SÁCH TRƯỜNG EXIF THIẾU (Story S-42 / Mục III) */}
-          {missingFields.length > 0 && (
-            <div
-              data-testid="missing-fields-section"
-              className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs space-y-1.5"
-            >
-              <div className="font-semibold text-slate-800 flex items-center gap-1.5">
-                <span>ℹ️</span> Danh sách trường EXIF còn thiếu ({missingFields.length}):
-              </div>
-              <ul className="list-disc list-inside space-y-0.5 text-slate-700 text-[11px]">
-                {missingFields.map((f, idx) => (
-                  <li key={f.field || idx}>{f.label || f}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* MỤC 4: CHI TIẾT CẢNH BÁO QUY TẮC BẰNG CHỨNG (S-42 / T-110) */}
+          {/* MỤC 3: CHI TIẾT CẢNH BÁO QUY TẮC BẰNG CHỨNG (S-42 / T-110) */}
           <div data-testid="photo-inspection-section" className="pt-1">
             {warnings.length > 0 && (
               <div

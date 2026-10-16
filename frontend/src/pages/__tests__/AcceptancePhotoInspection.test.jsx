@@ -55,6 +55,8 @@ const mockVoucherDetailWithInspection = {
       inspection_status: "warning",
       inspection: {
         status: "warning",
+        data_status: "incomplete_data_warning",
+        data_status_label: "Dữ liệu không đầy đủ và cảnh báo",
         warnings: [
           {
             code: "SCREENSHOT_DETECTED",
@@ -74,6 +76,8 @@ const mockVoucherDetailWithInspection = {
       inspection_status: "clean",
       inspection: {
         status: "clean",
+        data_status: "full_data",
+        data_status_label: "Dữ liệu đầy đủ",
         warnings: [],
       },
     },
@@ -86,6 +90,8 @@ const mockVoucherDetailWithInspection = {
       inspection_status: "incomplete_data",
       inspection: {
         status: "incomplete_data",
+        data_status: "incomplete_data",
+        data_status_label: "Dữ liệu không đầy đủ",
         warnings: [],
       },
     },
@@ -98,6 +104,8 @@ const mockVoucherDetailWithInspection = {
       inspection_status: "error",
       inspection: {
         status: "error",
+        data_status: null,
+        data_status_label: null,
         warnings: [
           {
             code: "FILE_CORRUPTED",
@@ -139,12 +147,12 @@ describe("AcceptancePage Evidence Inspection (Story S-42 / T-110)", () => {
         return Promise.resolve({ data: mockVoucherDetailWithInspection });
       }
       if (url.match(/\/projects\/\d+$/)) {
-        return Promise.resolve({ data: { membership: "ban_quan_ly" } });
+        return Promise.resolve({ data: { membership: "chu_dau_tu" } });
       }
       return Promise.reject(new Error("Not found"));
     });
 
-    render(<AcceptancePage user={{ id: 1, is_system_admin: true }} />);
+    render(<AcceptancePage user={{ id: 1 }} />);
 
     // Chờ danh sách phiếu hiển thị
     await waitFor(() => {
@@ -168,12 +176,12 @@ describe("AcceptancePage Evidence Inspection (Story S-42 / T-110)", () => {
     // 2. Kiểm tra badges kiểm tra bằng chứng trên từng ảnh
     // Ảnh 601: Warning (Screenshot)
     expect(screen.getByTestId("evidence-badge-601")).toHaveTextContent(
-      "Nghi vấn ảnh chụp lại màn hình"
+      "Dữ liệu không đầy đủ và cảnh báo"
     );
 
     // Ảnh 602: Clean
     expect(screen.getByTestId("evidence-badge-602")).toHaveTextContent(
-      "Bằng chứng bình thường"
+      "Dữ liệu đầy đủ"
     );
 
     // Ảnh 603: Incomplete data
@@ -181,10 +189,53 @@ describe("AcceptancePage Evidence Inspection (Story S-42 / T-110)", () => {
       "Dữ liệu không đầy đủ"
     );
 
-    // Ảnh 604: Error
+    // Ảnh 604: Chưa có kết quả nghiệp vụ hợp lệ
     expect(screen.getByTestId("evidence-badge-604")).toHaveTextContent(
-      "Lỗi kiểm tra tệp"
+      "Chưa có kết quả kiểm tra"
     );
+  });
+
+  test("Kỹ sư giám sát chỉ xem nhãn ảnh, không mở chi tiết hay preview ảnh", async () => {
+    api.get.mockImplementation((url) => {
+      if (url.endsWith("/acceptance-vouchers")) {
+        return Promise.resolve({ data: { vouchers: mockVouchers } });
+      }
+      if (url.includes("/acceptance-vouchers/20")) {
+        return Promise.resolve({
+          data: {
+            ...mockVoucherDetailWithInspection,
+            photos: [{
+              id: 601,
+              file_name: "screenshot_photo.png",
+              url: "/api/projects/1/acceptance-vouchers/20/photos/601",
+              inspection: {
+                data_status_label: "Dữ liệu không đầy đủ và cảnh báo",
+              },
+            }],
+            photo_flags: undefined,
+          },
+        });
+      }
+      if (url === "/projects/1") {
+        return Promise.resolve({ data: { membership: "ky_su_giam_sat" } });
+      }
+      return Promise.reject(new Error(`Unexpected GET ${url}`));
+    });
+
+    render(<AcceptancePage user={{ id: 2 }} />);
+
+    const detailButton = await screen.findByRole("button", { name: /chi tiết/i });
+    fireEvent.click(detailButton);
+
+    expect(await screen.findByTestId("evidence-badge-601")).toHaveTextContent(
+      "Dữ liệu không đầy đủ và cảnh báo"
+    );
+    expect(screen.queryByTestId("photo-meta-btn-601")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByAltText("screenshot_photo.png"));
+    expect(screen.queryByTestId("close-preview-btn")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Chi tiết ảnh" })).not.toBeInTheDocument();
+    expect(api.get.mock.calls.some(([url]) => url.includes("/photo-metadata/"))).toBe(false);
   });
 
   test("Hiển thị cảnh báo nhắc nhở phi ngăn chặn trong dialog duyệt phiếu", async () => {
@@ -199,7 +250,7 @@ describe("AcceptancePage Evidence Inspection (Story S-42 / T-110)", () => {
         return Promise.resolve({ data: mockVoucherDetailWithInspection });
       }
       if (url.match(/\/projects\/\d+$/)) {
-        return Promise.resolve({ data: { membership: "ban_quan_ly" } });
+        return Promise.resolve({ data: { membership: "chu_dau_tu" } });
       }
       return Promise.reject(new Error("Not found"));
     });
@@ -211,7 +262,7 @@ describe("AcceptancePage Evidence Inspection (Story S-42 / T-110)", () => {
       },
     });
 
-    render(<AcceptancePage user={{ id: 1, is_system_admin: true }} />);
+    render(<AcceptancePage user={{ id: 1 }} />);
 
     // Mở xem chi tiết trước để nạp photo_flags
     await waitFor(() => {
@@ -269,7 +320,7 @@ describe("AcceptancePage Evidence Inspection (Story S-42 / T-110)", () => {
         return Promise.resolve({ data: mockVoucherDetailWithInspection });
       }
       if (url.match(/\/projects\/\d+$/)) {
-        return Promise.resolve({ data: { membership: "ban_quan_ly" } });
+        return Promise.resolve({ data: { membership: "chu_dau_tu" } });
       }
       if (url.includes("/photo-metadata/acceptance/")) {
         return Promise.resolve({
@@ -277,9 +328,12 @@ describe("AcceptancePage Evidence Inspection (Story S-42 / T-110)", () => {
             id: 601,
             file_name: "screenshot_photo.png",
             status: "warning",
-            status_label: "Cần xác minh",
+            data_status: "incomplete_data_warning",
+            data_status_label: "Dữ liệu không đầy đủ và cảnh báo",
             inspection: {
               status: "warning",
+              data_status: "incomplete_data_warning",
+              data_status_label: "Dữ liệu không đầy đủ và cảnh báo",
               warnings: [
                 {
                   code: "SCREENSHOT_DETECTED",
@@ -293,7 +347,7 @@ describe("AcceptancePage Evidence Inspection (Story S-42 / T-110)", () => {
       return Promise.reject(new Error("Not found"));
     });
 
-    render(<AcceptancePage user={{ id: 1, is_system_admin: true }} />);
+    render(<AcceptancePage user={{ id: 1 }} />);
 
     await waitFor(() => {
       expect(

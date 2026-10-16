@@ -74,6 +74,7 @@ const PERMISSIONS = {
   // (không gán acceptance.review_internal hay acceptance.approve_official).
   "acceptance.create_dossier": [KY_SU_GIAM_SAT],
   "acceptance.update_dossier": [KY_SU_GIAM_SAT],
+  "acceptance.access": [KY_SU_GIAM_SAT, CHU_DAU_TU],
 
   // ── Đội trưởng thi công ────────────────────────────────────────────
   // TREO: route GET /my-team/tasks hiện phục vụ 4 role (đội trưởng bị ép về đúng
@@ -102,6 +103,7 @@ const PERMISSIONS = {
   // Đây là quyết định kiến trúc lớn (có thể cần bảng `approval_delegations`
   // riêng) — ĐỪNG tự code cơ chế uỷ quyền khi chưa có thiết kế được duyệt.
   "acceptance.approve_official": [CHU_DAU_TU],
+  "acceptance.return_official": [CHU_DAU_TU],
   // TREO: duyệt hoặc trả lại đề nghị thanh toán.
   "payment.approve": [CHU_DAU_TU],
   // S-39: Chủ đầu tư / Ban quản lý xem toàn bộ nhật ký thao tác của dự án
