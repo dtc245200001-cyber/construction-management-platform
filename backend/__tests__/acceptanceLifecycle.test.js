@@ -229,8 +229,8 @@ describe("S-39: Acceptance Voucher Lifecycle & Audit Portal", () => {
       expect(call.details.new_value.status).toBe("approved");
     });
 
-    test("ban_quan_ly gets 403 on approve", async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] });
+    test("ky_su_giam_sat gets 403 on approve", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "ky_su_giam_sat" }] });
       const res = await request(app)
         .post("/api/projects/1/acceptance-vouchers/100/approve")
         .send({});

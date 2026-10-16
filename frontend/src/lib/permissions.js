@@ -23,8 +23,8 @@ const ALL_MEMBERS = Object.values(ROLES);
 
 export const PERMISSIONS = {
   // ── Ban quản lý dự án ──────────────────────────────────────────────
-  "member.manage": [ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU],
-  "work_item.manage": [ROLES.BAN_QUAN_LY],
+  "member.manage": [ROLES.BAN_QUAN_LY],
+  "work_item.manage": [ROLES.BAN_QUAN_LY, ROLES.CHI_HUY_TRUONG],
   "acceptance.review_internal": [ROLES.BAN_QUAN_LY],
 
   // ── Chỉ huy trưởng ─────────────────────────────────────────────────
@@ -83,6 +83,13 @@ export const PERMISSIONS = {
   // S-43: Đề nghị thanh toán (T-112 / T-113)
   "payment_request.create": [ROLES.BAN_QUAN_LY],
   "payment_request.view": [ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU, ROLES.KE_TOAN],
+
+  // S-40 / T-106: Siêu dữ liệu ảnh hiện trường và quyền riêng tư vị trí
+  "photo.view_metadata": ALL_MEMBERS,
+  "photo.view_gps": [ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY],
+
+  // S-41 / T-107: Cấu hình phạm vi công trường (geofence)
+  "site_geofence.manage": [ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY],
 };
 
 // Tra cứu 1 role có 1 quyền không. Pure — không bypass, không IO.

@@ -106,9 +106,9 @@ describe("S-38 / T-99 return, edit and resubmit acceptance voucher", () => {
     }));
   });
 
-  test("ban_quan_ly không được trả lại phiếu", async () => {
+  test("ky_su_giam_sat không được trả lại phiếu", async () => {
     const app = makeApp({ id: 20, is_system_admin: false });
-    mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "ky_su_giam_sat" }] });
 
     const res = await request(app)
       .post("/api/projects/1/acceptance-vouchers/9/return")

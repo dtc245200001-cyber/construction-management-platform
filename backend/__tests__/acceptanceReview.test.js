@@ -70,9 +70,9 @@ describe("S-38 / T-98 acceptance approval RBAC", () => {
     expect(mockClient.query).toHaveBeenCalledWith("COMMIT");
   });
 
-  test("ban_quan_ly is blocked by server-side approval RBAC", async () => {
+  test("ky_su_giam_sat is blocked by server-side approval RBAC", async () => {
     const app = makeApp({ id: 10, is_system_admin: false });
-    mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "ky_su_giam_sat" }] });
 
     const res = await request(app)
       .post("/api/projects/1/acceptance-vouchers/9/approve")
