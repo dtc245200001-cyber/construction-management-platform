@@ -79,6 +79,10 @@ export const PERMISSIONS = {
   "invitation.manage": [ROLES.CHI_HUY_TRUONG, ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY],
   "schedule.recalculate": ALL_MEMBERS,
   "site_log.create_daily": [ROLES.KY_SU_GIAM_SAT, ROLES.CHI_HUY_TRUONG, ROLES.BAN_QUAN_LY],
+
+  // S-43: Đề nghị thanh toán (T-112 / T-113)
+  "payment_request.create": [ROLES.BAN_QUAN_LY],
+  "payment_request.view": [ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU, ROLES.KE_TOAN],
 };
 
 // Tra cứu 1 role có 1 quyền không. Pure — không bypass, không IO.
