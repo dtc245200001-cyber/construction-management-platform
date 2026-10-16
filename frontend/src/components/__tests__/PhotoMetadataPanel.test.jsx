@@ -129,6 +129,8 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
   it('hiển thị cảnh báo bảo vệ vị trí và KHÔNG lộ toạ độ thô khi người dùng không có quyền photo.view_gps', async () => {
     api.get.mockResolvedValueOnce({
       data: {
+        data_status: 'full_data',
+        data_status_label: 'Dữ liệu đầy đủ',
         status: 'complete',
         status_label: 'Đầy đủ thời gian và toạ độ',
         captured_at: '2026-03-15T07:30:00.000Z',
@@ -165,6 +167,8 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       data: {
         status: 'none',
         status_label: 'Ảnh không có siêu dữ liệu gốc',
+        data_status: 'incomplete_data',
+        data_status_label: 'Dữ liệu không đầy đủ',
         captured_at: null,
         captured_at_source: null,
         source: 'file',
@@ -223,6 +227,8 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
     it('không hiển thị hộp Đối chiếu phạm vi công trường kể cả khi status = inside', async () => {
       api.get.mockResolvedValueOnce({
         data: {
+          data_status: 'full_data',
+          data_status_label: 'Dữ liệu đầy đủ',
           status: 'complete',
           status_label: 'Đầy đủ thời gian và toạ độ',
           has_gps: true,
@@ -606,6 +612,8 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
     it('hiển thị kết quả kiểm tra hợp lệ / bình thường (clean state)', async () => {
       api.get.mockResolvedValueOnce({
         data: {
+          data_status: 'full_data',
+          data_status_label: 'Dữ liệu đầy đủ',
           status: 'complete',
           status_label: 'Đầy đủ thời gian và toạ độ',
           captured_at: '2026-10-15T08:00:00.000Z',
@@ -663,6 +671,8 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
           status_label: 'Ảnh không có siêu dữ liệu gốc',
           has_gps: false,
           inspection: {
+            data_status: 'incomplete_data_warning',
+            data_status_label: 'Dữ liệu không đầy đủ và cảnh báo',
             status: 'warning',
             status_label: 'Cần xác minh (có dấu hiệu nghi vấn)',
             can_evaluate: true,
@@ -748,6 +758,8 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
           status_label: 'Ảnh không có siêu dữ liệu gốc',
           has_gps: false,
           inspection: {
+            data_status: 'incomplete_data',
+            data_status_label: 'Dữ liệu không đầy đủ',
             status: 'incomplete_data',
             status_label: 'Dữ liệu không đầy đủ (thiếu EXIF máy ảnh)',
             can_evaluate: false,
@@ -820,12 +832,9 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent(
-          'Dữ liệu không đầy đủ và cảnh báo'
-        );
+        expect(screen.getByTestId('inspection-warnings-section')).toBeInTheDocument();
       });
-
-      expect(screen.getByTestId('inspection-warnings-section')).toBeInTheDocument();
+      expect(screen.queryByTestId('inspection-status-badge')).toBeNull();
       expect(
         screen.getByText(/Tệp ảnh bị hỏng hoặc không đọc được/i)
       ).toBeInTheDocument();
@@ -858,6 +867,8 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
           status_label: 'Ảnh không có siêu dữ liệu gốc',
           has_gps: false,
           inspection: {
+            data_status: 'full_data',
+            data_status_label: 'Dữ liệu đầy đủ',
             status: 'clean',
             status_label: 'Hợp lệ / Bình thường',
             warnings: [],
@@ -1237,6 +1248,8 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
           uploaded_by_name: 'Kỹ sư Giám sát',
           is_reviewer: false,
           has_gps: true,
+          data_status: 'incomplete_data_warning',
+          data_status_label: 'Dữ liệu không đầy đủ và cảnh báo',
           status: 'complete',
           captured_at: '2026-03-15T07:30:00.000Z',
           inspection: {
@@ -1265,7 +1278,7 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
         <PhotoMetadataPanel
           projectId={1}
           photoId={101}
-          kind="acceptance"
+          kind="diary"
           isOpen={true}
           onClose={mockOnClose}
         />
@@ -1499,7 +1512,9 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       await waitFor(() => {
         expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Dữ liệu không đầy đủ');
       });
-      expect(screen.getByTestId('missing-fields-section')).toHaveTextContent('Không có thông tin thiết bị');
+      expect(screen.queryByText('Danh sách trường EXIF còn thiếu')).toBeNull();
+      expect(screen.queryByText('Không có thông tin thiết bị')).toBeNull();
+      expect(screen.getAllByText('Không có dữ liệu').length).toBeGreaterThanOrEqual(1);
     });
 
     // 3. Thiếu nhiều trường EXIF, không có cảnh báo → “Dữ liệu không đầy đủ”.
@@ -1541,8 +1556,10 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       await waitFor(() => {
         expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Dữ liệu không đầy đủ');
       });
-      expect(screen.getByText('Không có thời gian chụp')).toBeInTheDocument();
-      expect(screen.getByText('Không có thông tin thiết bị')).toBeInTheDocument();
+      expect(screen.queryByText('Danh sách trường EXIF còn thiếu')).toBeNull();
+      expect(screen.queryByText('Không có thời gian chụp')).toBeNull();
+      expect(screen.queryByText('Không có thông tin thiết bị')).toBeNull();
+      expect(screen.getAllByText('Không có dữ liệu').length).toBeGreaterThanOrEqual(2);
     });
 
     // 4. Thiếu EXIF và có dấu hiệu cảnh báo → “Dữ liệu không đầy đủ và cảnh báo”.
@@ -1587,7 +1604,9 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
         expect(screen.getByTestId('inspection-status-badge')).toHaveTextContent('Dữ liệu không đầy đủ và cảnh báo');
       });
       expect(screen.getByText('Dấu hiệu ảnh chụp lại màn hình')).toBeInTheDocument();
-      expect(screen.getByText('Không có thời gian chụp')).toBeInTheDocument();
+      expect(screen.queryByText('Danh sách trường EXIF còn thiếu')).toBeNull();
+      expect(screen.queryByText('Không có thời gian chụp')).toBeNull();
+      expect(screen.queryByText('Không có thông tin thiết bị')).toBeNull();
     });
 
     // 5. Thiếu thời gian chụp.
@@ -1618,7 +1637,8 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
       await waitFor(() => {
         expect(screen.getByText('no_captured_at.jpg')).toBeInTheDocument();
       });
-      expect(screen.getByText('Không có thời gian chụp')).toBeInTheDocument();
+      expect(screen.queryByText('Danh sách trường EXIF còn thiếu')).toBeNull();
+      expect(screen.queryByText('Không có thời gian chụp')).toBeNull();
       expect(screen.getAllByText('Không có dữ liệu').length).toBeGreaterThanOrEqual(1);
     });
 
@@ -1968,5 +1988,3 @@ describe('PhotoMetadataPanel Component (S-40 / T-106)', () => {
     });
   });
 });
-
-

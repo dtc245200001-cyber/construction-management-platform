@@ -63,7 +63,7 @@ describe("S-38 / T-99 return, edit and resubmit acceptance voucher", () => {
 
   test("trả lại phiếu bắt buộc lý do", async () => {
     const app = makeApp({ id: 20, is_system_admin: false });
-    mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "chu_dau_tu" }] });
 
     const res = await request(app)
       .post("/api/projects/1/acceptance-vouchers/9/return")
@@ -74,9 +74,9 @@ describe("S-38 / T-99 return, edit and resubmit acceptance voucher", () => {
     expect(mockClient.query).not.toHaveBeenCalled();
   });
 
-  test("ban_quan_ly trả lại pending_review, lưu lý do và dấu người thao tác", async () => {
+  test("chu_dau_tu trả lại pending_review, lưu lý do và dấu người thao tác", async () => {
     const app = makeApp({ id: 20, is_system_admin: false });
-    mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "chu_dau_tu" }] });
     mockClient.query
       .mockResolvedValueOnce({})
       .mockResolvedValueOnce({ rows: [{ id: 9, status: "pending_review", created_by: 10 }] })
@@ -104,6 +104,18 @@ describe("S-38 / T-99 return, edit and resubmit acceptance voucher", () => {
       projectId: 1,
       details: expect.objectContaining({ reason: "Thiếu ảnh hiện trường" }),
     }));
+  });
+
+  test("ban_quan_ly không được trả lại phiếu", async () => {
+    const app = makeApp({ id: 20, is_system_admin: false });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "ban_quan_ly" }] });
+
+    const res = await request(app)
+      .post("/api/projects/1/acceptance-vouchers/9/return")
+      .send({ reason: "Thiếu ảnh hiện trường" });
+
+    expect(res.status).toBe(403);
+    expect(mockClient.query).not.toHaveBeenCalled();
   });
 
   test("người lập sửa được phiếu returned và nội dung được tính lại", async () => {
@@ -176,6 +188,7 @@ describe("S-38 / T-99 return, edit and resubmit acceptance voucher", () => {
         rows: [{ id: 9, status: "returned", created_by: 10, has_negative_delta: false }],
       })
       .mockResolvedValueOnce({ rows: [{ count: 1 }] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ id: 9, status: "pending_review", created_by: 10 }] })
       .mockResolvedValueOnce({});
 

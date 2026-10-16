@@ -40,6 +40,11 @@ export default function MobileBottomNav({ role, onOpenMenu }) {
           { label: "Nhật ký", path: "/diary", icon: FileText },
         ];
       case ROLES.BAN_QUAN_LY:
+        return [
+          { label: "Tổng quan", path: "/dashboard", icon: Home },
+          { label: "WBS", path: "/wbs", icon: Network },
+          { label: "Tiến độ", path: "/schedule", icon: TrendingUp },
+        ];
       case ROLES.CHU_DAU_TU:
         return [
           { label: "Tổng quan", path: "/dashboard", icon: Home },

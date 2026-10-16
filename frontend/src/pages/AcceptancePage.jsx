@@ -39,26 +39,22 @@ import {
   DialogFooter,
 } from "../components/ui/dialog";
 import PhotoMetadataPanel from "../components/PhotoMetadataPanel";
-import { extractClientExif } from "../utils/imageCompressor";
 
 const ALLOWED_PHOTO_EXTS = [".jpg", ".jpeg", ".png", ".webp", ".heic"];
 const MAX_PHOTO_SIZE_MB = 10;
 const MAX_PHOTO_SIZE_BYTES = MAX_PHOTO_SIZE_MB * 1024 * 1024;
 
-export default function AcceptancePage({ user }) {
+export default function AcceptancePage() {
   const projectId = localStorage.getItem("currentProjectId") || 1;
 
   // Quyền truy cập
   const [projectRole, setProjectRole] = useState(null);
-  const isSupervisor =
-    user?.is_system_admin || can(projectRole, "acceptance.create_dossier");
-  // S-38 / T-98: Ban quản lý duyệt; BQL hoặc Chủ đầu tư có thể trả lại
-  const canApprove =
-    user?.is_system_admin || can(projectRole, "acceptance.review_internal");
-  const canReturn =
-    user?.is_system_admin ||
-    can(projectRole, "acceptance.review_internal") ||
-    can(projectRole, "acceptance.approve_official");
+  const [membershipLoading, setMembershipLoading] = useState(true);
+  const hasAccess = can(projectRole, "acceptance.access");
+  const isSupervisor = can(projectRole, "acceptance.create_dossier");
+  const isInvestor = can(projectRole, "acceptance.approve_official");
+  const canApprove = isInvestor;
+  const canReturn = can(projectRole, "acceptance.return_official");
 
   // Dữ liệu danh sách phiếu
   const [vouchers, setVouchers] = useState([]);
@@ -79,6 +75,7 @@ export default function AcceptancePage({ user }) {
   const [selectedPhotos, setSelectedPhotos] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [savedVoucherId, setSavedVoucherId] = useState(null);
 
   // Dialog xem chi tiết
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
@@ -140,7 +137,7 @@ export default function AcceptancePage({ user }) {
   const [returnReason, setReturnReason] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
-  const canReviewInternal = canReturn;
+  const canReviewInternal = isInvestor;
   const pendingReviewVouchers = vouchers.filter((v) => v.status === "pending_review");
   const [reviewError, setReviewError] = useState("");
 
@@ -151,6 +148,8 @@ export default function AcceptancePage({ user }) {
       setProjectRole(res.data?.membership || null);
     } catch (_err) {
       setProjectRole(null);
+    } finally {
+      setMembershipLoading(false);
     }
   }, [projectId]);
 
@@ -202,14 +201,24 @@ export default function AcceptancePage({ user }) {
 
   useEffect(() => {
     fetchMembership();
-    fetchVouchers();
-  }, [fetchMembership, fetchVouchers]);
+  }, [fetchMembership]);
+
+  useEffect(() => {
+    if (membershipLoading) return;
+    if (hasAccess) {
+      fetchVouchers();
+    } else {
+      setVouchers([]);
+      setLoadingList(false);
+    }
+  }, [fetchVouchers, hasAccess, membershipLoading]);
 
   // Mở modal tạo phiếu mới
   const handleOpenCreateModal = () => {
     setBatchName("");
     setSelectedPhotos([]);
     setSubmitError("");
+    setSavedVoucherId(null);
     fetchLeafItems();
     setCreateDialogOpen(true);
   };
@@ -270,7 +279,7 @@ export default function AcceptancePage({ user }) {
   };
 
   // Xử lý chọn ảnh đính kèm
-  const handlePhotoSelect = async (e) => {
+  const handlePhotoSelect = (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
@@ -286,16 +295,12 @@ export default function AcceptancePage({ user }) {
       }
 
       const previewUrl = URL.createObjectURL(file);
-      const exifData = await extractClientExif(file);
       newPhotos.push({
         file,
         previewUrl,
         caption: "",
         error,
-        exif_captured_at: exifData?.exif_captured_at,
-        exif_latitude: exifData?.exif_latitude,
-        exif_longitude: exifData?.exif_longitude,
-        exif_accuracy_m: exifData?.exif_accuracy_m,
+        inspection: null,
       });
     }
 
@@ -383,6 +388,7 @@ export default function AcceptancePage({ user }) {
 
   // Submit tạo phiếu nghiệm thu
   const handleCreateVoucher = async () => {
+    if (!isSupervisor || savedVoucherId) return;
     setSubmitError("");
 
     if (!batchName.trim()) {
@@ -413,6 +419,7 @@ export default function AcceptancePage({ user }) {
     }));
 
     setSubmitting(true);
+    let createdVoucherId = null;
     try {
       // 1. Tạo phiếu
       const createRes = await api.post(
@@ -424,32 +431,29 @@ export default function AcceptancePage({ user }) {
       );
 
       const voucherId = createRes.data?.voucher?.id;
+      createdVoucherId = voucherId;
+      setSavedVoucherId(voucherId || null);
       const warnings = createRes.data?.warnings || [];
 
       // 2. Upload ảnh đính kèm nếu có
       if (selectedPhotos.length > 0 && voucherId) {
-        for (const photoItem of selectedPhotos) {
+        for (const [photoIndex, photoItem] of selectedPhotos.entries()) {
           const formData = new FormData();
           formData.append("photo", photoItem.file);
           if (photoItem.caption) {
             formData.append("caption", photoItem.caption);
           }
-          if (photoItem.exif_captured_at) {
-            formData.append("exif_captured_at", photoItem.exif_captured_at);
-          }
-          if (photoItem.exif_latitude !== undefined && photoItem.exif_latitude !== null) {
-            formData.append("exif_latitude", String(photoItem.exif_latitude));
-          }
-          if (photoItem.exif_longitude !== undefined && photoItem.exif_longitude !== null) {
-            formData.append("exif_longitude", String(photoItem.exif_longitude));
-          }
-          if (photoItem.exif_accuracy_m !== undefined && photoItem.exif_accuracy_m !== null) {
-            formData.append("exif_accuracy_m", String(photoItem.exif_accuracy_m));
-          }
-          await api.post(
+          const uploadRes = await api.post(
             `/projects/${projectId}/acceptance-vouchers/${voucherId}/photos`,
             formData,
             { headers: { "Content-Type": "multipart/form-data" } }
+          );
+          setSelectedPhotos((previous) =>
+            previous.map((selectedPhoto, index) =>
+              index === photoIndex
+                ? { ...selectedPhoto, inspection: uploadRes.data?.inspection || null }
+                : selectedPhoto
+            )
           );
         }
       }
@@ -460,7 +464,6 @@ export default function AcceptancePage({ user }) {
         toast.success("Tạo phiếu nghiệm thu nháp thành công!");
       }
 
-      setCreateDialogOpen(false);
       fetchVouchers();
     } catch (err) {
       const msg =
@@ -468,6 +471,7 @@ export default function AcceptancePage({ user }) {
         "Lỗi trong quá trình tạo phiếu nghiệm thu";
       setSubmitError(msg);
       toast.error(msg);
+      if (createdVoucherId) fetchVouchers();
     } finally {
       setSubmitting(false);
     }
@@ -520,7 +524,7 @@ export default function AcceptancePage({ user }) {
       await api.post(
         `/projects/${projectId}/acceptance-vouchers/${voucher.id}/submit`
       );
-      toast.success("Đã gửi phiếu lên Ban quản lý để duyệt");
+      toast.success("Đã gửi phiếu lên Chủ đầu tư để duyệt");
       fetchVouchers();
     } catch (err) {
       const msg = err?.response?.data?.message || "Không thể gửi duyệt phiếu";
@@ -542,7 +546,7 @@ export default function AcceptancePage({ user }) {
     setApproveDialogOpen(true);
   };
 
-  // Chỉ thực thi API sau khi Ban quản lý bấm "Xác nhận duyệt" trong dialog.
+  // Chỉ thực thi API sau khi Chủ đầu tư bấm "Xác nhận duyệt" trong dialog.
   const handleConfirmApprove = async () => {
     if (!approveTarget || !canApprove || actionLoading) return;
 
@@ -619,6 +623,22 @@ export default function AcceptancePage({ user }) {
     (v.batch_name || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  if (membershipLoading) {
+    return (
+      <div className="p-6 text-center text-slate-500">
+        Đang kiểm tra quyền truy cập...
+      </div>
+    );
+  }
+
+  if (!hasAccess) {
+    return (
+      <div className="p-6 text-center text-rose-700" role="alert">
+        Bạn không có quyền truy cập chức năng nghiệm thu khối lượng trong dự án này.
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 p-4 md:p-6 max-w-7xl mx-auto">
       {/* ── HEADER ── */}
@@ -649,7 +669,7 @@ export default function AcceptancePage({ user }) {
             Làm mới
           </Button>
 
-          {isSupervisor ? (
+          {isSupervisor && (
             <Button
               onClick={handleOpenCreateModal}
               className="w-full sm:w-auto min-h-[44px] bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-2 font-bold touch-target shadow-sm"
@@ -657,16 +677,6 @@ export default function AcceptancePage({ user }) {
               <Plus className="h-5 w-5" />
               Lập phiếu nghiệm thu
             </Button>
-          ) : (
-            <div
-              title="Chỉ Kỹ sư giám sát hoặc Quản trị viên mới có quyền lập phiếu"
-              className="w-full sm:w-auto"
-            >
-              <Button disabled variant="secondary" className="w-full sm:w-auto min-h-[44px] cursor-not-allowed">
-                <Plus className="h-4 w-4 mr-1.5" />
-                Lập phiếu (Cần quyền Kỹ sư giám sát)
-              </Button>
-            </div>
           )}
         </div>
       </div>
@@ -680,7 +690,7 @@ export default function AcceptancePage({ user }) {
                 Phiếu chờ duyệt
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                Ban quản lý duyệt phiếu; Ban quản lý và Chủ đầu tư có thể trả lại phiếu đang chờ duyệt.
+                Chủ đầu tư xem bằng chứng, duyệt hoặc trả lại phiếu đang chờ duyệt.
               </p>
             </div>
             <Badge className="bg-blue-100 text-blue-800 border-blue-200">
@@ -914,7 +924,7 @@ export default function AcceptancePage({ user }) {
                               title={
                                 v.has_negative_delta
                                   ? "Phiếu có khối lượng âm — không thể gửi duyệt"
-                                  : "Gửi phiếu lên Ban quản lý"
+                                  : "Gửi phiếu lên Chủ đầu tư"
                               }
                               className="h-8 px-2.5 text-blue-700 border-blue-200 hover:bg-blue-50"
                             >
@@ -922,7 +932,7 @@ export default function AcceptancePage({ user }) {
                             </Button>
                           )}
 
-                        {/* S-38 / T-98: Duyệt (BQL, pending_review) */}
+                        {/* S-38 / T-98: Duyệt (CĐT, pending_review) */}
                         {canApprove && v.status === "pending_review" && (
                           <Button
                             variant="outline"
@@ -936,7 +946,7 @@ export default function AcceptancePage({ user }) {
                           </Button>
                         )}
 
-                        {/* S-39: Trả lại (BQL hoặc CĐT, pending_review) */}
+                        {/* S-39: Trả lại (CĐT, pending_review) */}
                         {canReturn && v.status === "pending_review" && (
                           <Button
                             variant="outline"
@@ -1241,6 +1251,13 @@ export default function AcceptancePage({ user }) {
                         <div className="text-[11px] text-slate-500">
                           {(item.file.size / (1024 * 1024)).toFixed(2)} MB
                         </div>
+                        <div
+                          data-testid={`selected-photo-status-${idx}`}
+                          className="mt-1 text-[11px] font-medium text-slate-700"
+                        >
+                          {item.inspection?.data_status_label ||
+                            "Chưa có kết quả kiểm tra"}
+                        </div>
 
                         {item.error ? (
                           <p className="text-[11px] text-rose-600 mt-1 font-medium">
@@ -1311,12 +1328,12 @@ export default function AcceptancePage({ user }) {
               onClick={() => setCreateDialogOpen(false)}
               disabled={submitting}
             >
-              Hủy
+              {savedVoucherId ? "Đóng" : "Hủy"}
             </Button>
             <Button
               type="button"
               onClick={handleCreateVoucher}
-              disabled={submitting || computedSummary.count === 0}
+              disabled={submitting || savedVoucherId || computedSummary.count === 0}
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               {submitting ? (
@@ -1325,7 +1342,9 @@ export default function AcceptancePage({ user }) {
                   Đang lưu...
                 </>
               ) : (
-                "Tạo phiếu nghiệm thu nháp"
+                savedVoucherId
+                  ? `Đã lưu bản nháp #${savedVoucherId}`
+                  : "Tạo phiếu nghiệm thu nháp"
               )}
             </Button>
           </DialogFooter>
@@ -1441,7 +1460,7 @@ export default function AcceptancePage({ user }) {
               )}
 
               {/* Cảnh báo ảnh chụp ngoài bán kính công trường (S-41 / T-108) */}
-              {viewingVoucher.photo_flags?.outside > 0 && (
+              {isInvestor && viewingVoucher.photo_flags?.outside > 0 && (
                 <div
                   data-testid="geofence-warning-banner"
                   className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2.5 text-amber-900 text-xs"
@@ -1560,8 +1579,12 @@ export default function AcceptancePage({ user }) {
                     {viewingVoucher.photos.map((photo) => (
                       <div
                         key={photo.id}
-                        onClick={() => handleOpenPhotoPreview(photo)}
-                        className="cursor-pointer group border rounded-lg overflow-hidden bg-slate-50 hover:shadow-md transition"
+                        onClick={
+                          isInvestor
+                            ? () => handleOpenPhotoPreview(photo)
+                            : undefined
+                        }
+                        className={`${isInvestor ? "cursor-pointer hover:shadow-md" : ""} group border rounded-lg overflow-hidden bg-slate-50 transition`}
                       >
                         <div className="aspect-video relative overflow-hidden bg-slate-200">
                           <img
@@ -1581,8 +1604,15 @@ export default function AcceptancePage({ user }) {
                             </p>
                           )}
 
-                          {/* Nhãn trạng thái phạm vi công trường (S-41 / T-108) */}
-                          {photo.geofence_status === "outside" && (
+                          <div
+                            data-testid={`evidence-badge-${photo.id}`}
+                            className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200"
+                          >
+                            {photo.inspection?.data_status_label ||
+                              "Chưa có kết quả kiểm tra"}
+                          </div>
+
+                          {isInvestor && photo.geofence_status === "outside" && (
                             <div
                               data-testid={`geofence-badge-${photo.id}`}
                               className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700 border border-red-200"
@@ -1590,7 +1620,7 @@ export default function AcceptancePage({ user }) {
                               ⚠️ Ngoài phạm vi {photo.geofence_distance_m !== null ? `(${Number(photo.geofence_distance_m).toLocaleString("vi-VN")} m)` : ""}
                             </div>
                           )}
-                          {photo.geofence_status === "inside" && (
+                          {isInvestor && photo.geofence_status === "inside" && (
                             <div
                               data-testid={`geofence-badge-${photo.id}`}
                               className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700 border border-emerald-200"
@@ -1598,71 +1628,32 @@ export default function AcceptancePage({ user }) {
                               ✓ Đúng vị trí {photo.geofence_distance_m !== null ? `(${Number(photo.geofence_distance_m).toLocaleString("vi-VN")} m)` : ""}
                             </div>
                           )}
-                          {photo.geofence_status === "no_gps" && (
-                            <div
-                              data-testid={`geofence-badge-${photo.id}`}
-                              className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-slate-500 bg-slate-100"
-                            >
-                              Không có GPS
-                            </div>
-                          )}
-                          {photo.geofence_status === "no_site_config" && (
-                            <div
-                              data-testid={`geofence-badge-${photo.id}`}
-                              className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-slate-500 bg-slate-100"
-                            >
-                              Chưa cấu hình tâm
-                            </div>
-                          )}
+                          {isInvestor &&
+                            (photo.geofence_status === "no_gps" ||
+                              photo.geofence_status === "no_site_config") && (
+                              <div
+                                data-testid={`geofence-badge-${photo.id}`}
+                                className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-slate-500 bg-slate-100"
+                              >
+                                {photo.geofence_status === "no_gps"
+                                  ? "Không có GPS"
+                                  : "Chưa cấu hình tâm"}
+                              </div>
+                            )}
 
-                          {/* Nhãn kiểm tra quy tắc bằng chứng (Story S-42 / T-110) */}
-                          {(photo.inspection?.status === "warning" || photo.inspection_status === "warning") && (
-                            <div
-                              data-testid={`evidence-badge-${photo.id}`}
-                              className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-300"
-                              title={photo.inspection?.warnings?.map((w) => w.title).join("; ") || "Có dấu hiệu nghi vấn"}
+                          {isInvestor && (
+                            <button
+                              type="button"
+                              data-testid={`photo-meta-btn-${photo.id}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenPhotoDetail(photo);
+                              }}
+                              className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 hover:underline font-medium block cursor-pointer"
                             >
-                              ⚠️ {photo.inspection?.warnings?.length > 1
-                                ? `${photo.inspection.warnings.length} dấu hiệu nghi vấn`
-                                : photo.inspection?.warnings?.[0]?.title || "Có dấu hiệu nghi vấn"}
-                            </div>
+                              ℹ️ Thông tin ảnh
+                            </button>
                           )}
-                          {(photo.inspection?.status === "clean" || photo.inspection_status === "clean") && (
-                            <div
-                              data-testid={`evidence-badge-${photo.id}`}
-                              className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-800 border border-emerald-200"
-                            >
-                              ✓ Bằng chứng bình thường
-                            </div>
-                          )}
-                          {(photo.inspection?.status === "incomplete_data" || photo.inspection_status === "incomplete_data") && (
-                            <div
-                              data-testid={`evidence-badge-${photo.id}`}
-                              className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-slate-600 bg-slate-100 border border-slate-200"
-                            >
-                              ℹ️ Dữ liệu không đầy đủ
-                            </div>
-                          )}
-                          {(photo.inspection?.status === "error" || photo.inspection_status === "error") && (
-                            <div
-                              data-testid={`evidence-badge-${photo.id}`}
-                              className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-100 text-rose-800 border border-rose-200"
-                            >
-                              ❌ Lỗi kiểm tra tệp
-                            </div>
-                          )}
-
-                          <button
-                            type="button"
-                            data-testid={`photo-meta-btn-${photo.id}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenPhotoDetail(photo);
-                            }}
-                            className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 hover:underline font-medium block cursor-pointer"
-                          >
-                            ℹ️ Thông tin ảnh
-                          </button>
                         </div>
                       </div>
                     ))}
@@ -1690,7 +1681,7 @@ export default function AcceptancePage({ user }) {
         photoId={photoModal.photo?.id}
         photo={photoModal.photo}
         kind="acceptance"
-        isOpen={photoModal.status !== "closed"}
+        isOpen={isInvestor && photoModal.status !== "closed"}
         mode={photoModal.status}
         onSwitchMode={(newMode) =>
           setPhotoModal((prev) => ({ ...prev, status: newMode }))

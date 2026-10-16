@@ -45,6 +45,25 @@ describe("permissions matrix (phân quyền 6 vai trò)", () => {
       expect(can(ROLES.KY_SU_GIAM_SAT, "acceptance.review_internal")).toBe(false);
       expect(can(ROLES.KY_SU_GIAM_SAT, "acceptance.approve_official")).toBe(false);
       expect(can(ROLES.KY_SU_GIAM_SAT, "acceptance.view_verified")).toBe(false);
+      expect(can(ROLES.KY_SU_GIAM_SAT, "acceptance.return_official")).toBe(false);
+    });
+    test("chỉ kỹ sư giám sát và chủ đầu tư truy cập nghiệm thu; chỉ chủ đầu tư duyệt/trả lại", () => {
+      expect(can(ROLES.KY_SU_GIAM_SAT, "acceptance.access")).toBe(true);
+      expect(can(ROLES.CHU_DAU_TU, "acceptance.access")).toBe(true);
+
+      for (const role of [
+        ROLES.BAN_QUAN_LY,
+        ROLES.CHI_HUY_TRUONG,
+        ROLES.DOI_TRUONG,
+        ROLES.KE_TOAN,
+      ]) {
+        expect(can(role, "acceptance.access")).toBe(false);
+        expect(can(role, "acceptance.create_dossier")).toBe(false);
+        expect(can(role, "acceptance.approve_official")).toBe(false);
+        expect(can(role, "acceptance.return_official")).toBe(false);
+      }
+      expect(can(ROLES.CHU_DAU_TU, "acceptance.approve_official")).toBe(true);
+      expect(can(ROLES.CHU_DAU_TU, "acceptance.return_official")).toBe(true);
     });
   });
 

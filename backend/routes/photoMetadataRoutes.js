@@ -23,6 +23,7 @@ const {
 const asyncHandler = require("../utils/asyncHandler");
 const { parsePositiveInt } = require("../utils/validators");
 const { can } = require("../utils/permissions");
+const { ROLES } = require("../utils/constants");
 const {
   inspectVoucherPhotoRecord,
   sanitizeInspectionForRole,
@@ -64,6 +65,12 @@ router.get(
     if (kind !== "diary" && kind !== "acceptance") {
       return res.status(400).json({
         message: "Tham số kind không hợp lệ. Chỉ chấp nhận 'diary' hoặc 'acceptance'",
+      });
+    }
+
+    if (kind === "acceptance" && req.projectRole !== ROLES.CHU_DAU_TU) {
+      return res.status(403).json({
+        message: "Chỉ Chủ đầu tư được xem chi tiết ảnh nghiệm thu",
       });
     }
 
@@ -122,38 +129,21 @@ router.get(
       can(req.projectRole, "photo.view_gps") || (req.user && req.user.is_system_admin)
     );
 
-    const isReviewer = Boolean(
-      can(req.projectRole, "acceptance.review_internal") ||
-      can(req.projectRole, "acceptance.approve_official") ||
-      req.projectRole === "chu_dau_tu" ||
-      req.projectRole === "ban_quan_ly" ||
-      (req.user && req.user.is_system_admin)
-    );
+    const isReviewer = kind === "acceptance"
+      ? req.projectRole === ROLES.CHU_DAU_TU
+      : Boolean(
+          can(req.projectRole, "acceptance.review_internal") ||
+          can(req.projectRole, "acceptance.approve_official") ||
+          req.projectRole === "chu_dau_tu" ||
+          req.projectRole === "ban_quan_ly" ||
+          (req.user && req.user.is_system_admin)
+        );
 
     // Đánh giá dấu hiệu bất thường (Story S-42 / T-109)
-    let inspection = null;
-    try {
-      const inspectionRaw = inspectVoucherPhotoRecord(row, {
-        created_at: row.voucher_created_at || row.entry_created_at,
-      });
-      inspection = sanitizeInspectionForRole(inspectionRaw, isReviewer);
-    } catch (_inspErr) {
-      inspection = {
-        status: "incomplete_data",
-        data_status: "incomplete_data",
-        data_status_label: "Dữ liệu không đầy đủ",
-        missing_fields: [
-          { field: "captured_at", label: "Không có thời gian chụp" },
-          { field: "device", label: "Không có thông tin thiết bị" },
-        ],
-        can_evaluate: false,
-        has_sufficient_data: false,
-        summary: "Dữ liệu không đầy đủ để đánh giá toàn diện",
-        warnings: [],
-        metadata: {},
-        inspected_at: new Date().toISOString(),
-      };
-    }
+    const inspectionRaw = inspectVoucherPhotoRecord(row, {
+      created_at: row.voucher_created_at || row.entry_created_at,
+    });
+    const inspection = sanitizeInspectionForRole(inspectionRaw, isReviewer);
 
     const photoUrl =
       row.url ||
@@ -174,7 +164,6 @@ router.get(
       status_label: STATUS_LABELS[row.metadata_status] || "Không xác định",
       data_status: inspection?.data_status || null,
       data_status_label: inspection?.data_status_label || null,
-      missing_fields: inspection?.missing_fields || [],
       captured_at: row.captured_at,
       captured_at_source: row.captured_at_source,
       source: row.metadata_source,

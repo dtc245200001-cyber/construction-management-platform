@@ -9,11 +9,12 @@
 //   - Luỹ kế mới >= 0 (validate ở tầng ứng dụng + DB constraint).
 //   - Hạng mục phải thuộc dự án (reject 422 nếu không).
 //   - Vai trò được lập phiếu: ky_su_giam_sat (acceptance.create_dossier).
-//   - Tất cả thành viên dự án xem được phiếu (project.member).
+//   - Kỹ sư giám sát chỉ xem phiếu do mình lập; Chủ đầu tư xem phiếu trong dự án.
 //   - Ảnh lưu bytea, kiểm tra magic bytes thật (không chỉ đuôi file).
 //   - Ảnh KHÔNG bắt buộc (ACCEPTANCE_PHOTO_REQUIRED=false mặc định).
 
 const multer = require("multer");
+const sharp = require("sharp");
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
 const {
@@ -25,7 +26,8 @@ const asyncHandler = require("../utils/asyncHandler");
 const { parsePositiveInt } = require("../utils/validators");
 const { parseDecimalInput } = require("../utils/decimalInput");
 const { logAudit } = require("../utils/auditLogger");
-const { can } = require("../utils/permissions");
+const { PERMISSIONS, ROLE_LABELS } = require("../utils/permissions");
+const { ROLES } = require("../utils/constants");
 const {
   computeVoucherItems,
   detectMimeFromBuffer,
@@ -35,10 +37,26 @@ const { evaluateGeofence } = require("../utils/geo");
 const {
   inspectPhotoMetadata,
   inspectVoucherPhotoRecord,
-  sanitizeInspectionForRole,
 } = require("../services/photoInspection");
 
 const router = createProjectRouter();
+
+const requireAcceptancePermission = (permissionKey) => {
+  const allowedRoles = PERMISSIONS[permissionKey] || [];
+  const middleware = (req, res, next) => {
+    if (allowedRoles.includes(req.projectRole)) {
+      res.locals.roleChecked = true;
+      return next();
+    }
+
+    const roleLabel = ROLE_LABELS[req.projectRole] || req.projectRole || "chưa xác định";
+    return res.status(403).json({
+      error: `Vai trò ${roleLabel} không có quyền ${permissionKey}`,
+    });
+  };
+  middleware.permissionKey = permissionKey;
+  return middleware;
+};
 
 // ─── HẰNG SỐ CẤU HÌNH ────────────────────────────────────────────────────────
 const ACCEPTANCE_PHOTO_REQUIRED =
@@ -112,7 +130,7 @@ router.post(
   "/:projectId/acceptance-vouchers",
   requireAuth,
   checkProjectAccess,
-  requirePermission("acceptance.create_dossier"),
+  requireAcceptancePermission("acceptance.create_dossier"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) {
@@ -333,7 +351,7 @@ router.get(
   "/:projectId/acceptance-vouchers",
   requireAuth,
   checkProjectAccess,
-  requirePermission("project.member"),
+  requireAcceptancePermission("acceptance.access"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) {
@@ -362,8 +380,13 @@ router.get(
        JOIN users u ON u.id = av.created_by
        LEFT JOIN users reviewer ON reviewer.id = av.reviewed_by
        WHERE av.project_id = $1
+         AND ($2::boolean = false OR av.created_by = $3)
        ORDER BY av.created_at DESC`,
-      [projectId]
+      [
+        projectId,
+        req.projectRole === ROLES.KY_SU_GIAM_SAT,
+        req.user.id,
+      ]
     );
 
     return res.json({ project_id: projectId, count: rows.length, vouchers: rows });
@@ -382,7 +405,7 @@ router.get(
   "/:projectId/acceptance-vouchers/items-summary",
   requireAuth,
   checkProjectAccess,
-  requirePermission("project.member"),
+  requireAcceptancePermission("acceptance.create_dossier"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) {
@@ -441,7 +464,7 @@ router.get(
   "/:projectId/acceptance-vouchers/:voucherId",
   requireAuth,
   checkProjectAccess,
-  requirePermission("project.member"),
+  requireAcceptancePermission("acceptance.access"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     const voucherId = parsePositiveInt(req.params.voucherId);
@@ -462,8 +485,14 @@ router.get(
        JOIN users u ON u.id = av.created_by
        LEFT JOIN users reviewer ON reviewer.id = av.reviewed_by
        JOIN projects p ON p.id = av.project_id
-       WHERE av.id = $1 AND av.project_id = $2`,
-      [voucherId, projectId]
+       WHERE av.id = $1 AND av.project_id = $2
+         AND ($3::boolean = false OR av.created_by = $4)`,
+      [
+        voucherId,
+        projectId,
+        req.projectRole === ROLES.KY_SU_GIAM_SAT,
+        req.user.id,
+      ]
     );
 
     if (voucherRes.rows.length === 0) {
@@ -537,13 +566,7 @@ router.get(
       error_count: 0,
     };
 
-    const isReviewer = Boolean(
-      can(req.projectRole, "acceptance.review_internal") ||
-      can(req.projectRole, "acceptance.approve_official") ||
-      req.projectRole === "chu_dau_tu" ||
-      req.projectRole === "ban_quan_ly" ||
-      (req.user && req.user.is_system_admin)
-    );
+    const isReviewer = req.projectRole === ROLES.CHU_DAU_TU;
 
     const photos = photosRes.rows.map((p) => {
       const status = p.geofence_status || "no_site_config";
@@ -558,13 +581,27 @@ router.get(
       else if (inspectionRaw.status === "incomplete_data") photo_flags.incomplete_count++;
       else if (inspectionRaw.status === "error") photo_flags.error_count++;
 
-      const inspection = sanitizeInspectionForRole(inspectionRaw, isReviewer);
+      const inspection = isReviewer
+        ? inspectionRaw
+        : { data_status_label: inspectionRaw.data_status_label || null };
 
       return {
-        ...p,
+        ...(isReviewer
+          ? p
+          : {
+              id: p.id,
+              file_name: p.file_name,
+              file_size: p.file_size,
+              mime_type: p.mime_type,
+              caption: p.caption,
+              created_at: p.created_at,
+              url: p.url,
+            }),
         geofence_distance_m:
-          p.geofence_distance_m !== null ? parseFloat(p.geofence_distance_m) : null,
-        radius_m: siteRadius,
+          isReviewer && p.geofence_distance_m !== null
+            ? parseFloat(p.geofence_distance_m)
+            : undefined,
+        ...(isReviewer ? { radius_m: siteRadius } : {}),
         inspection,
       };
     });
@@ -573,7 +610,7 @@ router.get(
       voucher,
       items: itemsRes.rows,
       photos,
-      photo_flags,
+      ...(isReviewer ? { photo_flags } : {}),
     });
   })
 );
@@ -583,7 +620,7 @@ router.put(
   "/:projectId/acceptance-vouchers/:voucherId",
   requireAuth,
   checkProjectAccess,
-  requirePermission("acceptance.update_dossier"),
+  requireAcceptancePermission("acceptance.update_dossier"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     const voucherId = parsePositiveInt(req.params.voucherId);
@@ -797,7 +834,7 @@ router.post(
   "/:projectId/acceptance-vouchers/:voucherId/submit",
   requireAuth,
   checkProjectAccess,
-  requirePermission("acceptance.create_dossier"),
+  requireAcceptancePermission("acceptance.create_dossier"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     const voucherId = parsePositiveInt(req.params.voucherId);
@@ -811,7 +848,7 @@ router.post(
 
       // Khoá dòng để tránh 2 thao tác đồng thời trên cùng phiếu.
       const voucherRes = await client.query(
-        `SELECT id, project_id, batch_name, status, has_negative_delta, created_by
+        `SELECT id, project_id, batch_name, status, has_negative_delta, created_by, created_at
          FROM acceptance_vouchers
          WHERE id = $1 AND project_id = $2
          FOR UPDATE`,
@@ -853,6 +890,52 @@ router.post(
         await client.query("ROLLBACK");
         return res.status(409).json({ code: "EMPTY_ACCEPTANCE_VOUCHER", message: "Phiếu không có hạng mục để gửi duyệt" });
       }
+
+      const photosRes = await client.query(
+        `SELECT id, file_data, file_name, file_size, mime_type
+         FROM acceptance_voucher_photos
+         WHERE voucher_id = $1
+         ORDER BY id`,
+        [voucherId]
+      );
+      for (const photo of photosRes.rows) {
+        const photoMeta = await extractPhotoMetadata(
+          photo.file_data,
+          photo.mime_type,
+          {}
+        );
+        const inspection = await inspectPhotoMetadata({
+          buffer: photo.file_data,
+          mimeType: photo.mime_type,
+          fileName: photo.file_name,
+          fileSize: photo.file_size,
+          capturedAt: photoMeta.captured_at,
+          voucherCreatedAt: voucher.created_at,
+          photoMeta,
+        });
+        if (
+          inspection.can_evaluate !== true ||
+          ![
+            "full_data",
+            "incomplete_data",
+            "incomplete_data_warning",
+          ].includes(inspection.data_status)
+        ) {
+          await client.query("ROLLBACK");
+          return res.status(422).json({
+            code: "PHOTO_INSPECTION_UNAVAILABLE",
+            message: `Chưa thể xác định trạng thái hợp lệ cho ảnh "${photo.file_name}". Vui lòng thay ảnh hoặc tải lại ảnh.`,
+          });
+        }
+
+        await client.query(
+          `UPDATE acceptance_voucher_photos
+           SET exif_metadata = $1
+           WHERE id = $2 AND voucher_id = $3`,
+          [JSON.stringify(inspection), photo.id, voucherId]
+        );
+      }
+
       const updated = await client.query(
         `UPDATE acceptance_vouchers
          SET status = 'pending_review', updated_at = NOW()
@@ -892,12 +975,12 @@ router.post(
 );
 
 // ─── POST /:projectId/acceptance-vouchers/:voucherId/approve ──────────────────
-// S-38 / T-98: Ban quản lý duyệt phiếu (pending_review → approved).
+// Chủ đầu tư duyệt phiếu (pending_review → approved).
 router.post(
   "/:projectId/acceptance-vouchers/:voucherId/approve",
   requireAuth,
   checkProjectAccess,
-  requirePermission("acceptance.review_internal"),
+  requireAcceptancePermission("acceptance.approve_official"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     const voucherId = parsePositiveInt(req.params.voucherId);
@@ -978,33 +1061,17 @@ router.post(
 );
 
 // ─── POST /:projectId/acceptance-vouchers/:voucherId/return ───────────────────
-// S-39: Ban quản lý hoặc Chủ đầu tư trả phiếu (pending_review → returned).
-// Bắt buộc lý do để Chủ đầu tư/KSGS hiểu vì sao phiếu bị trả về.
+// Chủ đầu tư trả phiếu (pending_review → returned), bắt buộc có lý do.
 router.post(
   "/:projectId/acceptance-vouchers/:voucherId/return",
   requireAuth,
   checkProjectAccess,
-  // Cửa kiểm quyền dạng "mọi thành viên" để vượt defaultDeny của createProjectRouter;
-  // kiểm tra fine-grained (BQL hoặc CĐT) được thực hiện bằng can() trong handler.
-  requirePermission("project.member"),
-  // Trả phiếu: cho phép 2 role — BQL (review_internal) hoặc CĐT (approve_official).
-  // Kiểm tra bằng can() trong handler vì requirePermission chỉ nhận 1 key.
+  requireAcceptancePermission("acceptance.return_official"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     const voucherId = parsePositiveInt(req.params.voucherId);
     if (!projectId || !voucherId) {
       return res.status(400).json({ message: "ID không hợp lệ" });
-    }
-
-    const role = req.projectRole;
-    const isAllowed =
-      req.user.is_system_admin ||
-      can(role, "acceptance.review_internal") ||
-      can(role, "acceptance.approve_official");
-    if (!isAllowed) {
-      return res.status(403).json({
-        error: "Vai trò của bạn không có quyền trả lại phiếu nghiệm thu",
-      });
     }
 
     const reason = req.body.reason ? String(req.body.reason).trim() : "";
@@ -1084,12 +1151,12 @@ router.post(
 );
 
 // ─── GET /:projectId/acceptance-vouchers/:voucherId/history ───────────────────
-// S-39: Timeline audit cho 1 phiếu — mọi thành viên dự án xem được.
+// Timeline audit giới hạn theo vai trò và quyền sở hữu phiếu của người lập.
 router.get(
   "/:projectId/acceptance-vouchers/:voucherId/history",
   requireAuth,
   checkProjectAccess,
-  requirePermission("project.member"),
+  requireAcceptancePermission("acceptance.access"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     const voucherId = parsePositiveInt(req.params.voucherId);
@@ -1098,8 +1165,15 @@ router.get(
     }
 
     const voucherRes = await db.query(
-      "SELECT id FROM acceptance_vouchers WHERE id = $1 AND project_id = $2",
-      [voucherId, projectId]
+      `SELECT id FROM acceptance_vouchers
+       WHERE id = $1 AND project_id = $2
+         AND ($3::boolean = false OR created_by = $4)`,
+      [
+        voucherId,
+        projectId,
+        req.projectRole === ROLES.KY_SU_GIAM_SAT,
+        req.user.id,
+      ]
     );
     if (voucherRes.rows.length === 0) {
       return res.status(404).json({ message: "Không tìm thấy phiếu nghiệm thu" });
@@ -1249,7 +1323,7 @@ router.post(
   "/:projectId/acceptance-vouchers/:voucherId/photos",
   requireAuth,
   checkProjectAccess,
-  requirePermission("acceptance.create_dossier"),
+  requireAcceptancePermission("acceptance.create_dossier"),
   (req, res, next) => {
     photoUpload.single("photo")(req, res, (err) => {
       if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
@@ -1286,13 +1360,17 @@ router.post(
 
     // Kiểm tra phiếu tồn tại và thuộc dự án (kèm thông tin phạm vi công trường)
     const voucherCheck = await db.query(
-      `SELECT av.id, av.status, p.site_latitude, p.site_longitude, p.site_radius_m
+      `SELECT av.id, av.status, av.created_by, av.created_at,
+              p.site_latitude, p.site_longitude, p.site_radius_m
        FROM acceptance_vouchers av
        JOIN projects p ON p.id = av.project_id
        WHERE av.id = $1 AND av.project_id = $2`,
       [voucherId, projectId]
     );
     if (voucherCheck.rows.length === 0) {
+      return res.status(404).json({ message: "Không tìm thấy phiếu nghiệm thu" });
+    }
+    if (Number(voucherCheck.rows[0].created_by) !== Number(req.user.id)) {
       return res.status(404).json({ message: "Không tìm thấy phiếu nghiệm thu" });
     }
     if (!["draft", "returned"].includes(voucherCheck.rows[0].status)) {
@@ -1321,7 +1399,7 @@ router.post(
     const photoMeta = await extractPhotoMetadata(
       req.file.buffer,
       detectedMime,
-      req.body
+      {}
     );
 
     // Đánh giá geofence so với tâm và bán kính công trường (S-41 / T-108)
@@ -1346,7 +1424,7 @@ router.post(
       fileSize: req.file.size,
       capturedAt: photoMeta.captured_at,
       voucherCreatedAt: voucherCheck.rows[0].created_at,
-      clientFallback: req.body,
+      clientFallback: {},
       photoMeta,
     });
 
@@ -1389,14 +1467,16 @@ router.post(
 
     const photo = insertRes.rows[0];
     return res.status(201).json({
-      ...photo,
-      geofence_distance_m:
-        photo.geofence_distance_m !== null ? parseFloat(photo.geofence_distance_m) : null,
-      radius_m:
-        voucherCheck.rows[0].site_radius_m !== null
-          ? parseInt(voucherCheck.rows[0].site_radius_m, 10)
-          : null,
-      inspection,
+      id: photo.id,
+      file_name: photo.file_name,
+      file_size: photo.file_size,
+      mime_type: photo.mime_type,
+      caption: photo.caption,
+      uploaded_by: photo.uploaded_by,
+      created_at: photo.created_at,
+      inspection: {
+        data_status_label: inspection.data_status_label || null,
+      },
       url: `/api/projects/${projectId}/acceptance-vouchers/${voucherId}/photos/${photo.id}`,
     });
   })
@@ -1414,7 +1494,7 @@ router.get(
   "/:projectId/acceptance-vouchers/:voucherId/photos/:photoId",
   requireAuth,
   checkProjectAccess,
-  requirePermission("project.member"),
+  requireAcceptancePermission("acceptance.access"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     const voucherId = parsePositiveInt(req.params.voucherId);
@@ -1428,8 +1508,15 @@ router.get(
       `SELECT avp.file_data, avp.mime_type, avp.file_name
        FROM acceptance_voucher_photos avp
        JOIN acceptance_vouchers av ON av.id = avp.voucher_id
-       WHERE avp.id = $1 AND avp.voucher_id = $2 AND av.project_id = $3`,
-      [photoId, voucherId, projectId]
+       WHERE avp.id = $1 AND avp.voucher_id = $2 AND av.project_id = $3
+         AND ($4::boolean = false OR av.created_by = $5)`,
+      [
+        photoId,
+        voucherId,
+        projectId,
+        req.projectRole === ROLES.KY_SU_GIAM_SAT,
+        req.user.id,
+      ]
     );
 
     if (result.rows.length === 0) {
@@ -1437,13 +1524,26 @@ router.get(
     }
 
     const { file_data, mime_type, file_name } = result.rows[0];
-    res.setHeader("Content-Type", mime_type);
+    const isSupervisor = req.projectRole === ROLES.KY_SU_GIAM_SAT;
+    const responseImage = isSupervisor
+      ? await sharp(file_data)
+          .rotate()
+          .resize({
+            width: 800,
+            height: 600,
+            fit: "inside",
+            withoutEnlargement: true,
+          })
+          .jpeg({ quality: 82 })
+          .toBuffer()
+      : file_data;
+    res.setHeader("Content-Type", isSupervisor ? "image/jpeg" : mime_type);
     res.setHeader(
       "Content-Disposition",
-      `inline; filename="${encodeURIComponent(file_name)}"`
+      `inline; filename="${encodeURIComponent(isSupervisor ? "acceptance-preview.jpg" : file_name)}"`
     );
-    res.setHeader("Cache-Control", "private, max-age=86400");
-    return res.send(file_data);
+    res.setHeader("Cache-Control", "private, no-store");
+    return res.send(responseImage);
   })
 );
 
