@@ -44,6 +44,11 @@ const router = createProjectRouter();
 const requireAcceptancePermission = (permissionKey) => {
   const allowedRoles = PERMISSIONS[permissionKey] || [];
   const middleware = (req, res, next) => {
+    if (req.user && req.user.is_system_admin) {
+      res.locals.roleChecked = true;
+      return next();
+    }
+
     if (allowedRoles.includes(req.projectRole)) {
       res.locals.roleChecked = true;
       return next();

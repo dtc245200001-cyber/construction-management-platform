@@ -83,14 +83,26 @@ describe("S-38 / T-100 acceptance review UI", () => {
     });
   });
 
-  test("Ban quản lý không truy cập được chức năng nghiệm thu", async () => {
-    mockBaseGet("ban_quan_ly");
-    render(<AcceptancePage user={{ id: 21, name: "Ban quản lý" }} />);
+  test("Đội trưởng không truy cập được chức năng nghiệm thu", async () => {
+    mockBaseGet("doi_truong");
+    render(<AcceptancePage user={{ id: 21, name: "Đội trưởng" }} />);
 
     expect(
       await screen.findByText(/không có quyền truy cập chức năng nghiệm thu/i)
     ).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledTimes(1);
+  });
+
+  test("Quản trị hệ thống (is_system_admin) truy cập được chức năng nghiệm thu", async () => {
+    mockBaseGet("system_admin");
+    render(<AcceptancePage user={{ id: 1, name: "System Admin", is_system_admin: true }} />);
+
+    expect(
+      screen.queryByText(/không có quyền truy cập chức năng nghiệm thu/i)
+    ).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: /Nghiệm thu khối lượng đợt/i })
+    ).toBeInTheDocument();
   });
 
   test("Trả lại bắt buộc nhập lý do và gửi đúng reason", async () => {

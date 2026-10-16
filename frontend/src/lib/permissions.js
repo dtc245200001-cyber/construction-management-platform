@@ -38,12 +38,12 @@ export const PERMISSIONS = {
   "schedule.view_delays": [ROLES.CHI_HUY_TRUONG],
 
   // ── Kỹ sư giám sát ─────────────────────────────────────────────────
-  "site_log.create": [ROLES.KY_SU_GIAM_SAT, ROLES.CHI_HUY_TRUONG, ROLES.BAN_QUAN_LY, ROLES.DOI_TRUONG],
+  "site_log.create": [ROLES.KY_SU_GIAM_SAT, ROLES.CHI_HUY_TRUONG, ROLES.BAN_QUAN_LY],
   "site_log.upload_photo": [ROLES.KY_SU_GIAM_SAT],
   "quantity.verify": [ROLES.KY_SU_GIAM_SAT],
   "acceptance.create_dossier": [ROLES.KY_SU_GIAM_SAT],
   "acceptance.update_dossier": [ROLES.KY_SU_GIAM_SAT],
-  "acceptance.access": [ROLES.KY_SU_GIAM_SAT, ROLES.CHU_DAU_TU],
+  "acceptance.access": [ROLES.KY_SU_GIAM_SAT, ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY],
 
   // ── Đội trưởng thi công ────────────────────────────────────────────
   "task.view_own_team": [ROLES.DOI_TRUONG],
@@ -54,8 +54,8 @@ export const PERMISSIONS = {
   // ── Chủ đầu tư ─────────────────────────────────────────────────────
   "project.view": [ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY],
   "acceptance.view_verified": [ROLES.CHU_DAU_TU],
-  "acceptance.approve_official": [ROLES.CHU_DAU_TU],
-  "acceptance.return_official": [ROLES.CHU_DAU_TU],
+  "acceptance.approve_official": [ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY],
+  "acceptance.return_official": [ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY],
   "payment.approve": [ROLES.CHU_DAU_TU],
   // S-39: Audit Portal cho Chủ đầu tư / Ban quản lý.
   "audit.view_project": [ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY],
