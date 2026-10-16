@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import api from "../lib/api";
+import { can } from "../lib/permissions";
+import { toast } from "sonner";
 import { formatVND, formatQuantityVN } from "../utils/decimal";
 import { formatDateVN } from "../utils/dateVN";
 import {
@@ -18,15 +20,19 @@ import {
   User,
   CheckCircle2,
   AlertTriangle,
+  Plus,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Card } from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "../components/ui/dialog";
 
 // Ánh xạ trạng thái hiển thị bằng chữ và giao diện trực quan
@@ -48,10 +54,77 @@ const STATUS_CONFIG = {
   },
 };
 
-export default function PaymentRequestsPage() {
+export default function PaymentRequestsPage({ user: propUser } = {}) {
   const { id: urlParamId } = useParams();
   const navigate = useNavigate();
   const projectId = localStorage.getItem("currentProjectId") || "1";
+
+  let outletContext = null;
+  try {
+    outletContext = useOutletContext();
+  } catch {
+    outletContext = null;
+  }
+  const user = propUser || outletContext?.user;
+  const projectRole = outletContext?.projectRole;
+
+  const isSystemAdmin = Boolean(
+    user?.is_system_admin ||
+    outletContext?.is_system_admin ||
+    projectRole === "system_admin"
+  );
+  const canCreate = isSystemAdmin || can(projectRole, "payment_request.create");
+
+  // Dialog lập đề nghị thanh toán
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [periodStart, setPeriodStart] = useState("");
+  const [periodEnd, setPeriodEnd] = useState("");
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState("");
+
+  const handleOpenCreateDialog = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    setPeriodStart(`${year}-${month}-01`);
+    setPeriodEnd(`${year}-${month}-${day}`);
+    setCreateError("");
+    setCreateDialogOpen(true);
+  };
+
+  const handleCreatePaymentRequest = async (e) => {
+    e.preventDefault();
+    if (!periodStart || !periodEnd) {
+      setCreateError("Vui lòng chọn đầy đủ ngày bắt đầu và ngày kết thúc kỳ thanh toán");
+      return;
+    }
+    if (periodEnd < periodStart) {
+      setCreateError("Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu");
+      return;
+    }
+
+    setCreateLoading(true);
+    setCreateError("");
+    try {
+      const res = await api.post(`/projects/${projectId}/payment-requests`, {
+        period_start: periodStart,
+        period_end: periodEnd,
+      });
+      toast.success(res.data?.message || "Lập đề nghị thanh toán thành công");
+      setCreateDialogOpen(false);
+      fetchPaymentRequests();
+    } catch (err) {
+      const msg =
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        "Không thể lập đề nghị thanh toán";
+      setCreateError(msg);
+      toast.error(msg);
+    } finally {
+      setCreateLoading(false);
+    }
+  };
 
   // Danh sách đề nghị
   const [paymentRequests, setPaymentRequests] = useState([]);
@@ -188,16 +261,29 @@ export default function PaymentRequestsPage() {
           </div>
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={fetchPaymentRequests}
-          disabled={loading}
-          className="self-start sm:self-auto gap-2"
-        >
-          <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
-          <span>Làm mới</span>
-        </Button>
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchPaymentRequests}
+            disabled={loading}
+            className="gap-2"
+          >
+            <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+            <span>Làm mới</span>
+          </Button>
+
+          {canCreate && (
+            <Button
+              size="sm"
+              onClick={handleOpenCreateDialog}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 font-bold"
+            >
+              <Plus className="size-4" />
+              <span>Lập đề nghị thanh toán</span>
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* ================= TRẠNG THÁI 403: KHÔNG ĐỦ QUYỀN ================= */}
@@ -273,6 +359,15 @@ export default function PaymentRequestsPage() {
             Dự án này chưa phát sinh đề nghị thanh toán nào. Đề nghị thanh toán sẽ được lập từ các phiếu
             nghiệm thu khối lượng đã được phê duyệt.
           </p>
+          {canCreate && (
+            <Button
+              onClick={handleOpenCreateDialog}
+              className="mt-5 gap-2 font-bold"
+            >
+              <Plus className="size-4" />
+              <span>Lập đề nghị thanh toán ngay</span>
+            </Button>
+          )}
         </div>
       )}
 
@@ -701,6 +796,71 @@ export default function PaymentRequestsPage() {
               Đóng
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ================= MODAL LẬP ĐỀ NGHỊ THANH TOÁN ================= */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Receipt className="size-5 text-primary" />
+              <span>Lập đề nghị thanh toán mới</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleCreatePaymentRequest} className="space-y-4 pt-2">
+            <p className="text-xs text-muted-foreground">
+              Hệ thống sẽ tự động quét và tập hợp các phiếu nghiệm thu khối lượng đã được phê duyệt trong kỳ để tổng hợp khối lượng và thành tiền.
+            </p>
+
+            {createError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg text-xs" role="alert">
+                {createError}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="period_start">Kỳ thanh toán: Từ ngày</Label>
+              <Input
+                id="period_start"
+                type="date"
+                value={periodStart}
+                onChange={(e) => setPeriodStart(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="period_end">Đến ngày</Label>
+              <Input
+                id="period_end"
+                type="date"
+                value={periodEnd}
+                onChange={(e) => setPeriodEnd(e.target.value)}
+                required
+              />
+            </div>
+
+            <DialogFooter className="pt-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCreateDialogOpen(false)}
+                disabled={createLoading}
+              >
+                Hủy
+              </Button>
+              <Button
+                type="submit"
+                disabled={createLoading}
+                className="gap-2 font-bold"
+              >
+                {createLoading && <RefreshCw className="size-3.5 animate-spin" />}
+                <span>Tạo đề nghị thanh toán</span>
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
