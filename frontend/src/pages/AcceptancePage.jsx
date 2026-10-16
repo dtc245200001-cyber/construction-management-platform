@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useOutletContext } from "react-router-dom";
 import api from "../lib/api";
 import { can } from "../lib/permissions";
 import {
@@ -44,17 +45,31 @@ const ALLOWED_PHOTO_EXTS = [".jpg", ".jpeg", ".png", ".webp", ".heic"];
 const MAX_PHOTO_SIZE_MB = 10;
 const MAX_PHOTO_SIZE_BYTES = MAX_PHOTO_SIZE_MB * 1024 * 1024;
 
-export default function AcceptancePage() {
+export default function AcceptancePage({ user: propUser } = {}) {
   const projectId = localStorage.getItem("currentProjectId") || 1;
+
+  let outletContext = null;
+  try {
+    outletContext = useOutletContext();
+  } catch {
+    outletContext = null;
+  }
+  const user = propUser || outletContext?.user;
 
   // Quyền truy cập
   const [projectRole, setProjectRole] = useState(null);
   const [membershipLoading, setMembershipLoading] = useState(true);
-  const hasAccess = can(projectRole, "acceptance.access");
-  const isSupervisor = can(projectRole, "acceptance.create_dossier");
-  const isInvestor = can(projectRole, "acceptance.approve_official");
+
+  const isSystemAdmin = Boolean(
+    user?.is_system_admin ||
+    outletContext?.is_system_admin ||
+    projectRole === "system_admin"
+  );
+  const hasAccess = isSystemAdmin || can(projectRole, "acceptance.access");
+  const isSupervisor = isSystemAdmin || can(projectRole, "acceptance.create_dossier");
+  const isInvestor = isSystemAdmin || can(projectRole, "acceptance.approve_official");
   const canApprove = isInvestor;
-  const canReturn = can(projectRole, "acceptance.return_official");
+  const canReturn = isSystemAdmin || can(projectRole, "acceptance.return_official");
 
   // Dữ liệu danh sách phiếu
   const [vouchers, setVouchers] = useState([]);
@@ -137,7 +152,7 @@ export default function AcceptancePage() {
   const [returnReason, setReturnReason] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
-  const canReviewInternal = isInvestor;
+  const canReviewInternal = isInvestor || isSystemAdmin;
   const pendingReviewVouchers = vouchers.filter((v) => v.status === "pending_review");
   const [reviewError, setReviewError] = useState("");
 
