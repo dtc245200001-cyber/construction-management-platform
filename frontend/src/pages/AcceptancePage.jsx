@@ -1460,7 +1460,7 @@ export default function AcceptancePage() {
               )}
 
               {/* Cảnh báo ảnh chụp ngoài bán kính công trường (S-41 / T-108) */}
-              {viewingVoucher.photo_flags?.outside > 0 && (
+              {isInvestor && viewingVoucher.photo_flags?.outside > 0 && (
                 <div
                   data-testid="geofence-warning-banner"
                   className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2.5 text-amber-900 text-xs"
@@ -1611,6 +1611,35 @@ export default function AcceptancePage() {
                             {photo.inspection?.data_status_label ||
                               "Chưa có kết quả kiểm tra"}
                           </div>
+
+                          {isInvestor && photo.geofence_status === "outside" && (
+                            <div
+                              data-testid={`geofence-badge-${photo.id}`}
+                              className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700 border border-red-200"
+                            >
+                              ⚠️ Ngoài phạm vi {photo.geofence_distance_m !== null ? `(${Number(photo.geofence_distance_m).toLocaleString("vi-VN")} m)` : ""}
+                            </div>
+                          )}
+                          {isInvestor && photo.geofence_status === "inside" && (
+                            <div
+                              data-testid={`geofence-badge-${photo.id}`}
+                              className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700 border border-emerald-200"
+                            >
+                              ✓ Đúng vị trí {photo.geofence_distance_m !== null ? `(${Number(photo.geofence_distance_m).toLocaleString("vi-VN")} m)` : ""}
+                            </div>
+                          )}
+                          {isInvestor &&
+                            (photo.geofence_status === "no_gps" ||
+                              photo.geofence_status === "no_site_config") && (
+                              <div
+                                data-testid={`geofence-badge-${photo.id}`}
+                                className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-slate-500 bg-slate-100"
+                              >
+                                {photo.geofence_status === "no_gps"
+                                  ? "Không có GPS"
+                                  : "Chưa cấu hình tâm"}
+                              </div>
+                            )}
 
                           {isInvestor && (
                             <button
