@@ -201,7 +201,7 @@ export function formatMoneyVND(str, { noDecimals = false } = {}) {
 /**
  * Định dạng tiền Việt Nam không lẻ thập phân (chuẩn VND cho đề nghị thanh toán).
  * Dấu chấm ngăn cách hàng nghìn, không lẻ thập phân, kèm ký hiệu ₫.
- * Hoàn toàn không dùng parseFloat.
+ * Xử lý thuần chuỗi ký tự, không dùng phép toán số thực.
  * Ví dụ: "15432088" -> "15.432.088 ₫"
  *
  * @param {string|number|null} str
