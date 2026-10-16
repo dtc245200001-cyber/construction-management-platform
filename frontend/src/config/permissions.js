@@ -158,13 +158,12 @@ export const MENU_CONFIG = [
   roles: [BAN_QUAN_LY, CHU_DAU_TU],
 },
   {
-    // Chưa có trang thật. Cần xác nhận vai trò.
-    key: "finance",
-    label: "Thanh toán & Chi phí",
-    path: "/finance",
+    key: "payment-requests",
+    label: "Đề nghị thanh toán",
+    path: "/payment-requests",
+    paths: ["/finance", "/payment-requests"],
     icon: Wallet,
     group: "manage",
-    implemented: false,
     roles: [BAN_QUAN_LY, CHU_DAU_TU, KE_TOAN],
   },
   {
@@ -218,6 +217,9 @@ export const PERMISSIONS = {
 
   // S-41 / T-107: Cấu hình phạm vi công trường
   "site_geofence.manage": [BAN_QUAN_LY, CHU_DAU_TU],
+
+  // S-43 / T-113: Đề nghị thanh toán
+  "payment_request.view": [BAN_QUAN_LY, CHU_DAU_TU, KE_TOAN],
 };
 
 function isKnownRole(role) {

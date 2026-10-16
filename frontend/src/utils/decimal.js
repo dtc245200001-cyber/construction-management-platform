@@ -179,9 +179,13 @@ export function multiplyAndRoundVND(aStr, bStr) {
  * @param {string|null} str
  * @returns {string}
  */
-export function formatMoneyVND(str) {
+export function formatMoneyVND(str, { noDecimals = false } = {}) {
   if (str === null || str === undefined || str === "") {
     return "—";
+  }
+
+  if (noDecimals) {
+    return formatVND(str);
   }
 
   const [intPartRaw, fracPartRaw = ""] = str.split(".");
@@ -192,6 +196,35 @@ export function formatMoneyVND(str) {
   const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 
   return `${formattedInt},${fracPart} ₫`;
+}
+
+/**
+ * Định dạng tiền Việt Nam không lẻ thập phân (chuẩn VND cho đề nghị thanh toán).
+ * Dấu chấm ngăn cách hàng nghìn, không lẻ thập phân, kèm ký hiệu ₫.
+ * Hoàn toàn không dùng parseFloat.
+ * Ví dụ: "15432088" -> "15.432.088 ₫"
+ *
+ * @param {string|number|null} str
+ * @returns {string}
+ */
+export function formatVND(str) {
+  if (str === null || str === undefined || str === "") {
+    return "—";
+  }
+
+  const s = String(str).trim();
+  if (s === "") return "—";
+
+  const isNegative = s.startsWith("-");
+  const abs = isNegative ? s.slice(1) : s;
+
+  const [intPartRaw = "0"] = abs.split(/[.,]/);
+  let intPart = intPartRaw.replace(/^0+/, "");
+  if (intPart === "") intPart = "0";
+
+  const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+
+  return `${isNegative ? "-" : ""}${formattedInt} ₫`;
 }
 
 /**
