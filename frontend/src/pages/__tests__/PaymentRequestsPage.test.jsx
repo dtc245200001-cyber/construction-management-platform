@@ -4,7 +4,7 @@ import React from "react";
 import { BrowserRouter } from "react-router-dom";
 
 vi.mock("../../lib/api", () => ({
-  default: { get: vi.fn(), post: vi.fn() },
+  default: { get: vi.fn(), post: vi.fn(), put: vi.fn() },
 }));
 
 import api from "../../lib/api";
@@ -457,5 +457,121 @@ describe("T-115: duyệt, trả lại và lịch sử trạng thái", () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Duyệt$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Trả lại$/i })).not.toBeInTheDocument();
+  });
+});
+
+
+describe("T-117: hiển thị tạm giữ và cấu hình UI", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.setItem("currentProjectId", "1");
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  test("chi tiết hiển thị tổng trước tạm giữ, tạm giữ, thực trả và lũy kế đúng API", async () => {
+    const detailWithRetention = {
+      ...mockDetailResponse,
+      retention_rate: "5.00",
+      retention_amount: "771604.00",
+      payable_amount: "14660484.00",
+      cumulative_retention_amount: "1771604.00",
+      history: [],
+    };
+
+    api.get.mockImplementation((url) => {
+      if (url === "/projects/1/payment-requests") {
+        return Promise.resolve({ data: { payment_requests: mockListResponse } });
+      }
+      if (url === "/projects/1/payment-requests/1") {
+        return Promise.resolve({
+          data: { payment_request: detailWithRetention },
+        });
+      }
+      return Promise.reject(new Error(`Unexpected GET ${url}`));
+    });
+
+    renderWithRouter(<PaymentRequestsPage />);
+
+    const detailBtns = await screen.findAllByRole("button", { name: /Chi tiết/i });
+    fireEvent.click(detailBtns[0]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("retention-gross")).toHaveTextContent(
+        "15.432.088 ₫"
+      );
+    });
+    expect(screen.getByTestId("retention-amount")).toHaveTextContent(
+      "771.604 ₫"
+    );
+    expect(screen.getByTestId("payable-amount")).toHaveTextContent(
+      "14.660.484 ₫"
+    );
+    expect(screen.getByTestId("cumulative-retention")).toHaveTextContent(
+      "1.771.604 ₫"
+    );
+  });
+
+  test("quản trị cấu hình tạm giữ gọi đúng GET và PUT", async () => {
+    api.get.mockImplementation((url) => {
+      if (url === "/projects/1/payment-requests") {
+        return Promise.resolve({ data: { payment_requests: [] } });
+      }
+      if (url === "/projects/1/payment-retention-config") {
+        return Promise.resolve({
+          data: {
+            retention_config: {
+              retention_rate: "5.00",
+              retention_cap_amount: "10000000.00",
+            },
+          },
+        });
+      }
+      return Promise.reject(new Error(`Unexpected GET ${url}`));
+    });
+
+    api.put.mockResolvedValue({
+      data: {
+        message: "Đã cập nhật cấu hình tạm giữ",
+        retention_config: {
+          retention_rate: "7.50",
+          retention_cap_amount: null,
+        },
+      },
+    });
+
+    renderWithRouter(
+      <PaymentRequestsPage user={{ id: 99, is_system_admin: true }} />
+    );
+
+    const configBtn = await screen.findByRole("button", {
+      name: /Cấu hình tạm giữ/i,
+    });
+    fireEvent.click(configBtn);
+
+    expect(
+      await screen.findByText("Cấu hình tạm giữ thanh toán")
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Tỷ lệ tạm giữ (%)"), {
+      target: { value: "7.50" },
+    });
+    fireEvent.change(screen.getByLabelText("Trần tạm giữ toàn dự án (VND)"), {
+      target: { value: "" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Lưu cấu hình/i }));
+
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith(
+        "/projects/1/payment-retention-config",
+        {
+          retention_rate: "7.50",
+          retention_cap_amount: null,
+        }
+      );
+    });
   });
 });

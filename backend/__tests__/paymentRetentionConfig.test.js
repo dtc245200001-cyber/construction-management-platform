@@ -63,5 +63,11 @@ describe("S-45 / T-116 payment retention config", () => {
     expect(result.before.retention_rate).toBe("5.00");
     expect(result.after.retention_rate).toBe("7.50");
     expect(result.after.retention_cap_amount).toBe("2000000.00");
+
+    // T-117: đổi cấu hình chỉ cập nhật projects, không update ngược
+    // snapshot của các payment_requests đã tạo/đã duyệt.
+    const executedSql = mockQuery.mock.calls.map(([sql]) => String(sql)).join("\n");
+    expect(executedSql).toContain("UPDATE projects");
+    expect(executedSql).not.toContain("UPDATE payment_requests");
   });
 });
