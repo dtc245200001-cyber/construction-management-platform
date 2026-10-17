@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
@@ -900,6 +900,10 @@ router.get(
         req.query.team_id
       );
 
+    const isAllTeams =
+      !teamId &&
+      req.query.team_id === "all";
+
     // Đội trưởng luôn bị ép về
     // đúng đội của chính mình.
     if (
@@ -920,7 +924,7 @@ router.get(
       }
 
       teamId = ownTeam.id;
-    } else if (!teamId) {
+    } else if (!teamId && !isAllTeams) {
       // Không tự động lấy đội đầu tiên.
       return res.status(400).json({
         message:
@@ -928,28 +932,40 @@ router.get(
       });
     }
 
-    const teamResult =
-      await db.query(
-        `
-          SELECT
-            id,
-            name
+    let teamInfo = null;
 
-          FROM teams
+    if (isAllTeams) {
+      teamInfo = {
+        id: "all",
+        name: "Tất cả các đội",
+      };
+    } else {
+      const teamResult =
+        await db.query(
+          `
+            SELECT
+              id,
+              name
 
-          WHERE id = $1
-            AND project_id = $2
-        `,
-        [teamId, projectId]
-      );
+            FROM teams
 
-    if (
-      teamResult.rows.length === 0
-    ) {
-      return res.status(404).json({
-        message:
-          "Không tìm thấy đội trong dự án",
-      });
+            WHERE id = $1
+              AND project_id = $2
+          `,
+          [teamId, projectId]
+        );
+
+      if (
+        teamResult.rows.length === 0
+      ) {
+        return res.status(404).json({
+          message:
+            "Không tìm thấy đội trong dự án",
+        });
+      }
+
+      teamInfo =
+        teamResult.rows[0];
     }
 
     const result =
@@ -973,9 +989,19 @@ router.get(
             tm.name
               AS team_name,
 
-            sr.early_start,
-            sr.early_finish,
-            sr.is_critical,
+            COALESCE(
+              sr.early_start,
+              t.manual_start_date::timestamp
+            ) AS early_start,
+            COALESCE(
+              sr.early_finish,
+              sr.early_start,
+              t.manual_start_date::timestamp
+            ) AS early_finish,
+            COALESCE(
+              sr.is_critical,
+              false
+            ) AS is_critical,
 
             COALESCE(
               today.total_today,
@@ -1006,7 +1032,7 @@ router.get(
            AND tm.project_id =
                wi.project_id
 
-          JOIN schedule_results sr
+          LEFT JOIN schedule_results sr
             ON sr.task_id = t.id
 
           LEFT JOIN LATERAL (
@@ -1057,7 +1083,7 @@ router.get(
           ) last_report ON TRUE
 
           WHERE wi.project_id = $1
-            AND ta.team_id = $2
+            AND ($2::int IS NULL OR ta.team_id = $2)
 
             -- Không hiện việc đã hoàn thành.
             AND COALESCE(
@@ -1068,36 +1094,39 @@ router.get(
             AND t.actual_end_date
                 IS NULL
 
-            -- Chỉ việc có lịch và giao
-            -- với tuần đang xem.
-            AND sr.early_start
-                IS NOT NULL
-
-            AND sr.early_start::date
-                <= $4::date
-
-            AND COALESCE(
-                  sr.early_finish::date,
-                  sr.early_start::date
-                ) >= $3::date
+            -- Chỉ việc có lịch và giao với tuần đang xem (hoặc all_tasks=true).
+            AND (
+              $6::boolean = TRUE
+              OR (
+                COALESCE(sr.early_start, t.manual_start_date::timestamp) IS NOT NULL
+                AND COALESCE(sr.early_start::date, t.manual_start_date) <= $4::date
+                AND COALESCE(
+                      sr.early_finish::date,
+                      sr.early_start::date,
+                      t.manual_start_date
+                    ) >= $3::date
+              )
+            )
 
           ORDER BY
-            sr.early_start
-              NULLS LAST,
+            COALESCE(
+              sr.early_start,
+              t.manual_start_date::timestamp
+            ) NULLS LAST,
             t.id
         `,
         [
           projectId,
-          teamId,
+          isAllTeams ? null : teamId,
           weekStart,
           weekEnd,
           reportDate,
+          req.query.all_tasks === "true" || req.query.all_tasks === "1",
         ]
       );
 
     return res.json({
-      team:
-        teamResult.rows[0],
+      team: teamInfo,
 
       week: {
         start: weekStart,
@@ -1593,6 +1622,116 @@ router.get(
         `,
         params
       );
+
+    return res.json({
+      reports: result.rows,
+    });
+  })
+);
+
+// ============================================================
+// PROJECT QUANTITY REPORTS FEED (S-26 AC 2)
+// Chỉ huy trưởng xem báo cáo từ các đội kèm thời điểm và tổng luỹ kế
+// ============================================================
+
+// GET /api/projects/:projectId/quantity-reports
+router.get(
+  "/:projectId/quantity-reports",
+  requireAuth,
+  checkProjectAccess,
+  fieldViewRoles,
+  asyncHandler(async (req, res) => {
+    const projectId = positiveId(req.params.projectId);
+    if (!projectId) {
+      return res.status(400).json({
+        message: "projectId không hợp lệ",
+      });
+    }
+
+    const reportDate = req.query.report_date;
+    if (reportDate && !isValidDateOnly(reportDate)) {
+      return res.status(400).json({
+        message: "report_date phải có định dạng YYYY-MM-DD",
+      });
+    }
+
+    let teamId = positiveId(req.query.team_id);
+    if (req.projectRole === ROLES.DOI_TRUONG) {
+      const ownTeam = await findUserTeam(projectId, req.user.id);
+      if (!ownTeam) {
+        return res.status(403).json({
+          message: "Tài khoản đội trưởng chưa được xếp vào đội thi công",
+        });
+      }
+      teamId = ownTeam.id;
+    }
+
+    const taskId = positiveId(req.query.task_id);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+
+    const params = [projectId];
+    const whereClauses = ["qr.project_id = $1"];
+
+    if (teamId) {
+      params.push(teamId);
+      whereClauses.push(`qr.team_id = $${params.length}`);
+    }
+
+    if (reportDate) {
+      params.push(reportDate);
+      whereClauses.push(`qr.report_date = $${params.length}::date`);
+    }
+
+    if (taskId) {
+      params.push(taskId);
+      whereClauses.push(`qr.task_id = $${params.length}`);
+    }
+
+    params.push(limit);
+    const limitIndex = params.length;
+
+    const result = await db.query(
+      `
+        SELECT
+          qr.id,
+          qr.project_id,
+          qr.task_id,
+          t.name AS task_name,
+          wi.id AS work_item_id,
+          wi.name AS work_item_name,
+          qr.team_id,
+          tm.name AS team_name,
+          qr.reported_by,
+          u.name AS reported_by_name,
+          qr.quantity,
+          t.quantity_unit,
+          t.planned_quantity,
+          qr.report_date,
+          qr.created_at,
+          COALESCE(cum.total, 0)::numeric(12,2)::text AS cumulative_reported,
+          CASE
+            WHEN t.planned_quantity IS NOT NULL AND COALESCE(cum.total, 0) > t.planned_quantity THEN true
+            ELSE false
+          END AS over_planned
+        FROM task_quantity_reports qr
+        JOIN tasks t ON t.id = qr.task_id
+        JOIN work_items wi ON wi.id = t.work_item_id AND wi.project_id = qr.project_id
+        JOIN teams tm ON tm.id = qr.team_id AND tm.project_id = qr.project_id
+        JOIN users u ON u.id = qr.reported_by
+        LEFT JOIN LATERAL (
+          SELECT SUM(sub.quantity) AS total
+          FROM task_quantity_reports sub
+          WHERE sub.task_id = qr.task_id
+            AND sub.team_id = qr.team_id
+            AND sub.project_id = qr.project_id
+            AND sub.created_at <= qr.created_at
+        ) cum ON TRUE
+        WHERE ${whereClauses.join(" AND ")}
+        ORDER BY qr.created_at DESC, qr.id DESC
+        LIMIT $${limitIndex}
+      `,
+      params
+    );
 
     return res.json({
       reports: result.rows,

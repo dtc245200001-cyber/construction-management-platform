@@ -274,11 +274,19 @@ export default function DashboardLayout({ user, setUser }) {
             Thứ Sáu, 25/09/2026 · Tuần 14
           </p>
 
-          <button 
-            onClick={() => navigate('/diary', { state: { openForm: true } })}
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 outline-none">
-            <Plus className="size-4" /> Ghi nhật ký nhanh
-          </button>
+          {user?.role === 'doi_truong' ? (
+            <button 
+              onClick={() => navigate('/field')}
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 outline-none shadow-sm cursor-pointer">
+              <Camera className="size-4" /> Báo khối lượng
+            </button>
+          ) : (
+            <button 
+              onClick={() => navigate('/diary', { state: { openForm: true } })}
+              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 outline-none">
+              <Plus className="size-4" /> Ghi nhật ký nhanh
+            </button>
+          )}
 
           <button 
             className="relative text-muted-foreground outline-none cursor-pointer hover:bg-accent/50 p-2 rounded-xl transition-colors"
@@ -319,9 +327,73 @@ export default function DashboardLayout({ user, setUser }) {
         </header>
 
         {/* Dynamic Page Content */}
-        <main className="flex-1 overflow-y-auto bg-background">
+        <main className="flex-1 overflow-y-auto bg-background pb-16 lg:pb-0">
           <Outlet context={{ currentProject }} />
         </main>
+
+        {/* One-Handed Mobile Bottom Nav Bar (S-26 NFR: Dùng được bằng 1 tay khi đeo găng) */}
+        <nav className="fixed bottom-0 inset-x-0 z-40 flex items-center justify-around border-t border-slate-200 bg-white/95 px-2 py-1.5 backdrop-blur shadow-lg lg:hidden">
+          <button
+            type="button"
+            onClick={() => navigate('/field')}
+            className={`flex min-h-[50px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl py-1 text-xs font-bold transition active:scale-95 ${
+              location.pathname === '/field'
+                ? 'text-blue-600 bg-blue-50'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Camera className="size-5" />
+            <span>Hiện trường</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate('/dashboard')}
+            className={`flex min-h-[50px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl py-1 text-xs font-bold transition active:scale-95 ${
+              location.pathname === '/dashboard'
+                ? 'text-blue-600 bg-blue-50'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Home className="size-5" />
+            <span>Tổng quan</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate('/schedule')}
+            className={`flex min-h-[50px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl py-1 text-xs font-bold transition active:scale-95 ${
+              location.pathname === '/schedule'
+                ? 'text-blue-600 bg-blue-50'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <TrendingUp className="size-5" />
+            <span>Đường găng</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate('/diary')}
+            className={`flex min-h-[50px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl py-1 text-xs font-bold transition active:scale-95 ${
+              location.pathname === '/diary'
+                ? 'text-blue-600 bg-blue-50'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <FileText className="size-5" />
+            <span>Nhật ký</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="flex min-h-[50px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl py-1 text-xs font-bold text-slate-600 transition active:scale-95 hover:text-slate-900"
+          >
+            <Menu className="size-5" />
+            <span>Thêm</span>
+          </button>
+        </nav>
       </div>
     </div>
   );
