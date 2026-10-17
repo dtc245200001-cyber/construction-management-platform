@@ -21,13 +21,13 @@ exports.up = pgm => {
       notNull: true,
       default: pgm.func('current_timestamp'),
     },
-  });
+  }, { ifNotExists: true });
 
-  pgm.createIndex('password_reset_tokens', ['user_id']);
-  pgm.createIndex('password_reset_tokens', ['token_hash'], { unique: true });
-  pgm.createIndex('password_reset_tokens', ['expires_at']);
+  pgm.createIndex('password_reset_tokens', ['user_id'], { ifNotExists: true });
+  pgm.createIndex('password_reset_tokens', ['token_hash'], { ifNotExists: true, unique: true });
+  pgm.createIndex('password_reset_tokens', ['expires_at'], { ifNotExists: true });
 };
 
 exports.down = pgm => {
-  pgm.dropTable('password_reset_tokens');
+  pgm.dropTable('password_reset_tokens', { ifExists: true });
 };
