@@ -24,6 +24,9 @@ import {
   Check,
   RotateCcw,
   History,
+  Settings2,
+  Percent,
+  WalletCards,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -73,6 +76,8 @@ export default function PaymentRequestsPage({ user: propUser } = {}) {
   );
   const canCreate = isSystemAdmin || can(projectRole, "payment_request.create");
   const canReview = isSystemAdmin || can(projectRole, "payment.approve");
+  const canManageRetention =
+    isSystemAdmin || can(projectRole, "payment_retention.manage");
 
   // Dialog lập đề nghị thanh toán
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -80,6 +85,13 @@ export default function PaymentRequestsPage({ user: propUser } = {}) {
   const [periodEnd, setPeriodEnd] = useState("");
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState("");
+
+  // S-45 / T-117: cấu hình tạm giữ theo dự án
+  const [retentionDialogOpen, setRetentionDialogOpen] = useState(false);
+  const [retentionRate, setRetentionRate] = useState("0.00");
+  const [retentionCapAmount, setRetentionCapAmount] = useState("");
+  const [retentionLoading, setRetentionLoading] = useState(false);
+  const [retentionError, setRetentionError] = useState("");
 
   const handleOpenCreateDialog = () => {
     const now = new Date();
@@ -122,6 +134,55 @@ export default function PaymentRequestsPage({ user: propUser } = {}) {
       toast.error(msg);
     } finally {
       setCreateLoading(false);
+    }
+  };
+
+  const handleOpenRetentionConfig = async () => {
+    if (!canManageRetention) return;
+    setRetentionError("");
+    setRetentionLoading(true);
+    try {
+      const res = await api.get(
+        `/projects/${projectId}/payment-retention-config`
+      );
+      const config = res.data?.retention_config || {};
+      setRetentionRate(config.retention_rate ?? "0.00");
+      setRetentionCapAmount(config.retention_cap_amount ?? "");
+      setRetentionDialogOpen(true);
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || "Không thể tải cấu hình tạm giữ"
+      );
+    } finally {
+      setRetentionLoading(false);
+    }
+  };
+
+  const handleSaveRetentionConfig = async (e) => {
+    e.preventDefault();
+    if (!retentionRate.trim()) {
+      setRetentionError("Tỷ lệ tạm giữ là bắt buộc");
+      return;
+    }
+
+    setRetentionLoading(true);
+    setRetentionError("");
+    try {
+      const res = await api.put(
+        `/projects/${projectId}/payment-retention-config`,
+        {
+          retention_rate: retentionRate.trim(),
+          retention_cap_amount: retentionCapAmount.trim() || null,
+        }
+      );
+      toast.success(res.data?.message || "Đã cập nhật cấu hình tạm giữ");
+      setRetentionDialogOpen(false);
+    } catch (err) {
+      setRetentionError(
+        err.response?.data?.message || "Không thể cập nhật cấu hình tạm giữ"
+      );
+    } finally {
+      setRetentionLoading(false);
     }
   };
 
@@ -351,6 +412,19 @@ export default function PaymentRequestsPage({ user: propUser } = {}) {
             <span>Làm mới</span>
           </Button>
 
+          {canManageRetention && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleOpenRetentionConfig}
+              disabled={retentionLoading}
+              className="gap-2"
+            >
+              <Settings2 className="size-4" />
+              <span>Cấu hình tạm giữ</span>
+            </Button>
+          )}
+
           {canCreate && (
             <Button
               size="sm"
@@ -478,6 +552,11 @@ export default function PaymentRequestsPage({ user: propUser } = {}) {
                     <span className="text-base font-extrabold text-primary">
                       {formatVND(pr.total_amount)}
                     </span>
+                    {pr.payable_amount !== undefined && (
+                      <span className="text-[10px] text-emerald-700 block mt-0.5">
+                        Thực trả: {formatVND(pr.payable_amount)}
+                      </span>
+                    )}
                   </div>
                   <div className="text-right">
                     <span className="text-[10px] text-muted-foreground block">Ngày tạo:</span>
@@ -673,6 +752,45 @@ export default function PaymentRequestsPage({ user: propUser } = {}) {
                       {formatVND(detail.total_amount)}
                     </p>
                   </div>
+                </div>
+
+                {/* S-45 / T-117: số tiền tạm giữ và thực trả */}
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <Card className="p-3.5 border-border">
+                    <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <Receipt className="size-3.5" />
+                      Tổng trước tạm giữ
+                    </div>
+                    <div className="font-bold mt-1" data-testid="retention-gross">
+                      {formatVND(detail.total_amount)}
+                    </div>
+                  </Card>
+                  <Card className="p-3.5 border-border">
+                    <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <Percent className="size-3.5" />
+                      Tạm giữ ({detail.retention_rate ?? "0.00"}%)
+                    </div>
+                    <div className="font-bold mt-1 text-amber-700" data-testid="retention-amount">
+                      {formatVND(detail.retention_amount ?? "0.00")}
+                    </div>
+                  </Card>
+                  <Card className="p-3.5 border-border">
+                    <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <WalletCards className="size-3.5" />
+                      Số thực trả
+                    </div>
+                    <div className="font-extrabold mt-1 text-emerald-700" data-testid="payable-amount">
+                      {formatVND(detail.payable_amount ?? detail.total_amount)}
+                    </div>
+                  </Card>
+                  <Card className="p-3.5 border-border">
+                    <div className="text-xs text-muted-foreground">
+                      Tạm giữ lũy kế
+                    </div>
+                    <div className="font-bold mt-1" data-testid="cumulative-retention">
+                      {formatVND(detail.cumulative_retention_amount ?? "0.00")}
+                    </div>
+                  </Card>
                 </div>
 
                 {/* Thông tin bổ sung */}
@@ -952,6 +1070,61 @@ export default function PaymentRequestsPage({ user: propUser } = {}) {
               </>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ================= CẤU HÌNH TẠM GIỮ ================= */}
+      <Dialog open={retentionDialogOpen} onOpenChange={setRetentionDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cấu hình tạm giữ thanh toán</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveRetentionConfig} className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Tỷ lệ áp dụng cho đề nghị mới. Đề nghị đã duyệt giữ nguyên số liệu snapshot.
+            </p>
+            {retentionError && (
+              <div role="alert" className="p-3 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-sm">
+                {retentionError}
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="retention-rate">Tỷ lệ tạm giữ (%)</Label>
+              <Input
+                id="retention-rate"
+                inputMode="decimal"
+                value={retentionRate}
+                onChange={(e) => setRetentionRate(e.target.value)}
+                placeholder="Ví dụ: 5.00"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Hợp lệ từ 0 đến 100, tối đa 2 chữ số thập phân.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="retention-cap">Trần tạm giữ toàn dự án (VND)</Label>
+              <Input
+                id="retention-cap"
+                inputMode="decimal"
+                value={retentionCapAmount}
+                onChange={(e) => setRetentionCapAmount(e.target.value)}
+                placeholder="Để trống nếu không giới hạn"
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setRetentionDialogOpen(false)}
+                disabled={retentionLoading}
+              >
+                Hủy
+              </Button>
+              <Button type="submit" disabled={retentionLoading}>
+                {retentionLoading ? "Đang lưu..." : "Lưu cấu hình"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
