@@ -224,6 +224,14 @@ class PaymentRequestService {
       );
       const paymentRequestId = prRes.rows[0].id;
 
+      // S-44 / T-114: lưu mốc trạng thái ban đầu để UI có lịch sử đầy đủ.
+      await client.query(
+        `INSERT INTO payment_request_status_history (
+           payment_request_id, project_id, action, from_status, to_status, reason, acted_by
+         ) VALUES ($1, $2, 'CREATED', NULL, 'DRAFT', NULL, $3)`,
+        [paymentRequestId, projectId, userId]
+      );
+
       // 7. Chèn bảng payment_request_acceptances (liên kết phiếu)
       for (const accId of eligibleVoucherIds) {
         await client.query(
@@ -317,16 +325,21 @@ class PaymentRequestService {
               pr.total_amount::text as total_amount,
               pr.created_by,
               u.name as creator_name,
+              pr.reviewed_by,
+              reviewer.name as reviewer_name,
+              pr.reviewed_at,
+              pr.return_reason,
               pr.created_at,
               pr.updated_at,
               COUNT(DISTINCT pra.acceptance_id)::int as acceptance_count,
               COUNT(prl.id)::int as line_count
        FROM payment_requests pr
        LEFT JOIN users u ON u.id = pr.created_by
+       LEFT JOIN users reviewer ON reviewer.id = pr.reviewed_by
        LEFT JOIN payment_request_acceptances pra ON pra.payment_request_id = pr.id
        LEFT JOIN payment_request_lines prl ON prl.payment_request_id = pr.id
        WHERE pr.project_id = $1
-       GROUP BY pr.id, u.name
+       GROUP BY pr.id, u.name, reviewer.name
        ORDER BY pr.created_at DESC, pr.id DESC`,
       [projectId]
     );
@@ -348,10 +361,15 @@ class PaymentRequestService {
               pr.total_amount::text as total_amount,
               pr.created_by,
               u.name as creator_name,
+              pr.reviewed_by,
+              reviewer.name as reviewer_name,
+              pr.reviewed_at,
+              pr.return_reason,
               pr.created_at,
               pr.updated_at
        FROM payment_requests pr
        LEFT JOIN users u ON u.id = pr.created_by
+       LEFT JOIN users reviewer ON reviewer.id = pr.reviewed_by
        WHERE pr.id = $1 AND pr.project_id = $2`,
       [paymentRequestId, projectId]
     );
@@ -401,11 +419,181 @@ class PaymentRequestService {
       [paymentRequestId]
     );
 
+    // 4. Lịch sử trạng thái (created/approved/returned) kèm người thao tác.
+    const historyRes = await pool.query(
+      `SELECT h.id,
+              h.action,
+              h.from_status,
+              h.to_status,
+              h.reason,
+              h.acted_by,
+              u.name as acted_by_name,
+              h.acted_at
+       FROM payment_request_status_history h
+       LEFT JOIN users u ON u.id = h.acted_by
+       WHERE h.payment_request_id = $1 AND h.project_id = $2
+       ORDER BY h.acted_at ASC, h.id ASC`,
+      [paymentRequestId, projectId]
+    );
+
     return {
       ...header,
       acceptances: accRes.rows,
       lines: linesRes.rows,
+      history: historyRes.rows,
     };
+  }
+
+  /**
+   * S-44 / T-114: Chủ đầu tư duyệt đề nghị DRAFT.
+   * APPROVED/RETURNED là trạng thái cuối của đề nghị này.
+   */
+  async approvePaymentRequest({ projectId, paymentRequestId, userId }) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const currentRes = await client.query(
+        `SELECT id, project_id, status
+         FROM payment_requests
+         WHERE id = $1 AND project_id = $2
+         FOR UPDATE`,
+        [paymentRequestId, projectId]
+      );
+
+      if (currentRes.rows.length === 0) {
+        const err = new Error("Không tìm thấy đề nghị thanh toán");
+        err.status = 404;
+        throw err;
+      }
+
+      const current = currentRes.rows[0];
+      if (current.status !== "DRAFT") {
+        const err = new Error(
+          current.status === "APPROVED"
+            ? "Đề nghị thanh toán đã duyệt và đã bị khóa"
+            : "Đề nghị thanh toán đã bị trả lại, không thể duyệt lại"
+        );
+        err.status = 409;
+        err.code = "PAYMENT_REQUEST_LOCKED";
+        throw err;
+      }
+
+      const updatedRes = await client.query(
+        `UPDATE payment_requests
+         SET status = 'APPROVED',
+             reviewed_by = $1,
+             reviewed_at = NOW(),
+             return_reason = NULL,
+             updated_at = NOW()
+         WHERE id = $2 AND project_id = $3
+         RETURNING id, project_id, period_start, period_end, status,
+                   total_amount::text as total_amount, created_by,
+                   reviewed_by, reviewed_at, return_reason, created_at, updated_at`,
+        [userId, paymentRequestId, projectId]
+      );
+
+      await client.query(
+        `INSERT INTO payment_request_status_history (
+           payment_request_id, project_id, action, from_status, to_status, reason, acted_by
+         ) VALUES ($1, $2, 'APPROVED', 'DRAFT', 'APPROVED', NULL, $3)`,
+        [paymentRequestId, projectId, userId]
+      );
+
+      await client.query("COMMIT");
+      return updatedRes.rows[0];
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * S-44 / T-114: Chủ đầu tư trả lại đề nghị DRAFT, bắt buộc lý do.
+   * Khi trả lại, toàn bộ phiếu nghiệm thu được release để có thể lập đề nghị khác.
+   */
+  async returnPaymentRequest({ projectId, paymentRequestId, userId, reason }) {
+    const normalizedReason = typeof reason === "string" ? reason.trim() : "";
+    if (!normalizedReason) {
+      const err = new Error("Bắt buộc nhập lý do trả lại đề nghị thanh toán");
+      err.status = 400;
+      err.code = "RETURN_REASON_REQUIRED";
+      throw err;
+    }
+    if (normalizedReason.length > 2000) {
+      const err = new Error("Lý do trả lại không được vượt quá 2000 ký tự");
+      err.status = 400;
+      throw err;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const currentRes = await client.query(
+        `SELECT id, project_id, status
+         FROM payment_requests
+         WHERE id = $1 AND project_id = $2
+         FOR UPDATE`,
+        [paymentRequestId, projectId]
+      );
+
+      if (currentRes.rows.length === 0) {
+        const err = new Error("Không tìm thấy đề nghị thanh toán");
+        err.status = 404;
+        throw err;
+      }
+
+      const current = currentRes.rows[0];
+      if (current.status !== "DRAFT") {
+        const err = new Error(
+          current.status === "APPROVED"
+            ? "Đề nghị thanh toán đã duyệt và đã bị khóa"
+            : "Đề nghị thanh toán đã bị trả lại trước đó"
+        );
+        err.status = 409;
+        err.code = "PAYMENT_REQUEST_LOCKED";
+        throw err;
+      }
+
+      const updatedRes = await client.query(
+        `UPDATE payment_requests
+         SET status = 'RETURNED',
+             reviewed_by = $1,
+             reviewed_at = NOW(),
+             return_reason = $2,
+             updated_at = NOW()
+         WHERE id = $3 AND project_id = $4
+         RETURNING id, project_id, period_start, period_end, status,
+                   total_amount::text as total_amount, created_by,
+                   reviewed_by, reviewed_at, return_reason, created_at, updated_at`,
+        [userId, normalizedReason, paymentRequestId, projectId]
+      );
+
+      await client.query(
+        `UPDATE payment_request_acceptances
+         SET released_at = NOW()
+         WHERE payment_request_id = $1 AND released_at IS NULL`,
+        [paymentRequestId]
+      );
+
+      await client.query(
+        `INSERT INTO payment_request_status_history (
+           payment_request_id, project_id, action, from_status, to_status, reason, acted_by
+         ) VALUES ($1, $2, 'RETURNED', 'DRAFT', 'RETURNED', $3, $4)`,
+        [paymentRequestId, projectId, normalizedReason, userId]
+      );
+
+      await client.query("COMMIT");
+      return updatedRes.rows[0];
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 }
 
