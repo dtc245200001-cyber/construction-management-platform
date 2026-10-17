@@ -25,6 +25,17 @@ import {
   Search,
   Info,
   History,
+  FileDown,
+  Loader2,
+  ArrowRight,
+  Send,
+  CheckCircle2,
+  XCircle,
+  PlusCircle,
+  Clock,
+  ChevronDown,
+  ChevronUp,
+  Layers,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
@@ -44,6 +55,265 @@ import PhotoMetadataPanel from "../components/PhotoMetadataPanel";
 const ALLOWED_PHOTO_EXTS = [".jpg", ".jpeg", ".png", ".webp", ".heic"];
 const MAX_PHOTO_SIZE_MB = 10;
 const MAX_PHOTO_SIZE_BYTES = MAX_PHOTO_SIZE_MB * 1024 * 1024;
+
+const VOUCHER_STATUS_META = {
+  draft: {
+    label: "Bản nháp",
+    badgeClass: "bg-slate-100 text-slate-700 border-slate-300",
+  },
+  pending_review: {
+    label: "Chờ duyệt",
+    badgeClass: "bg-amber-100 text-amber-800 border-amber-300",
+  },
+  approved: {
+    label: "Đã duyệt",
+    badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300",
+  },
+  returned: {
+    label: "Bị trả lại",
+    badgeClass: "bg-rose-100 text-rose-800 border-rose-300",
+  },
+};
+
+function renderVoucherStatusBadge(status) {
+  const meta = VOUCHER_STATUS_META[status] || {
+    label: status || "—",
+    badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
+  };
+  return (
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold border ${meta.badgeClass}`}
+    >
+      {meta.label}
+    </span>
+  );
+}
+
+function VoucherHistoryItem({ log }) {
+  const [showRaw, setShowRaw] = useState(false);
+
+  const actionMeta = {
+    CREATE_ACCEPTANCE_VOUCHER: {
+      label: "Tạo phiếu mới",
+      badgeCls: "bg-sky-50 text-sky-700 border-sky-200",
+      icon: PlusCircle,
+    },
+    SUBMIT_ACCEPTANCE_VOUCHER: {
+      label: "Gửi duyệt",
+      badgeCls: "bg-blue-50 text-blue-700 border-blue-200",
+      icon: Send,
+    },
+    RESUBMIT_ACCEPTANCE_VOUCHER: {
+      label: "Gửi duyệt lại",
+      badgeCls: "bg-indigo-50 text-indigo-700 border-indigo-200",
+      icon: RefreshCw,
+    },
+    APPROVE_ACCEPTANCE_VOUCHER: {
+      label: "Duyệt phiếu",
+      badgeCls: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      icon: CheckCircle2,
+    },
+    RETURN_ACCEPTANCE_VOUCHER: {
+      label: "Trả lại phiếu",
+      badgeCls: "bg-rose-50 text-rose-700 border-rose-200",
+      icon: XCircle,
+    },
+  }[log.action] || {
+    label: log.action,
+    badgeCls: "bg-slate-100 text-slate-700 border-slate-200",
+    icon: History,
+  };
+
+  const ActionIcon = actionMeta.icon;
+  const details = log.details;
+
+  const isCreate =
+    log.action === "CREATE_ACCEPTANCE_VOUCHER" ||
+    (details && details.old_value === null && details.new_value != null);
+
+  const isTransition =
+    details &&
+    (Boolean(details.old_value?.status && details.new_value?.status) ||
+      Boolean(details.old_value && details.new_value));
+
+  const userName = log.user_name || "(Hệ thống)";
+  const userInitial = userName.trim().charAt(0).toUpperCase();
+
+  return (
+    <div className="border border-slate-200 rounded-lg p-3.5 bg-slate-50/60 shadow-xs hover:border-slate-300 transition-colors">
+      {/* Hàng trên: Người thao tác + Hành động & Thời gian */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-200/70">
+        <div className="flex items-center gap-2.5">
+          <div className="h-7 w-7 rounded-full bg-slate-200 text-slate-700 font-semibold text-xs flex items-center justify-center shrink-0">
+            {userInitial}
+          </div>
+          <div>
+            <div className="text-sm font-semibold text-slate-900 leading-tight">
+              {userName}
+            </div>
+            {log.user_email && (
+              <div className="text-xs text-slate-500">{log.user_email}</div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <span
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border ${actionMeta.badgeCls}`}
+          >
+            <ActionIcon className="h-3.5 w-3.5" />
+            {actionMeta.label}
+          </span>
+          <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+            <Clock className="h-3 w-3 text-slate-400" />
+            {new Date(log.created_at).toLocaleString("vi-VN")}
+          </span>
+        </div>
+      </div>
+
+      {/* Nội dung chi tiết thao tác (Trực quan hóa, không dùng mã code JSON) */}
+      {details && (
+        <div className="mt-2.5 space-y-2">
+          {/* TRƯỜNG HỢP 1: TẠO PHIẾU MỚI */}
+          {isCreate && details.new_value && (
+            <div className="bg-white border border-slate-200 rounded-lg p-3 text-xs space-y-2.5 shadow-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-slate-700">
+                {details.new_value.batch_name && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-500 font-medium">Tên đợt:</span>
+                    <span className="font-semibold text-slate-900 bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+                      {details.new_value.batch_name}
+                    </span>
+                  </div>
+                )}
+                {details.new_value.item_count != null && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-500 font-medium">Quy mô:</span>
+                    <span className="inline-flex items-center gap-1 font-semibold text-slate-800">
+                      <Layers className="h-3.5 w-3.5 text-slate-400" />
+                      {details.new_value.item_count} hạng mục
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-500 font-medium">Trạng thái:</span>
+                  {renderVoucherStatusBadge(details.new_value.status || "draft")}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-500 font-medium">Khối lượng:</span>
+                  {details.new_value.has_negative_delta ? (
+                    <span className="inline-flex items-center gap-1 text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded text-[11px] font-medium">
+                      <AlertTriangle className="h-3 w-3 text-rose-600" />
+                      Có đợt âm
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded text-[11px] font-medium">
+                      <Check className="h-3 w-3 text-emerald-600" />
+                      Hợp lệ (không âm)
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TRƯỜNG HỢP 2: CHUYỂN TRẠNG THÁI (GỬI DUYỆT, DUYỆT, TRẢ LẠI) */}
+          {!isCreate && isTransition && (
+            <div className="bg-white border border-slate-200 rounded-lg p-3 text-xs space-y-2.5 shadow-xs">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-slate-500 font-medium">Chuyển trạng thái:</span>
+                <div className="inline-flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200">
+                  {renderVoucherStatusBadge(details.old_value?.status)}
+                  <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
+                  {renderVoucherStatusBadge(details.new_value?.status)}
+                </div>
+                {details.batch_name && (
+                  <span className="text-slate-600 ml-auto">
+                    Đợt: <strong className="text-slate-800">{details.batch_name}</strong>
+                  </span>
+                )}
+              </div>
+
+              {/* Lý do trả lại */}
+              {(details.reason || (details.new_value?.status === "returned" && details.new_value?.review_note)) && (
+                <div className="flex items-start gap-2 bg-rose-50/80 border border-rose-200 text-rose-900 rounded-md p-2.5">
+                  <AlertCircle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold text-rose-800">Lý do trả lại:</span>{" "}
+                    <span className="italic">"{details.reason || details.new_value?.review_note}"</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Ý kiến thẩm định khi duyệt */}
+              {details.new_value?.status === "approved" && details.new_value?.review_note && (
+                <div className="flex items-start gap-2 bg-emerald-50/80 border border-emerald-200 text-emerald-900 rounded-md p-2.5">
+                  <Check className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold text-emerald-800">Ý kiến thẩm định:</span>{" "}
+                    <span className="italic">"{details.new_value.review_note}"</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TRƯỜNG HỢP 3: CÁC THÔNG TIN KHÁC NẾU CÓ */}
+          {!isCreate && !isTransition && (
+            <div className="bg-white border border-slate-200 rounded-lg p-2.5 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {Object.entries(details).map(([key, val]) => {
+                  if (val === null || val === undefined || typeof val === "object") return null;
+                  const label =
+                    {
+                      batch_name: "Tên đợt",
+                      status: "Trạng thái",
+                      reason: "Lý do",
+                      review_note: "Ghi chú",
+                      item_count: "Số hạng mục",
+                    }[key] || key;
+                  return (
+                    <div key={key} className="flex items-center gap-1">
+                      <span className="text-slate-500 font-medium">{label}:</span>
+                      <span className="text-slate-800">{String(val)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Nút bấm xem JSON kỹ thuật (thu gọn mặc định) */}
+          <div className="pt-1 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setShowRaw(!showRaw)}
+              className="text-[11px] text-slate-500 hover:text-slate-700 hover:underline flex items-center gap-1 transition-colors cursor-pointer"
+            >
+              {showRaw ? (
+                <>
+                  <ChevronUp className="h-3 w-3" />
+                  Ẩn chi tiết kỹ thuật (JSON)
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="h-3 w-3" />
+                  Xem chi tiết kỹ thuật (JSON)
+                </>
+              )}
+            </button>
+          </div>
+
+          {showRaw && (
+            <pre className="bg-slate-900 text-slate-100 rounded-md p-2.5 overflow-auto text-[11px] font-mono leading-relaxed mt-1 max-h-48 border border-slate-700">
+              {JSON.stringify(details, null, 2)}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function AcceptancePage({ user: propUser } = {}) {
   const projectId = localStorage.getItem("currentProjectId") || 1;
@@ -65,6 +335,7 @@ export default function AcceptancePage({ user: propUser } = {}) {
   const isInvestor = isSystemAdmin || can(projectRole, "acceptance.approve_official") || projectRole === "chu_dau_tu";
   const canApprove = isSystemAdmin || can(projectRole, "acceptance.approve_official");
   const canReturn = isSystemAdmin || can(projectRole, "acceptance.return_official");
+  const canExportDossier = isSystemAdmin || can(projectRole, "acceptance.export_dossier");
 
   // Dữ liệu danh sách phiếu
   const [vouchers, setVouchers] = useState([]);
@@ -91,6 +362,11 @@ export default function AcceptancePage({ user: propUser } = {}) {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [viewingVoucher, setViewingVoucher] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+
+  // S-50 / T-127: Dialog xuất hồ sơ nghiệm thu theo hạng mục ra PDF
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportingId, setExportingId] = useState(null);
+  const [exportError, setExportError] = useState("");
 
   // Quản lý modal ảnh theo máy trạng thái rõ ràng: 'closed' | 'detail' | 'preview'
   // Đảm bảo tại một thời điểm chỉ mở tối đa 1 modal ảnh (không chồng lấn nhiều overlay)
@@ -231,6 +507,57 @@ export default function AcceptancePage({ user: propUser } = {}) {
     setSavedVoucherId(null);
     fetchLeafItems();
     setCreateDialogOpen(true);
+  };
+
+  // S-50 / T-127: mở dialog xuất hồ sơ nghiệm thu theo hạng mục (chỉ Ban quản lý).
+  // Tải danh sách hạng mục lá nếu chưa có, rồi cho phép tải PDF từng hạng mục.
+  const handleOpenExportDialog = () => {
+    if (!canExportDossier) {
+      toast.error("Chỉ Ban quản lý mới có quyền xuất hồ sơ nghiệm thu");
+      return;
+    }
+    setExportError("");
+    if (leafItems.length === 0) fetchLeafItems();
+    setExportDialogOpen(true);
+  };
+
+  // Tải PDF hồ sơ nghiệm thu của 1 hạng mục. Nội dung do backend dựng —
+  // frontend chỉ gọi endpoint và lưu blob trả về (không gửi dữ liệu phiếu).
+  const handleExportDossier = async (workItem) => {
+    if (!canExportDossier) {
+      toast.error("Chỉ Ban quản lý mới có quyền xuất hồ sơ nghiệm thu");
+      return;
+    }
+    setExportingId(workItem.id);
+    setExportError("");
+    try {
+      const res = await api.get(
+        `/projects/${projectId}/work-items/${workItem.id}/acceptance-dossier.pdf`,
+        { responseType: "blob" }
+      );
+      const blob = new Blob([res.data], { type: "application/pdf" });
+      // Lấy tên file từ header nếu server cung cấp, ngược lại tự đặt an toàn.
+      const dispo = res.headers?.["content-disposition"] || "";
+      const m = dispo.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+      const safeCode = String(workItem.code || workItem.id).replace(/[^\w-]/g, "_");
+      const filename = m ? decodeURIComponent(m[1]) : `ho-so-nghiem-thu-${safeCode}.pdf`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success(`Đã xuất hồ sơ hạng mục ${workItem.code || workItem.name}`);
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 403) setExportError("Bạn không có quyền xuất hồ sơ của hạng mục này.");
+      else if (status === 404) setExportError("Không tìm thấy hạng mục hoặc chưa có dữ liệu.");
+      else setExportError("Xuất PDF thất bại. Vui lòng thử lại.");
+    } finally {
+      setExportingId(null);
+    }
   };
 
   // Thay đổi input luỹ kế của một hạng mục
@@ -678,6 +1005,18 @@ export default function AcceptancePage({ user: propUser } = {}) {
             />
             Làm mới
           </Button>
+
+          {canExportDossier && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleOpenExportDialog}
+              className="flex-1 sm:flex-initial min-h-[44px] flex items-center justify-center gap-1.5 touch-target text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+            >
+              <FileDown className="h-4 w-4" />
+              Xuất hồ sơ PDF
+            </Button>
+          )}
 
           {isSupervisor && (
             <Button
@@ -1532,6 +1871,9 @@ export default function AcceptancePage({ user: propUser } = {}) {
                         <th className="py-2.5 px-3 text-right font-bold">
                           Khối lượng đợt
                         </th>
+                        {canExportDossier && (
+                          <th className="py-2.5 px-3 text-center">Hồ sơ</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody className="divide-y text-slate-800">
@@ -1572,6 +1914,34 @@ export default function AcceptancePage({ user: propUser } = {}) {
                                 </span>
                               )}
                             </td>
+                            {canExportDossier && (
+                              <td className="py-2 px-3 text-center">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={exportingId === it.work_item_id}
+                                  onClick={() =>
+                                    handleExportDossier({
+                                      id: it.work_item_id,
+                                      code: it.work_item_code,
+                                      name: it.work_item_name,
+                                    })
+                                  }
+                                  className="h-7 px-2 text-emerald-700 border-emerald-200 hover:bg-emerald-50 text-[11px]"
+                                  title={`Xuất hồ sơ hoàn công nghiệm thu PDF cho hạng mục ${it.work_item_code || it.work_item_name}`}
+                                >
+                                  {exportingId === it.work_item_id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                  ) : (
+                                    <FileDown className="h-3 w-3 mr-1" />
+                                  )}
+                                  <span>
+                                    {exportingId === it.work_item_id ? "Đang xuất…" : "Xuất PDF"}
+                                  </span>
+                                </Button>
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
@@ -1899,76 +2269,9 @@ export default function AcceptancePage({ user: propUser } = {}) {
             </div>
           ) : (
             <div className="space-y-3 py-2">
-              {historyLogs.map((log) => {
-                const actionLabel =
-                  {
-                    CREATE_ACCEPTANCE_VOUCHER: "Tạo phiếu",
-                    SUBMIT_ACCEPTANCE_VOUCHER: "Gửi duyệt",
-                    APPROVE_ACCEPTANCE_VOUCHER: "Duyệt phiếu",
-                    RETURN_ACCEPTANCE_VOUCHER: "Trả lại phiếu",
-                  }[log.action] || log.action;
-                const colorMap = {
-                  CREATE_ACCEPTANCE_VOUCHER: "bg-slate-100 text-slate-700",
-                  SUBMIT_ACCEPTANCE_VOUCHER: "bg-blue-100 text-blue-800",
-                  APPROVE_ACCEPTANCE_VOUCHER: "bg-emerald-100 text-emerald-800",
-                  RETURN_ACCEPTANCE_VOUCHER: "bg-rose-100 text-rose-800",
-                };
-                const badgeCls =
-                  colorMap[log.action] || "bg-slate-100 text-slate-700";
-                return (
-                  <div
-                    key={log.id}
-                    className="border rounded-lg p-3 bg-slate-50/50"
-                  >
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <Badge className={badgeCls}>{actionLabel}</Badge>
-                      <span className="text-xs text-slate-500">
-                        {new Date(log.created_at).toLocaleString("vi-VN")}
-                      </span>
-                    </div>
-                    <div className="text-sm text-slate-800">
-                      <strong>{log.user_name || "(hệ thống)"}</strong>
-                      {log.user_email && (
-                        <span className="text-xs text-slate-500 ml-2">
-                          {log.user_email}
-                        </span>
-                      )}
-                    </div>
-                    {log.details && (
-                      <div className="mt-2 text-xs">
-                        {log.details.old_value && log.details.new_value ? (
-                          <div className="flex flex-wrap gap-3 text-slate-600">
-                            <span>
-                              Trạng thái:{" "}
-                              <code className="bg-slate-100 px-1 rounded">
-                                {log.details.old_value.status}
-                              </code>
-                              {" → "}
-                              <code className="bg-emerald-100 px-1 rounded">
-                                {log.details.new_value.status}
-                              </code>
-                            </span>
-                            {log.details.reason && (
-                              <span className="text-rose-700">
-                                Lý do: {log.details.reason}
-                              </span>
-                            )}
-                            {log.details.new_value.review_note && (
-                              <span className="text-slate-600 italic">
-                                Ghi chú: {log.details.new_value.review_note}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <pre className="bg-white border rounded p-2 overflow-auto text-[11px]">
-                            {JSON.stringify(log.details, null, 2)}
-                          </pre>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {historyLogs.map((log) => (
+                <VoucherHistoryItem key={log.id} log={log} />
+              ))}
             </div>
           )}
 
@@ -1983,6 +2286,88 @@ export default function AcceptancePage({ user: propUser } = {}) {
         </DialogContent>
       </Dialog>
 
+      {/* ── S-50 / T-127: Dialog xuất hồ sơ nghiệm thu theo hạng mục ra PDF ── */}
+      <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileDown className="h-5 w-5 text-emerald-600" />
+              Xuất hồ sơ nghiệm thu theo hạng mục
+            </DialogTitle>
+          </DialogHeader>
+
+          <p className="text-sm text-slate-500">
+            Chọn một hạng mục lá để tải hồ sơ PDF gồm các đợt nghiệm thu, khối lượng
+            lũy kế, ảnh bằng chứng và metadata (thời điểm chụp, toạ độ theo quyền của bạn).
+          </p>
+
+          {exportError && (
+            <div
+              role="alert"
+              className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm flex items-start gap-2"
+            >
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>{exportError}</span>
+            </div>
+          )}
+
+          {loadingItems ? (
+            <div className="p-8 text-center text-slate-500 text-sm">
+              <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-emerald-600" />
+              Đang tải danh sách hạng mục...
+            </div>
+          ) : leafItems.length === 0 ? (
+            <div className="p-8 text-center text-slate-500 text-sm border rounded-lg bg-slate-50">
+              Chưa có hạng mục lá nào. Vui lòng thiết lập WBS trước.
+            </div>
+          ) : (
+            <div className="border rounded-lg divide-y max-h-[420px] overflow-y-auto">
+              {leafItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50"
+                >
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm text-slate-900 truncate">
+                      {item.code ? `[${item.code}] ` : ""}
+                      {item.name}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      {item.contract_quantity
+                        ? `HĐ: ${formatQuantityVN(item.contract_quantity)} ${item.unit || ""}`
+                        : "Chưa khai khối lượng hợp đồng"}
+                      {" · "}LK đã duyệt: {formatQuantityVN(item.prev_approved_cumulative)}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={exportingId !== null}
+                    onClick={() => handleExportDossier(item)}
+                    className="shrink-0 text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                    aria-label={`Xuất hồ sơ PDF hạng mục ${item.code || item.name}`}
+                  >
+                    {exportingId === item.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <FileDown className="h-4 w-4" />
+                    )}
+                    <span className="ml-1.5">
+                      {exportingId === item.id ? "Đang xuất…" : "PDF"}
+                    </span>
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExportDialogOpen(false)}>
+              Đóng
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );

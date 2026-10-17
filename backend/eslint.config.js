@@ -43,6 +43,11 @@ module.exports = [
         setImmediate: "readonly",
         clearImmediate: "readonly",
 
+        // Web/HTTP globals có sẵn trong Node.js >= 18 (undici global fetch).
+        // authRoutes dùng chúng cho Google OAuth token exchange (server-side).
+        fetch: "readonly",
+        URLSearchParams: "readonly",
+
         // Jest globals
         jest: "readonly",
         describe: "readonly",
