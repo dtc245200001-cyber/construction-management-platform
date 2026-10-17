@@ -94,9 +94,18 @@ export default function ProgressDashboardPage() {
       setData(res.data || null);
     } catch (err) {
       const status = err?.response?.status;
-      if (status === 403) setError("Bạn không có quyền xem dashboard của dự án này.");
-      else if (status === 404) setError("Không tìm thấy dự án.");
-      else setError("Không tải được dữ liệu tiến độ. Vui lòng thử lại.");
+      const serverMsg = err?.response?.data?.message || err?.response?.data?.error;
+      if (status === 403) {
+        setError(serverMsg || "Bạn không có quyền xem dashboard của dự án này.");
+      } else if (status === 404) {
+        if (serverMsg && (serverMsg.includes("đường dẫn") || serverMsg.includes("route") || serverMsg.includes("Cannot"))) {
+          setError("Chức năng đang được cập nhật trên máy chủ backend (chưa triển khai API tiến độ). Vui lòng thử lại sau.");
+        } else {
+          setError(serverMsg || "Không tìm thấy dự án.");
+        }
+      } else {
+        setError(serverMsg || "Không tải được dữ liệu tiến độ. Vui lòng thử lại.");
+      }
     } finally {
       setLoading(false);
     }
@@ -166,8 +175,10 @@ export default function ProgressDashboardPage() {
           </div>
         )}
 
-        {/* KPI cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 shrink-0">
+        {(!error || Boolean(data)) && (
+          <>
+            {/* KPI cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 shrink-0">
           <StatCard
             icon={Percent}
             label="Tiến độ theo giá trị"
@@ -383,6 +394,8 @@ export default function ProgressDashboardPage() {
             </div>
           </section>
         </div>
+          </>
+        )}
 
         {/* Footer link */}
         {!loading && schedule.has_baseline && (
