@@ -2,10 +2,83 @@
 
 const pool = require("../config/db");
 const {
+  parseDecimal,
   multiplyAndRoundHalfUp0,
+  multiplyPercentAndRoundHalfUp0,
   addCurrency,
+  subtractCurrency,
+  compareCurrency,
+  minCurrency,
   formatTwoDecimals,
 } = require("../utils/paymentMath");
+
+function normalizeRetentionRate(value) {
+  const text = String(value ?? "").trim();
+  if (!/^\d{1,3}(\.\d{1,2})?$/.test(text)) {
+    const err = new Error("Tỷ lệ tạm giữ phải là số từ 0 đến 100, tối đa 2 chữ số thập phân");
+    err.status = 400;
+    throw err;
+  }
+
+  const parsed = parseDecimal(text);
+  const hundred = parseDecimal("100");
+  const scaled = parsed.raw * (10n ** BigInt(hundred.scale));
+  const maxScaled = hundred.raw * (10n ** BigInt(parsed.scale));
+  if (scaled > maxScaled) {
+    const err = new Error("Tỷ lệ tạm giữ phải nằm trong khoảng từ 0 đến 100");
+    err.status = 400;
+    throw err;
+  }
+
+  return formatTwoDecimals(text);
+}
+
+function normalizeRetentionCap(value) {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return null;
+  }
+
+  const text = String(value).trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(text)) {
+    const err = new Error("Trần tạm giữ phải là số tiền không âm, tối đa 2 chữ số thập phân");
+    err.status = 400;
+    throw err;
+  }
+  return formatTwoDecimals(text);
+}
+
+function computeRetentionSnapshot({
+  totalAmount,
+  retentionRate,
+  retentionCapAmount,
+  approvedRetentionBefore,
+}) {
+  const rawRetention = multiplyPercentAndRoundHalfUp0(totalAmount, retentionRate);
+  let retentionAmount = rawRetention;
+
+  if (retentionCapAmount !== null) {
+    const remainingCap = subtractCurrency(
+      retentionCapAmount,
+      approvedRetentionBefore
+    );
+    retentionAmount =
+      compareCurrency(remainingCap, "0.00") <= 0
+        ? "0.00"
+        : minCurrency(rawRetention, remainingCap);
+  }
+
+  const payableAmount = subtractCurrency(totalAmount, retentionAmount);
+  const cumulativeRetentionAmount = addCurrency([
+    approvedRetentionBefore,
+    retentionAmount,
+  ]);
+
+  return {
+    retentionAmount: formatTwoDecimals(retentionAmount),
+    payableAmount: formatTwoDecimals(payableAmount),
+    cumulativeRetentionAmount: formatTwoDecimals(cumulativeRetentionAmount),
+  };
+}
 
 /**
  * Service xử lý nghiệp vụ Đề nghị thanh toán (S-43 / T-112).
@@ -65,6 +138,29 @@ class PaymentRequestService {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+
+      // S-45 / T-116: snapshot cấu hình tạm giữ của dự án trong cùng transaction.
+      const retentionConfigRes = await client.query(
+        `SELECT payment_retention_rate::text as retention_rate,
+                payment_retention_cap_amount::text as retention_cap_amount
+         FROM projects
+         WHERE id = $1
+         FOR SHARE`,
+        [projectId]
+      );
+      if (retentionConfigRes.rows.length === 0) {
+        const err = new Error("Không tìm thấy dự án");
+        err.status = 404;
+        throw err;
+      }
+
+      const retentionRate = formatTwoDecimals(
+        retentionConfigRes.rows[0].retention_rate || "0"
+      );
+      const retentionCapAmount =
+        retentionConfigRes.rows[0].retention_cap_amount === null
+          ? null
+          : formatTwoDecimals(retentionConfigRes.rows[0].retention_cap_amount);
 
       let eligibleVoucherIds = [];
 
@@ -213,16 +309,59 @@ class PaymentRequestService {
         throw err;
       }
 
+      const approvedRetentionRes = await client.query(
+        `SELECT COALESCE(SUM(retention_amount), 0)::text as approved_retention
+         FROM payment_requests
+         WHERE project_id = $1 AND status = 'APPROVED'`,
+        [projectId]
+      );
+      const approvedRetentionBefore = formatTwoDecimals(
+        approvedRetentionRes.rows[0]?.approved_retention || "0"
+      );
+      const retention = computeRetentionSnapshot({
+        totalAmount,
+        retentionRate,
+        retentionCapAmount,
+        approvedRetentionBefore,
+      });
+
       // 6. Chèn bảng payment_requests (header)
       const prRes = await client.query(
         `INSERT INTO payment_requests (
-           project_id, period_start, period_end, status, total_amount, created_by
-         ) VALUES ($1, $2, $3, 'DRAFT', $4, $5)
+           project_id, period_start, period_end, status, total_amount, created_by,
+           retention_rate, retention_cap_amount, retention_amount,
+           payable_amount, cumulative_retention_amount
+         ) VALUES ($1, $2, $3, 'DRAFT', $4, $5, $6, $7, $8, $9, $10)
          RETURNING id, project_id, period_start, period_end, status,
-                   total_amount::text as total_amount, created_by, created_at, updated_at`,
-        [projectId, period_start, period_end, totalAmount, userId]
+                   total_amount::text as total_amount, created_by,
+                   retention_rate::text as retention_rate,
+                   retention_cap_amount::text as retention_cap_amount,
+                   retention_amount::text as retention_amount,
+                   payable_amount::text as payable_amount,
+                   cumulative_retention_amount::text as cumulative_retention_amount,
+                   created_at, updated_at`,
+        [
+          projectId,
+          period_start,
+          period_end,
+          totalAmount,
+          userId,
+          retentionRate,
+          retentionCapAmount,
+          retention.retentionAmount,
+          retention.payableAmount,
+          retention.cumulativeRetentionAmount,
+        ]
       );
       const paymentRequestId = prRes.rows[0].id;
+
+      // S-44 / T-114: lưu mốc trạng thái ban đầu để UI có lịch sử đầy đủ.
+      await client.query(
+        `INSERT INTO payment_request_status_history (
+           payment_request_id, project_id, action, from_status, to_status, reason, acted_by
+         ) VALUES ($1, $2, 'CREATED', NULL, 'DRAFT', NULL, $3)`,
+        [paymentRequestId, projectId, userId]
+      );
 
       // 7. Chèn bảng payment_request_acceptances (liên kết phiếu)
       for (const accId of eligibleVoucherIds) {
@@ -315,18 +454,27 @@ class PaymentRequestService {
               pr.period_end,
               pr.status,
               pr.total_amount::text as total_amount,
+              pr.retention_rate::text as retention_rate,
+              pr.retention_amount::text as retention_amount,
+              pr.payable_amount::text as payable_amount,
+              pr.cumulative_retention_amount::text as cumulative_retention_amount,
               pr.created_by,
               u.name as creator_name,
+              pr.reviewed_by,
+              reviewer.name as reviewer_name,
+              pr.reviewed_at,
+              pr.return_reason,
               pr.created_at,
               pr.updated_at,
               COUNT(DISTINCT pra.acceptance_id)::int as acceptance_count,
               COUNT(prl.id)::int as line_count
        FROM payment_requests pr
        LEFT JOIN users u ON u.id = pr.created_by
+       LEFT JOIN users reviewer ON reviewer.id = pr.reviewed_by
        LEFT JOIN payment_request_acceptances pra ON pra.payment_request_id = pr.id
        LEFT JOIN payment_request_lines prl ON prl.payment_request_id = pr.id
        WHERE pr.project_id = $1
-       GROUP BY pr.id, u.name
+       GROUP BY pr.id, u.name, reviewer.name
        ORDER BY pr.created_at DESC, pr.id DESC`,
       [projectId]
     );
@@ -346,12 +494,21 @@ class PaymentRequestService {
               pr.period_end,
               pr.status,
               pr.total_amount::text as total_amount,
+              pr.retention_rate::text as retention_rate,
+              pr.retention_amount::text as retention_amount,
+              pr.payable_amount::text as payable_amount,
+              pr.cumulative_retention_amount::text as cumulative_retention_amount,
               pr.created_by,
               u.name as creator_name,
+              pr.reviewed_by,
+              reviewer.name as reviewer_name,
+              pr.reviewed_at,
+              pr.return_reason,
               pr.created_at,
               pr.updated_at
        FROM payment_requests pr
        LEFT JOIN users u ON u.id = pr.created_by
+       LEFT JOIN users reviewer ON reviewer.id = pr.reviewed_by
        WHERE pr.id = $1 AND pr.project_id = $2`,
       [paymentRequestId, projectId]
     );
@@ -401,10 +558,292 @@ class PaymentRequestService {
       [paymentRequestId]
     );
 
+    // 4. Lịch sử trạng thái (created/approved/returned) kèm người thao tác.
+    const historyRes = await pool.query(
+      `SELECT h.id,
+              h.action,
+              h.from_status,
+              h.to_status,
+              h.reason,
+              h.acted_by,
+              u.name as acted_by_name,
+              h.acted_at
+       FROM payment_request_status_history h
+       LEFT JOIN users u ON u.id = h.acted_by
+       WHERE h.payment_request_id = $1 AND h.project_id = $2
+       ORDER BY h.acted_at ASC, h.id ASC`,
+      [paymentRequestId, projectId]
+    );
+
     return {
       ...header,
       acceptances: accRes.rows,
       lines: linesRes.rows,
+      history: historyRes.rows,
+    };
+  }
+
+  /**
+   * S-44 / T-114: Chủ đầu tư duyệt đề nghị DRAFT.
+   * APPROVED/RETURNED là trạng thái cuối của đề nghị này.
+   */
+  async approvePaymentRequest({ projectId, paymentRequestId, userId }) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Khóa project để hai lượt duyệt đồng thời không làm sai tổng tạm giữ lũy kế.
+      await client.query(
+        `SELECT id FROM projects WHERE id = $1 FOR UPDATE`,
+        [projectId]
+      );
+
+      const currentRes = await client.query(
+        `SELECT id, project_id, status,
+                total_amount::text as total_amount,
+                retention_rate::text as retention_rate,
+                retention_cap_amount::text as retention_cap_amount
+         FROM payment_requests
+         WHERE id = $1 AND project_id = $2
+         FOR UPDATE`,
+        [paymentRequestId, projectId]
+      );
+
+      if (currentRes.rows.length === 0) {
+        const err = new Error("Không tìm thấy đề nghị thanh toán");
+        err.status = 404;
+        throw err;
+      }
+
+      const current = currentRes.rows[0];
+      if (current.status !== "DRAFT") {
+        const err = new Error(
+          current.status === "APPROVED"
+            ? "Đề nghị thanh toán đã duyệt và đã bị khóa"
+            : "Đề nghị thanh toán đã bị trả lại, không thể duyệt lại"
+        );
+        err.status = 409;
+        err.code = "PAYMENT_REQUEST_LOCKED";
+        throw err;
+      }
+
+      const approvedRetentionRes = await client.query(
+        `SELECT COALESCE(SUM(retention_amount), 0)::text as approved_retention
+         FROM payment_requests
+         WHERE project_id = $1
+           AND status = 'APPROVED'
+           AND id <> $2`,
+        [projectId, paymentRequestId]
+      );
+      const approvedRetentionBefore = formatTwoDecimals(
+        approvedRetentionRes.rows[0]?.approved_retention || "0"
+      );
+      const retention = computeRetentionSnapshot({
+        totalAmount: current.total_amount,
+        retentionRate: current.retention_rate,
+        retentionCapAmount:
+          current.retention_cap_amount === null
+            ? null
+            : formatTwoDecimals(current.retention_cap_amount),
+        approvedRetentionBefore,
+      });
+
+      const updatedRes = await client.query(
+        `UPDATE payment_requests
+         SET status = 'APPROVED',
+             reviewed_by = $1,
+             reviewed_at = NOW(),
+             return_reason = NULL,
+             retention_amount = $2,
+             payable_amount = $3,
+             cumulative_retention_amount = $4,
+             updated_at = NOW()
+         WHERE id = $5 AND project_id = $6
+         RETURNING id, project_id, period_start, period_end, status,
+                   total_amount::text as total_amount, created_by,
+                   retention_rate::text as retention_rate,
+                   retention_cap_amount::text as retention_cap_amount,
+                   retention_amount::text as retention_amount,
+                   payable_amount::text as payable_amount,
+                   cumulative_retention_amount::text as cumulative_retention_amount,
+                   reviewed_by, reviewed_at, return_reason, created_at, updated_at`,
+        [
+          userId,
+          retention.retentionAmount,
+          retention.payableAmount,
+          retention.cumulativeRetentionAmount,
+          paymentRequestId,
+          projectId,
+        ]
+      );
+
+      await client.query(
+        `INSERT INTO payment_request_status_history (
+           payment_request_id, project_id, action, from_status, to_status, reason, acted_by
+         ) VALUES ($1, $2, 'APPROVED', 'DRAFT', 'APPROVED', NULL, $3)`,
+        [paymentRequestId, projectId, userId]
+      );
+
+      await client.query("COMMIT");
+      return updatedRes.rows[0];
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * S-44 / T-114: Chủ đầu tư trả lại đề nghị DRAFT, bắt buộc lý do.
+   * Khi trả lại, toàn bộ phiếu nghiệm thu được release để có thể lập đề nghị khác.
+   */
+  async returnPaymentRequest({ projectId, paymentRequestId, userId, reason }) {
+    const normalizedReason = typeof reason === "string" ? reason.trim() : "";
+    if (!normalizedReason) {
+      const err = new Error("Bắt buộc nhập lý do trả lại đề nghị thanh toán");
+      err.status = 400;
+      err.code = "RETURN_REASON_REQUIRED";
+      throw err;
+    }
+    if (normalizedReason.length > 2000) {
+      const err = new Error("Lý do trả lại không được vượt quá 2000 ký tự");
+      err.status = 400;
+      throw err;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const currentRes = await client.query(
+        `SELECT id, project_id, status
+         FROM payment_requests
+         WHERE id = $1 AND project_id = $2
+         FOR UPDATE`,
+        [paymentRequestId, projectId]
+      );
+
+      if (currentRes.rows.length === 0) {
+        const err = new Error("Không tìm thấy đề nghị thanh toán");
+        err.status = 404;
+        throw err;
+      }
+
+      const current = currentRes.rows[0];
+      if (current.status !== "DRAFT") {
+        const err = new Error(
+          current.status === "APPROVED"
+            ? "Đề nghị thanh toán đã duyệt và đã bị khóa"
+            : "Đề nghị thanh toán đã bị trả lại trước đó"
+        );
+        err.status = 409;
+        err.code = "PAYMENT_REQUEST_LOCKED";
+        throw err;
+      }
+
+      const updatedRes = await client.query(
+        `UPDATE payment_requests
+         SET status = 'RETURNED',
+             reviewed_by = $1,
+             reviewed_at = NOW(),
+             return_reason = $2,
+             updated_at = NOW()
+         WHERE id = $3 AND project_id = $4
+         RETURNING id, project_id, period_start, period_end, status,
+                   total_amount::text as total_amount, created_by,
+                   reviewed_by, reviewed_at, return_reason, created_at, updated_at`,
+        [userId, normalizedReason, paymentRequestId, projectId]
+      );
+
+      await client.query(
+        `UPDATE payment_request_acceptances
+         SET released_at = NOW()
+         WHERE payment_request_id = $1 AND released_at IS NULL`,
+        [paymentRequestId]
+      );
+
+      await client.query(
+        `INSERT INTO payment_request_status_history (
+           payment_request_id, project_id, action, from_status, to_status, reason, acted_by
+         ) VALUES ($1, $2, 'RETURNED', 'DRAFT', 'RETURNED', $3, $4)`,
+        [paymentRequestId, projectId, normalizedReason, userId]
+      );
+
+      await client.query("COMMIT");
+      return updatedRes.rows[0];
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getRetentionConfig(projectId) {
+    const res = await pool.query(
+      `SELECT id as project_id,
+              payment_retention_rate::text as retention_rate,
+              payment_retention_cap_amount::text as retention_cap_amount
+       FROM projects
+       WHERE id = $1`,
+      [projectId]
+    );
+
+    if (res.rows.length === 0) {
+      const err = new Error("Không tìm thấy dự án");
+      err.status = 404;
+      throw err;
+    }
+
+    return {
+      project_id: res.rows[0].project_id,
+      retention_rate: formatTwoDecimals(res.rows[0].retention_rate || "0"),
+      retention_cap_amount:
+        res.rows[0].retention_cap_amount === null
+          ? null
+          : formatTwoDecimals(res.rows[0].retention_cap_amount),
+    };
+  }
+
+  async updateRetentionConfig({
+    projectId,
+    retention_rate,
+    retention_cap_amount,
+  }) {
+    const retentionRate = normalizeRetentionRate(retention_rate);
+    const retentionCapAmount = normalizeRetentionCap(retention_cap_amount);
+
+    const before = await this.getRetentionConfig(projectId);
+
+    const res = await pool.query(
+      `UPDATE projects
+       SET payment_retention_rate = $1,
+           payment_retention_cap_amount = $2,
+           updated_at = NOW()
+       WHERE id = $3
+       RETURNING id as project_id,
+                 payment_retention_rate::text as retention_rate,
+                 payment_retention_cap_amount::text as retention_cap_amount`,
+      [retentionRate, retentionCapAmount, projectId]
+    );
+
+    if (res.rows.length === 0) {
+      const err = new Error("Không tìm thấy dự án");
+      err.status = 404;
+      throw err;
+    }
+
+    return {
+      before,
+      after: {
+        project_id: res.rows[0].project_id,
+        retention_rate: formatTwoDecimals(res.rows[0].retention_rate),
+        retention_cap_amount:
+          res.rows[0].retention_cap_amount === null
+            ? null
+            : formatTwoDecimals(res.rows[0].retention_cap_amount),
+      },
     };
   }
 }

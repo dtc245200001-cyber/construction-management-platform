@@ -11,6 +11,7 @@ const {
 } = require("../middleware/projectAccess");
 const asyncHandler = require("../utils/asyncHandler");
 const paymentRequestService = require("../services/paymentRequestService");
+const { logAudit } = require("../utils/auditLogger");
 
 const router = createProjectRouter();
 
@@ -86,6 +87,177 @@ router.get(
         req.params.id
       );
       return res.status(200).json({ payment_request: detail });
+    } catch (err) {
+      if (err.status) {
+        return res.status(err.status).json({
+          error: err.message,
+          message: err.message,
+        });
+      }
+      throw err;
+    }
+  })
+);
+
+
+/**
+ * POST /api/projects/:projectId/payment-requests/:id/approve
+ * S-44 / T-114: Chủ đầu tư duyệt đề nghị thanh toán.
+ */
+router.post(
+  "/:projectId/payment-requests/:id/approve",
+  requireAuth,
+  checkProjectAccess,
+  requirePermission("payment.approve"),
+  asyncHandler(async (req, res) => {
+    try {
+      const updated = await paymentRequestService.approvePaymentRequest({
+        projectId: req.params.projectId,
+        paymentRequestId: req.params.id,
+        userId: req.user.id,
+      });
+
+      await logAudit({
+        userId: req.user.id,
+        action: "APPROVE_PAYMENT_REQUEST",
+        entity: "payment_requests",
+        entityId: Number(req.params.id),
+        projectId: Number(req.params.projectId),
+        details: {
+          old_value: { status: "DRAFT" },
+          new_value: { status: "APPROVED" },
+        },
+        ipAddress: req.ip,
+      });
+
+      return res.status(200).json({
+        message: "Đã duyệt đề nghị thanh toán",
+        payment_request: updated,
+      });
+    } catch (err) {
+      if (err.status) {
+        return res.status(err.status).json({
+          code: err.code,
+          error: err.message,
+          message: err.message,
+        });
+      }
+      throw err;
+    }
+  })
+);
+
+/**
+ * POST /api/projects/:projectId/payment-requests/:id/return
+ * S-44 / T-114: Chủ đầu tư trả lại đề nghị, bắt buộc lý do.
+ */
+router.post(
+  "/:projectId/payment-requests/:id/return",
+  requireAuth,
+  checkProjectAccess,
+  requirePermission("payment.approve"),
+  asyncHandler(async (req, res) => {
+    try {
+      const updated = await paymentRequestService.returnPaymentRequest({
+        projectId: req.params.projectId,
+        paymentRequestId: req.params.id,
+        userId: req.user.id,
+        reason: req.body.reason,
+      });
+
+      await logAudit({
+        userId: req.user.id,
+        action: "RETURN_PAYMENT_REQUEST",
+        entity: "payment_requests",
+        entityId: Number(req.params.id),
+        projectId: Number(req.params.projectId),
+        details: {
+          old_value: { status: "DRAFT" },
+          new_value: { status: "RETURNED" },
+          reason: updated.return_reason,
+        },
+        ipAddress: req.ip,
+      });
+
+      return res.status(200).json({
+        message: "Đã trả lại đề nghị thanh toán",
+        payment_request: updated,
+      });
+    } catch (err) {
+      if (err.status) {
+        return res.status(err.status).json({
+          code: err.code,
+          error: err.message,
+          message: err.message,
+        });
+      }
+      throw err;
+    }
+  })
+);
+
+
+/**
+ * GET /api/projects/:projectId/payment-retention-config
+ * S-45 / T-116: đọc cấu hình tạm giữ của dự án.
+ */
+router.get(
+  "/:projectId/payment-retention-config",
+  requireAuth,
+  checkProjectAccess,
+  requirePermission("payment_request.view"),
+  asyncHandler(async (req, res) => {
+    try {
+      const config = await paymentRequestService.getRetentionConfig(
+        req.params.projectId
+      );
+      return res.status(200).json({ retention_config: config });
+    } catch (err) {
+      if (err.status) {
+        return res.status(err.status).json({
+          error: err.message,
+          message: err.message,
+        });
+      }
+      throw err;
+    }
+  })
+);
+
+/**
+ * PUT /api/projects/:projectId/payment-retention-config
+ * S-45 / T-116: Ban quản lý hoặc Chủ đầu tư cấu hình tỷ lệ/trần tạm giữ.
+ */
+router.put(
+  "/:projectId/payment-retention-config",
+  requireAuth,
+  checkProjectAccess,
+  requirePermission("payment_retention.manage"),
+  asyncHandler(async (req, res) => {
+    try {
+      const result = await paymentRequestService.updateRetentionConfig({
+        projectId: req.params.projectId,
+        retention_rate: req.body.retention_rate,
+        retention_cap_amount: req.body.retention_cap_amount,
+      });
+
+      await logAudit({
+        userId: req.user.id,
+        action: "UPDATE_PAYMENT_RETENTION_CONFIG",
+        entity: "projects",
+        entityId: Number(req.params.projectId),
+        projectId: Number(req.params.projectId),
+        details: {
+          old_value: result.before,
+          new_value: result.after,
+        },
+        ipAddress: req.ip,
+      });
+
+      return res.status(200).json({
+        message: "Đã cập nhật cấu hình tạm giữ",
+        retention_config: result.after,
+      });
     } catch (err) {
       if (err.status) {
         return res.status(err.status).json({

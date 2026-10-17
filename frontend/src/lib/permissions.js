@@ -84,6 +84,7 @@ export const PERMISSIONS = {
   // S-43: Đề nghị thanh toán (T-112 / T-113)
   "payment_request.create": [ROLES.BAN_QUAN_LY],
   "payment_request.view": [ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU, ROLES.KE_TOAN],
+  "payment_retention.manage": [ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU],
 
   // S-40 / T-106: Siêu dữ liệu ảnh hiện trường và quyền riêng tư vị trí
   "photo.view_metadata": ALL_MEMBERS,
