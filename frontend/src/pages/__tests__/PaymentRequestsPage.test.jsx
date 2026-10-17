@@ -302,3 +302,160 @@ describe("T-113: PaymentRequestsPage Unit & Component Tests", () => {
     expect(overflowAutoElements.length).toBeGreaterThan(0);
   });
 });
+
+
+describe("T-115: duyệt, trả lại và lịch sử trạng thái", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.setItem("currentProjectId", "1");
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  function mockPaymentGets(detailOverride = {}) {
+    const detailData = {
+      ...mockDetailResponse,
+      history: [
+        {
+          id: 1,
+          action: "CREATED",
+          from_status: null,
+          to_status: "DRAFT",
+          acted_by: 2,
+          acted_by_name: "Ban quản lý",
+          acted_at: "2026-10-16T08:00:00Z",
+          reason: null,
+        },
+      ],
+      ...detailOverride,
+    };
+
+    api.get.mockImplementation((url) => {
+      if (url === "/projects/1/payment-requests") {
+        return Promise.resolve({ data: { payment_requests: mockListResponse } });
+      }
+      if (url === "/projects/1/payment-requests/1") {
+        return Promise.resolve({ data: { payment_request: detailData } });
+      }
+      return Promise.reject(new Error(`Unexpected GET ${url}`));
+    });
+  }
+
+  test("mở đề nghị DRAFT, duyệt qua hộp xác nhận và gọi đúng API", async () => {
+    mockPaymentGets();
+    api.post.mockResolvedValue({
+      data: {
+        message: "Đã duyệt đề nghị thanh toán",
+        payment_request: { ...mockDetailResponse, status: "APPROVED" },
+      },
+    });
+
+    renderWithRouter(
+      <PaymentRequestsPage user={{ id: 99, is_system_admin: true }} />
+    );
+
+    const detailBtns = await screen.findAllByRole("button", { name: /Chi tiết/i });
+    fireEvent.click(detailBtns[0]);
+
+    expect(await screen.findByText("Lịch sử trạng thái")).toBeInTheDocument();
+    expect(screen.getByText("Lập đề nghị")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Duyệt$/i }));
+    expect(
+      await screen.findByText("Xác nhận duyệt đề nghị thanh toán")
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Xác nhận duyệt/i }));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith(
+        "/projects/1/payment-requests/1/approve",
+        {}
+      );
+    });
+  });
+
+  test("trả lại bắt buộc nhập lý do trước khi gọi API", async () => {
+    mockPaymentGets();
+    api.post.mockResolvedValue({
+      data: {
+        message: "Đã trả lại đề nghị thanh toán",
+        payment_request: {
+          ...mockDetailResponse,
+          status: "RETURNED",
+          return_reason: "Thiếu chứng từ",
+        },
+      },
+    });
+
+    renderWithRouter(
+      <PaymentRequestsPage user={{ id: 99, is_system_admin: true }} />
+    );
+
+    const detailBtns = await screen.findAllByRole("button", { name: /Chi tiết/i });
+    fireEvent.click(detailBtns[0]);
+
+    fireEvent.click(await screen.findByRole("button", { name: /^Trả lại$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Xác nhận trả lại/i }));
+
+    expect(
+      await screen.findByText("Bắt buộc nhập lý do trả lại đề nghị thanh toán")
+    ).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Lý do trả lại"), {
+      target: { value: "Thiếu chứng từ" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Xác nhận trả lại/i }));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith(
+        "/projects/1/payment-requests/1/return",
+        { reason: "Thiếu chứng từ" }
+      );
+    });
+  });
+
+  test("đề nghị APPROVED không còn nút Duyệt hoặc Trả lại", async () => {
+    mockPaymentGets({
+      status: "APPROVED",
+      reviewed_by: 5,
+      reviewer_name: "Chủ đầu tư",
+      reviewed_at: "2026-10-17T08:00:00Z",
+      history: [
+        {
+          id: 1,
+          action: "CREATED",
+          to_status: "DRAFT",
+          acted_by: 2,
+          acted_by_name: "Ban quản lý",
+          acted_at: "2026-10-16T08:00:00Z",
+        },
+        {
+          id: 2,
+          action: "APPROVED",
+          from_status: "DRAFT",
+          to_status: "APPROVED",
+          acted_by: 5,
+          acted_by_name: "Chủ đầu tư",
+          acted_at: "2026-10-17T08:00:00Z",
+        },
+      ],
+    });
+
+    renderWithRouter(
+      <PaymentRequestsPage user={{ id: 99, is_system_admin: true }} />
+    );
+
+    const detailBtns = await screen.findAllByRole("button", { name: /Chi tiết/i });
+    fireEvent.click(detailBtns[0]);
+
+    expect(
+      await screen.findByText(/Đề nghị đã duyệt được khóa/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Duyệt$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Trả lại$/i })).not.toBeInTheDocument();
+  });
+});
