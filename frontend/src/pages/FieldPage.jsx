@@ -5,189 +5,123 @@ import React, {
 } from "react";
 
 import api from "../lib/api";
-import { can, isValidRole } from "../config/permissions";
+import { can, isValidRole, ROLES } from "../config/permissions";
 
 import {
   AlertTriangle,
   CalendarDays,
   Camera,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   HardHat,
   History,
+  Layers,
   Loader2,
   RefreshCw,
+  Sparkles,
+  User,
   X,
 } from "lucide-react";
 import TaskLogModal from "../components/TaskLogModal";
 
 function formatDate(value) {
   if (!value) return "Chưa có";
-
   const date = new Date(value);
-
   if (Number.isNaN(date.getTime())) {
     return value;
   }
-
   return date.toLocaleDateString("vi-VN");
 }
 
 function toLocalDateString(date) {
   const y = date.getFullYear();
-
-  const m = String(
-    date.getMonth() + 1
-  ).padStart(2, "0");
-
-  const d = String(
-    date.getDate()
-  ).padStart(2, "0");
-
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
 
-function getCurrentWeek() {
+function getWeekForOffset(weekOffset = 0) {
   const now = new Date();
+  const baseDate = new Date(now);
+  baseDate.setDate(now.getDate() + weekOffset * 7);
 
-  const monday = new Date(now);
+  const monday = new Date(baseDate);
+  const day = (baseDate.getDay() + 6) % 7;
+  monday.setDate(baseDate.getDate() - day);
 
-  const day =
-    (now.getDay() + 6) % 7;
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
 
-  monday.setDate(
-    now.getDate() - day
-  );
-
-  const sunday =
-    new Date(monday);
-
-  sunday.setDate(
-    monday.getDate() + 6
-  );
+  const firstJan = new Date(monday.getFullYear(), 0, 1);
+  const pastDays = (monday - firstJan) / 86400000;
+  const weekNum = Math.ceil((pastDays + firstJan.getDay() + 1) / 7);
 
   return {
-    start:
-      toLocalDateString(monday),
-
-    end:
-      toLocalDateString(sunday),
-
-    today:
-      toLocalDateString(now),
+    start: toLocalDateString(monday),
+    end: toLocalDateString(sunday),
+    today: toLocalDateString(now),
+    weekNumber: weekNum,
+    displayRange: `${monday.getDate()}/${monday.getMonth() + 1} - ${sunday.getDate()}/${sunday.getMonth() + 1}/${sunday.getFullYear()}`,
+    isCurrentWeek: weekOffset === 0,
   };
 }
 
-export default function FieldPage() {
-  const currentProjectId =
-    localStorage.getItem(
-      "currentProjectId"
-    );
+export default function FieldPage({ user } = {}) {
+  const currentProjectId = localStorage.getItem("currentProjectId");
 
-  // Vai trò TRONG DỰ ÁN HIỆN TẠI — không dùng user.role (vai trò
-  // toàn cục của tài khoản), vì một tài khoản có thể giữ vai trò
-  // khác nhau ở từng dự án (giống cách DiaryPage.jsx lấy membership).
-  // undefined = đang tải; null = đã tải xong nhưng không có vai trò
-  // (lỗi hoặc không phải thành viên) — phân biệt rõ 2 trạng thái này
-  // để không hiểu nhầm "đang tải" thành "không phải đội trưởng".
-  const [
-    projectRole,
-    setProjectRole,
-  ] = useState(undefined);
-
-  // Quyền lấy từ config/permissions. Vai trò không xem được "tất cả đội"
-  // (đội trưởng) bị khoá vào đội của mình: không có dropdown đội, không có toggle.
-  const canViewAll = can(projectRole, "field.viewAll");
-  const canReport = can(projectRole, "field.report");
-  const isTeamLeader =
-    isValidRole(projectRole) && !canViewAll;
-
-  const [team, setTeam] =
-    useState(null);
-
-  const [teams, setTeams] =
-    useState([]);
-
-  const [
-    selectedTeamId,
-    setSelectedTeamId,
-  ] = useState("");
-
-  // S-26 / T-59 (bổ sung): Chỉ huy trưởng / Ban quản lý / Chủ đầu tư
-  // có thể xem việc của TẤT CẢ đội cùng lúc, thay vì phải chọn từng
-  // đội một. Chỉ đọc — báo khối lượng vẫn là việc của đội trưởng.
-  const [
-    viewAllTeams,
-    setViewAllTeams,
-  ] = useState(false);
-
-  const [tasks, setTasks] =
-    useState([]);
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [error, setError] =
-    useState("");
-
-  const [
-    quantities,
-    setQuantities,
-  ] = useState({});
-
-  const [
-    savingId,
-    setSavingId,
-  ] = useState(null);
-
-  const [notice, setNotice] =
-    useState(null);
-
-  // =========================================================
-  // REPORT HISTORY
-  // =========================================================
-
-  const [
-    historyTask,
-    setHistoryTask,
-  ] = useState(null);
-
-  const [
-    historyRows,
-    setHistoryRows,
-  ] = useState([]);
-
-  const [
-    historyLoading,
-    setHistoryLoading,
-  ] = useState(false);
-
-  const [
-    historyError,
-    setHistoryError,
-  ] = useState("");
-
-  const [
-    logTask,
-    setLogTask,
-  ] = useState(null);
-
-  // =========================================================
-  // LOAD PROJECT ROLE (membership trong dự án hiện tại)
-  // =========================================================
-
-  useEffect(() => {
-    if (!currentProjectId) {
-      return;
-    }
-
+  // Vai trò TRONG DỰ ÁN HIỆN TẠI (membership) — fallback sang user?.role nếu có prop
+  const [projectRole, setProjectRole] = useState(() => {
+    if (user?.role) return user.role;
     try {
-      const cachedRole = localStorage.getItem(`project_role_${currentProjectId}`);
-      if (cachedRole) {
-        setProjectRole(cachedRole);
+      if (currentProjectId) {
+        return localStorage.getItem(`project_role_${currentProjectId}`) || undefined;
       }
     } catch {
       /* ignore */
     }
+    return undefined;
+  });
+
+  const canViewAll = can(projectRole, "field.viewAll");
+  const canReport = can(projectRole, "field.report") || projectRole === ROLES.DOI_TRUONG || user?.role === "doi_truong";
+  const isTeamLeader =
+    (isValidRole(projectRole) && !canViewAll) ||
+    projectRole === ROLES.DOI_TRUONG ||
+    user?.role === "doi_truong";
+
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [allTasksMode, setAllTasksMode] = useState(false);
+  const [viewAllTeams, setViewAllTeams] = useState(false);
+
+  const [team, setTeam] = useState(null);
+  const [teams, setTeams] = useState([]);
+  const [selectedTeamId, setSelectedTeamId] = useState("");
+
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const [quantities, setQuantities] = useState({});
+  const [savingId, setSavingId] = useState(null);
+  const [notice, setNotice] = useState(null);
+
+  // History modal
+  const [historyTask, setHistoryTask] = useState(null);
+  const [historyRows, setHistoryRows] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+
+  // Task log / photo attachments
+  const [logTask, setLogTask] = useState(null);
+
+  const currentWeek = getWeekForOffset(weekOffset);
+
+  // =========================================================
+  // LOAD PROJECT ROLE (membership trong dự án hiện tại)
+  // =========================================================
+  useEffect(() => {
+    if (!currentProjectId) return;
 
     let cancelled = false;
 
@@ -206,190 +140,143 @@ export default function FieldPage() {
       })
       .catch(() => {
         if (!cancelled) {
-          try {
-            const cachedRole = localStorage.getItem(`project_role_${currentProjectId}`);
-            if (cachedRole) {
-              setProjectRole(cachedRole);
-              return;
-            }
-          } catch {
-            /* ignore */
+          if (!user?.role) {
+            setProjectRole(null);
           }
-          setProjectRole(null);
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [currentProjectId]);
+  }, [currentProjectId, user?.role]);
 
   // =========================================================
   // LOAD TASKS
   // =========================================================
+  const loadTasks = useCallback(async () => {
+    if (!currentProjectId) {
+      setLoading(false);
+      return;
+    }
 
-  const loadTasks =
-    useCallback(async () => {
-      if (!currentProjectId) {
+    if (projectRole === undefined && !user?.role) {
+      return;
+    }
+
+    // Quản lý phải chọn đội hoặc "all"
+    if (!isTeamLeader && !viewAllTeams && !selectedTeamId) {
+      setTeam(null);
+      setTasks([]);
+      setLoading(false);
+      setError("");
+      return;
+    }
+
+    const cacheKey = `field_tasks_${currentProjectId}_${viewAllTeams ? "all" : selectedTeamId || "my"}_${weekOffset}_${allTasksMode}`;
+
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || "null");
+      if (cached && Array.isArray(cached.tasks)) {
+        setTeam(cached.team || null);
+        setTasks(cached.tasks);
         setLoading(false);
-        return;
+      }
+    } catch {
+      /* ignore */
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+
+      const week = getWeekForOffset(weekOffset);
+      const params = {
+        week_start: week.start,
+        week_end: week.end,
+        report_date: week.today,
+      };
+
+      if (allTasksMode) {
+        params.all_tasks = "true";
       }
 
-      // Chưa xác định được vai trò trong dự án (đang tải membership) —
-      // chờ, tránh hiểu nhầm projectRole=undefined thành "không phải đội trưởng".
-      if (
-        projectRole === undefined
-      ) {
-        return;
-      }
-
-      // Quản lý / Chỉ huy trưởng phải chọn đội,
-      // trừ khi đang ở chế độ xem tất cả đội.
-      if (
-        !isTeamLeader &&
-        !viewAllTeams &&
-        !selectedTeamId
-      ) {
+      if (!isTeamLeader && viewAllTeams) {
+        const res = await api.get(`/projects/${currentProjectId}/teams/all/tasks`, { params });
         setTeam(null);
-        setTasks([]);
-        setLoading(false);
-        setError("");
-
+        setTasks(res.data.tasks || []);
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify({ team: null, tasks: res.data.tasks || [] }));
+        } catch {
+          /* ignore */
+        }
         return;
       }
 
-      const cacheKey = `field_tasks_${currentProjectId}_${viewAllTeams ? 'all' : (selectedTeamId || 'my')}`;
+      if (selectedTeamId && selectedTeamId !== "all") {
+        params.team_id = selectedTeamId;
+      } else if (selectedTeamId === "all") {
+        params.team_id = "all";
+      }
 
-      // Nạp trước dữ liệu từ bộ nhớ đệm
+      const res = await api.get(`/projects/${currentProjectId}/my-team/tasks`, { params });
+
+      setTeam(res.data.team || null);
+      setTasks(res.data.tasks || []);
       try {
-        const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
-        if (cached) {
+        localStorage.setItem(cacheKey, JSON.stringify({ team: res.data.team || null, tasks: res.data.tasks || [] }));
+      } catch {
+        /* ignore */
+      }
+    } catch (err) {
+      try {
+        const cached = JSON.parse(localStorage.getItem(cacheKey) || "null");
+        if (cached && Array.isArray(cached.tasks)) {
           setTeam(cached.team || null);
-          setTasks(cached.tasks || []);
-          setLoading(false);
+          setTasks(cached.tasks);
+          setError("");
+          return;
         }
       } catch {
         /* ignore */
       }
 
-      try {
-        setLoading(true);
-        setError("");
-
-        const week =
-          getCurrentWeek();
-
-        const params = {
-          week_start:
-            week.start,
-
-          week_end:
-            week.end,
-
-          report_date:
-            week.today,
-        };
-
-        if (
-          !isTeamLeader &&
-          viewAllTeams
-        ) {
-          const res =
-            await api.get(
-              `/projects/${currentProjectId}/teams/all/tasks`,
-              { params }
-            );
-
-          setTeam(null);
-          setTasks(
-            res.data.tasks || []
-          );
-          try {
-            localStorage.setItem(cacheKey, JSON.stringify({ team: null, tasks: res.data.tasks || [] }));
-          } catch {
-            /* ignore */
-          }
-          return;
-        }
-
-        if (selectedTeamId) {
-          params.team_id =
-            selectedTeamId;
-        }
-
-        const res =
-          await api.get(
-            `/projects/${currentProjectId}/my-team/tasks`,
-            {
-              params,
-            }
-          );
-
-        setTeam(
-          res.data.team || null
-        );
-
-        setTasks(
-          res.data.tasks || []
-        );
-        try {
-          localStorage.setItem(cacheKey, JSON.stringify({ team: res.data.team || null, tasks: res.data.tasks || [] }));
-        } catch {
-          /* ignore */
-        }
-      } catch (err) {
-        try {
-          const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
-          if (cached && Array.isArray(cached.tasks)) {
-            setTeam(cached.team || null);
-            setTasks(cached.tasks);
-            setError("");
-            return;
-          }
-        } catch {
-          /* ignore */
-        }
-
-        setTeam(null);
-        setTasks([]);
-
-        setError(
-          err.response?.data
-            ?.message ||
-            err.response?.data
-              ?.error ||
-            "Không thể tải danh sách việc của đội"
-        );
-      } finally {
-        setLoading(false);
-      }
-    }, [
-      currentProjectId,
-      isTeamLeader,
-      projectRole,
-      selectedTeamId,
-      viewAllTeams,
-    ]);
+      setTeam(null);
+      setTasks([]);
+      setError(
+        err.response?.data?.message ||
+          err.response?.data?.error ||
+          "Không thể tải danh sách việc của đội"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    currentProjectId,
+    isTeamLeader,
+    projectRole,
+    selectedTeamId,
+    viewAllTeams,
+    weekOffset,
+    allTasksMode,
+    user?.role,
+  ]);
 
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
 
   // =========================================================
-  // LOAD TEAMS
+  // LOAD TEAMS (for managers)
   // =========================================================
-
   useEffect(() => {
-    if (
-      !currentProjectId ||
-      isTeamLeader
-    ) {
+    if (!currentProjectId || isTeamLeader) {
       return;
     }
 
     const cacheKey = `field_teams_${currentProjectId}`;
     try {
-      const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || "null");
       if (Array.isArray(cached) && cached.length > 0) {
         setTeams(cached);
       }
@@ -401,20 +288,9 @@ export default function FieldPage() {
 
     async function loadTeams() {
       try {
-        const res =
-          await api.get(
-            `/projects/${currentProjectId}/teams`
-          );
-
-        if (cancelled) {
-          return;
-        }
-
-        const rows =
-          res.data?.teams ||
-          res.data ||
-          [];
-
+        const res = await api.get(`/projects/${currentProjectId}/teams`);
+        if (cancelled) return;
+        const rows = res.data?.teams || res.data || [];
         const teamList = Array.isArray(rows) ? rows : [];
         setTeams(teamList);
         try {
@@ -425,7 +301,7 @@ export default function FieldPage() {
       } catch {
         if (!cancelled) {
           try {
-            const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+            const cached = JSON.parse(localStorage.getItem(cacheKey) || "null");
             if (Array.isArray(cached) && cached.length > 0) {
               setTeams(cached);
               return;
@@ -443,97 +319,83 @@ export default function FieldPage() {
     return () => {
       cancelled = true;
     };
-  }, [
-    currentProjectId,
-    isTeamLeader,
-  ]);
+  }, [currentProjectId, isTeamLeader]);
 
   // =========================================================
-  // QUANTITY REPORT
+  // GLOVE-FRIENDLY QUICK STEPPERS (S-26 NFR)
   // =========================================================
+  const handleStepQuantity = (taskId, step) => {
+    setQuantities((prev) => {
+      const current = parseFloat(prev[taskId] || 0) || 0;
+      const next = Math.max(0, Math.round((current + step) * 100) / 100);
+      return {
+        ...prev,
+        [taskId]: next > 0 ? String(next) : "",
+      };
+    });
+  };
 
-  async function submitReport(
-    task
-  ) {
-    const raw = String(
-      quantities[
-        task.task_id
-      ] ?? ""
-    ).trim();
+  const handleClearQuantity = (taskId) => {
+    setQuantities((prev) => ({
+      ...prev,
+      [taskId]: "",
+    }));
+  };
 
-    const quantity =
-      Number(raw);
+  // =========================================================
+  // QUANTITY REPORT SUBMIT (AC 2 & AC 3)
+  // =========================================================
+  async function submitReport(task) {
+    const raw = String(quantities[task.task_id] ?? "").trim();
+    const quantity = Number(raw);
 
     if (
       raw === "" ||
-      !Number.isFinite(
-        quantity
-      ) ||
+      !Number.isFinite(quantity) ||
       quantity <= 0 ||
-      quantity >
-        9999999999.99
+      quantity > 9999999999.99
     ) {
       setNotice({
         type: "error",
-
-        message:
-          "Khối lượng phải lớn hơn 0 và không vượt giới hạn cho phép.",
+        message: "Khối lượng phải lớn hơn 0 và không vượt giới hạn cho phép.",
       });
-
       return;
     }
 
     try {
-      setSavingId(
-        task.task_id
-      );
-
+      setSavingId(task.task_id);
       setNotice(null);
 
-      const week =
-        getCurrentWeek();
-
-      const res =
-        await api.post(
-          `/projects/${currentProjectId}/tasks/${task.task_id}/quantity-reports`,
-          {
-            quantity: raw,
-
-            report_date:
-              week.today,
-          }
-        );
+      const week = getWeekForOffset(weekOffset);
+      const res = await api.post(
+        `/projects/${currentProjectId}/tasks/${task.task_id}/quantity-reports`,
+        {
+          quantity: raw,
+          report_date: week.today,
+        }
+      );
 
       setNotice({
-        type:
-          res.data.warning
-            ? "warning"
-            : "success",
-
+        type: res.data.warning ? "warning" : "success",
         message:
           res.data.warning ||
           res.data.message ||
-          "Đã lưu báo cáo.",
+          "Đã lưu báo cáo khối lượng thành công.",
       });
 
-      setQuantities(
-        (prev) => ({
-          ...prev,
-
-          [task.task_id]:
-            "",
-        })
-      );
+      setQuantities((prev) => ({
+        ...prev,
+        [task.task_id]: "",
+      }));
 
       await loadTasks();
     } catch (err) {
       setNotice({
         type: "error",
-
         message:
-          err.response?.data
-            ?.message ||
-          "Không thể lưu báo cáo.",
+          err.response?.data?.message ||
+          err.response?.data?.error ||
+          "Không thể lưu báo cáo khối lượng.",
       });
     } finally {
       setSavingId(null);
@@ -541,42 +403,26 @@ export default function FieldPage() {
   }
 
   // =========================================================
-  // REPORT HISTORY
+  // REPORT HISTORY (S-39 / T-104)
   // =========================================================
-
-  async function loadReportHistory(
-    task
-  ) {
+  async function loadReportHistory(task) {
     try {
       setHistoryTask(task);
-
       setHistoryRows([]);
-
       setHistoryError("");
-
       setHistoryLoading(true);
 
-      // S-39 / T-104: dùng endpoint history mới — mỗi dòng báo cáo
-      // kèm sẵn thông tin audit "ai đã lập, khi nào" (audit_user_name,
-      // audit_created_at), không cần gọi API thứ hai.
-      const res =
-        await api.get(
-          `/projects/${currentProjectId}/tasks/${task.task_id}/quantity-reports/history`
-        );
-
-      setHistoryRows(
-        res.data?.history || []
+      const res = await api.get(
+        `/projects/${currentProjectId}/tasks/${task.task_id}/quantity-reports/history`
       );
+
+      setHistoryRows(res.data?.history || []);
     } catch (err) {
       setHistoryError(
-        err.response?.data
-          ?.message ||
-          "Không thể tải lịch sử báo cáo."
+        err.response?.data?.message || "Không thể tải lịch sử báo cáo."
       );
     } finally {
-      setHistoryLoading(
-        false
-      );
+      setHistoryLoading(false);
     }
   }
 
@@ -587,10 +433,9 @@ export default function FieldPage() {
   }
 
   // =========================================================
-  // LOADING
+  // LOADING STATE
   // =========================================================
-
-  if (loading) {
+  if (loading && !tasks.length && !error) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <Loader2 className="size-8 animate-spin text-blue-600" />
@@ -599,18 +444,15 @@ export default function FieldPage() {
   }
 
   // =========================================================
-  // UI
+  // MAIN RENDER
   // =========================================================
-
   return (
     <div className="mx-auto w-full max-w-5xl p-4 md:p-8">
       {/* HEADER */}
-
       <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-slate-900 md:text-2xl">
             <HardHat className="size-6 text-blue-600" />
-
             Việc của đội trong tuần
           </h1>
 
@@ -624,20 +466,17 @@ export default function FieldPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Toggle "Theo đội / Tất cả đội" cho Chỉ huy trưởng & Ban quản lý */}
           {canViewAll && (
-            <div className="flex min-h-12 items-center rounded-xl border border-slate-300 bg-white p-1 text-sm">
+            <div className="flex min-h-12 items-center rounded-xl border border-slate-300 bg-white p-1 text-sm shadow-xs">
               <button
                 type="button"
                 onClick={() => {
-                  setViewAllTeams(
-                    false
-                  );
+                  setViewAllTeams(false);
                   setNotice(null);
                 }}
-                className={`min-h-11 rounded-lg px-3 font-semibold transition-colors ${
-                  !viewAllTeams
-                    ? "bg-blue-600 text-white"
-                    : "text-slate-600"
+                className={`min-h-11 rounded-lg px-3 font-semibold transition-colors cursor-pointer ${
+                  !viewAllTeams ? "bg-blue-600 text-white" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
                 Theo đội
@@ -646,15 +485,11 @@ export default function FieldPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setViewAllTeams(
-                    true
-                  );
+                  setViewAllTeams(true);
                   setNotice(null);
                 }}
-                className={`min-h-11 rounded-lg px-3 font-semibold transition-colors ${
-                  viewAllTeams
-                    ? "bg-blue-600 text-white"
-                    : "text-slate-600"
+                className={`min-h-11 rounded-lg px-3 font-semibold transition-colors cursor-pointer ${
+                  viewAllTeams ? "bg-blue-600 text-white" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
                 Tất cả đội
@@ -662,42 +497,30 @@ export default function FieldPage() {
             </div>
           )}
 
-          {!isTeamLeader &&
-            !viewAllTeams && (
-              <select
-                value={
-                  selectedTeamId
-                }
-                onChange={(e) => {
-                  setSelectedTeamId(
-                    e.target.value
-                  );
-
-                  setNotice(null);
-                }}
-                className="min-h-12 min-w-[180px] rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500"
-              >
-                <option value="">
-                  -- Chọn đội --
+          {/* Dropdown chọn đội */}
+          {!isTeamLeader && !viewAllTeams && (
+            <select
+              value={selectedTeamId}
+              onChange={(e) => {
+                setSelectedTeamId(e.target.value);
+                setNotice(null);
+              }}
+              className="min-h-12 min-w-[180px] rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium outline-none focus:border-blue-500"
+            >
+              <option value="">-- Chọn đội --</option>
+              {teams.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
                 </option>
+              ))}
+            </select>
+          )}
 
-                {teams.map(
-                  (item) => (
-                    <option
-                      key={item.id}
-                      value={item.id}
-                    >
-                      {item.name}
-                    </option>
-                  )
-                )}
-              </select>
-            )}
-
+          {/* Quick Refresh */}
           <button
             type="button"
             onClick={loadTasks}
-            className="min-h-12 min-w-12 rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 shadow-sm"
+            className="min-h-12 min-w-12 rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 shadow-sm hover:bg-slate-50 cursor-pointer active:scale-95 transition-all"
             aria-label="Tải lại"
           >
             <RefreshCw className="mx-auto size-4" />
@@ -705,19 +528,74 @@ export default function FieldPage() {
         </div>
       </div>
 
-      {/* NOTICE */}
+      {/* WEEK NAVIGATION BAR */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-xs">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <button
+            type="button"
+            onClick={() => setWeekOffset((prev) => prev - 1)}
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 active:scale-95"
+            aria-label="Tuần trước"
+            title="Tuần trước"
+          >
+            <ChevronLeft className="size-5" />
+          </button>
 
+          <div className="flex min-h-11 items-center justify-center rounded-xl bg-blue-50 px-3 py-1 text-center font-bold text-xs sm:text-sm text-blue-950">
+            <CalendarDays className="size-4 mr-1.5 text-blue-600 shrink-0" />
+            <span>{currentWeek.displayRange}</span>
+            {currentWeek.isCurrentWeek && (
+              <span className="ml-1.5 rounded bg-blue-600 px-1.5 py-0.5 text-[10px] font-extrabold text-white uppercase">
+                Tuần này
+              </span>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setWeekOffset((prev) => prev + 1)}
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 active:scale-95"
+            aria-label="Tuần sau"
+            title="Tuần sau"
+          >
+            <ChevronRight className="size-5" />
+          </button>
+
+          {!currentWeek.isCurrentWeek && (
+            <button
+              type="button"
+              onClick={() => setWeekOffset(0)}
+              className="min-h-11 rounded-xl border border-blue-200 bg-white px-3 text-xs font-bold text-blue-600 hover:bg-blue-50 active:scale-95"
+            >
+              Về tuần này
+            </button>
+          )}
+        </div>
+
+        {/* Toggle Tất cả việc / Lọc tuần */}
+        <button
+          type="button"
+          onClick={() => setAllTasksMode(!allTasksMode)}
+          className={`min-h-11 rounded-xl px-3 text-xs font-bold transition cursor-pointer ${
+            allTasksMode
+              ? "bg-slate-800 text-white shadow"
+              : "border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+          }`}
+        >
+          {allTasksMode ? "Tất cả việc" : "Lọc theo tuần"}
+        </button>
+      </div>
+
+      {/* NOTICE */}
       {notice && (
         <div
           role="alert"
-          className={`mb-4 rounded-xl border p-3 text-sm font-medium ${
-            notice.type ===
-            "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-              : notice.type ===
-                  "warning"
-                ? "border-amber-200 bg-amber-50 text-amber-800"
-                : "border-red-200 bg-red-50 text-red-700"
+          className={`mb-4 rounded-xl border p-3.5 text-sm font-medium ${
+            notice.type === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : notice.type === "warning"
+                ? "border-amber-200 bg-amber-50 text-amber-900"
+                : "border-red-200 bg-red-50 text-red-800"
           }`}
         >
           {notice.message}
@@ -725,31 +603,22 @@ export default function FieldPage() {
       )}
 
       {/* ERROR */}
-
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 font-medium">
           {error}
         </div>
       )}
 
       {/* MANAGER HAS NOT SELECTED TEAM */}
+      {!error && !isTeamLeader && !viewAllTeams && !selectedTeamId && (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
+          Vui lòng chọn đội để xem công việc.
+        </div>
+      )}
 
+      {/* EMPTY STATE */}
       {!error &&
-        !isTeamLeader &&
-        !viewAllTeams &&
-        !selectedTeamId && (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
-            Vui lòng chọn đội để
-            xem công việc.
-          </div>
-        )}
-
-      {/* EMPTY */}
-
-      {!error &&
-        (isTeamLeader ||
-          viewAllTeams ||
-          selectedTeamId) &&
+        (isTeamLeader || viewAllTeams || selectedTeamId) &&
         tasks.length === 0 && (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
             {viewAllTeams
@@ -759,36 +628,30 @@ export default function FieldPage() {
         )}
 
       {/* TASK CARDS */}
-
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {tasks.map((task) => {
           const planned =
-            task.planned_quantity ===
-              null ||
-            task.planned_quantity ===
-              undefined
+            task.planned_quantity === null || task.planned_quantity === undefined
               ? null
-              : Number(
-                  task.planned_quantity
-                );
+              : Number(task.planned_quantity);
 
-          const cumulative =
-            Number(
-              task.cumulative_reported ||
-                0
-            );
+          const cumulative = Number(task.cumulative_reported || 0);
+          const currentInput = parseFloat(quantities[task.task_id] || 0) || 0;
+          const willExceed =
+            planned !== null &&
+            currentInput > 0 &&
+            cumulative + currentInput > planned;
 
           return (
             <article
               key={task.task_id}
-              className={`rounded-2xl border bg-white p-4 shadow-sm ${
+              className={`rounded-2xl border bg-white p-4 shadow-xs transition-shadow hover:shadow-md ${
                 task.is_critical
                   ? "border-red-300 border-l-4 border-l-red-600"
                   : "border-slate-200"
               }`}
             >
               {/* TASK TITLE */}
-
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -803,109 +666,83 @@ export default function FieldPage() {
                     </h2>
 
                     {task.is_critical && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-1 text-[11px] font-bold text-red-700">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-700">
                         <AlertTriangle className="size-3" />
-
                         Việc găng
                       </span>
                     )}
 
-                    {viewAllTeams &&
-                      task.team_name && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700">
-                          <HardHat className="size-3" />
-
-                          {
-                            task.team_name
-                          }
-                        </span>
-                      )}
+                    {viewAllTeams && task.team_name && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
+                        <HardHat className="size-3" />
+                        {task.team_name}
+                      </span>
+                    )}
                   </div>
 
                   <p className="mt-1 text-xs text-slate-500">
-                    {
-                      task.work_item_name
-                    }
+                    {task.work_item_name}
                   </p>
                 </div>
               </div>
 
               {/* TASK INFO */}
-
               <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                <div className="rounded-xl bg-slate-50 p-3">
+                <div className="rounded-xl bg-slate-50 p-2.5">
                   <div className="flex items-center gap-1 text-xs text-slate-500">
                     <CalendarDays className="size-3.5" />
-
-                    Ngày bắt đầu
+                    Bắt đầu
                   </div>
-
-                  <div className="mt-1 font-semibold">
-                    {formatDate(
-                      task.early_start
-                    )}
+                  <div className="mt-1 font-semibold text-slate-800">
+                    {formatDate(task.early_start)}
                   </div>
                 </div>
 
-                <div className="rounded-xl bg-slate-50 p-3">
-                  <div className="text-xs text-slate-500">
-                    Báo hôm nay
-                  </div>
-
-                  <div className="mt-1 font-semibold">
-                    {Number(
-                      task.reported_today ||
-                        0
-                    )}{" "}
-                    {task.quantity_unit ||
-                      ""}
+                <div className="rounded-xl bg-slate-50 p-2.5">
+                  <div className="text-xs text-slate-500">Báo hôm nay</div>
+                  <div className="mt-1 font-semibold text-slate-800">
+                    {Number(task.reported_today || 0)}{" "}
+                    {task.quantity_unit || ""}
                   </div>
                 </div>
 
-                <div className="rounded-xl bg-slate-50 p-3">
-                  <div className="text-xs text-slate-500">
-                    Lũy kế
-                  </div>
-
+                <div className="rounded-xl bg-slate-50 p-2.5">
+                  <div className="text-xs text-slate-500">Lũy kế</div>
                   <div
                     className={`mt-1 font-semibold ${
-                      task.over_planned
-                        ? "text-amber-700"
-                        : ""
+                      task.over_planned ? "text-amber-700 font-bold" : "text-slate-800"
                     }`}
                   >
-                    {cumulative}{" "}
-                    {task.quantity_unit ||
-                      ""}
+                    {cumulative} {task.quantity_unit || ""}
                   </div>
                 </div>
 
-                <div className="rounded-xl bg-slate-50 p-3">
-                  <div className="text-xs text-slate-500">
-                    Khối lượng việc
-                  </div>
-
-                  <div className="mt-1 font-semibold">
+                <div className="rounded-xl bg-slate-50 p-2.5">
+                  <div className="text-xs text-slate-500">Khối lượng việc</div>
+                  <div className="mt-1 font-semibold text-slate-800">
                     {planned === null
                       ? "Chưa đặt"
-                      : `${planned} ${
-                          task.quantity_unit ||
-                          ""
-                        }`}
+                      : `${planned} ${task.quantity_unit || ""}`}
                   </div>
                 </div>
               </div>
 
               {/* PROGRESS BAR HOÀN THÀNH */}
               {planned !== null && planned > 0 && (
-                <div className="mt-3 rounded-xl bg-slate-50 p-3">
+                <div className="mt-3 rounded-xl bg-slate-50 p-2.5">
                   <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
                     <span>Tiến độ thực hiện:</span>
-                    <span className={task.over_planned ? "text-amber-600 font-bold" : "text-blue-600 font-bold"}>
+                    <span
+                      className={
+                        task.over_planned
+                          ? "text-amber-600 font-bold"
+                          : "text-blue-600 font-bold"
+                      }
+                    >
                       {Math.round((cumulative / planned) * 100)}%
                     </span>
                   </div>
-                  <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
+                  <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-slate-200">
                     <div
                       className={`h-full rounded-full transition-all duration-300 ${
                         task.over_planned ? "bg-amber-500" : "bg-blue-600"
@@ -918,24 +755,64 @@ export default function FieldPage() {
                 </div>
               )}
 
-              {/* OVER PLAN WARNING */}
-
+              {/* OVER PLAN WARNING (AC 3) */}
               {task.over_planned && (
-                <div className="mt-3 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs font-semibold text-amber-900 shadow-xs">
+                <div className="mt-3 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 p-2.5 text-xs font-semibold text-amber-900">
                   <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
-                  <span>Cảnh báo: Khối lượng lũy kế đã vượt khối lượng kế hoạch ({cumulative}/{planned}).</span>
+                  <span>
+                    Cảnh báo: Khối lượng lũy kế đã vượt khối lượng kế hoạch (
+                    {cumulative}/{planned} {task.quantity_unit || ""}). Phát sinh vẫn được ghi nhận.
+                  </span>
                 </div>
               )}
 
-              {/* REPORT INPUT — chỉ đội trưởng mới báo cáo được;
-                  xem tất cả đội là chế độ chỉ đọc. */}
-
+              {/* REPORT INPUT — chỉ khi có quyền báo cáo và không ở chế độ Tất cả đội */}
               {!viewAllTeams && canReport && (
-                <div className="mt-4">
-                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                    Khối lượng hoàn
-                    thành hôm nay
+                <div className="mt-4 border-t border-slate-100 pt-3">
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700">
+                    Khối lượng hoàn thành hôm nay
                   </label>
+
+                  {/* Real-time over-planned preview warning (AC 3) */}
+                  {willExceed && (
+                    <div className="mb-2 rounded-xl bg-amber-100/90 p-2.5 text-xs font-bold text-amber-950 border border-amber-300">
+                      ⚠️ Cảnh báo phát sinh: Nhập {currentInput} sẽ làm tổng lũy
+                      kế ({Math.round((cumulative + currentInput) * 100) / 100}{" "}
+                      {task.quantity_unit}) vượt khối lượng việc ({planned}{" "}
+                      {task.quantity_unit}). Hệ thống vẫn sẽ lưu vì hiện trường
+                      có phát sinh.
+                    </div>
+                  )}
+
+                  {/* GLOVE-FRIENDLY QUICK STEPPERS (NFR: nút bấm lớn khi đeo găng) */}
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {[1, 5, 10, 50].map((step) => (
+                      <button
+                        key={step}
+                        type="button"
+                        onClick={() => handleStepQuantity(task.task_id, step)}
+                        className="min-h-11 flex-1 touch-manipulation rounded-xl border border-slate-200 bg-slate-50 text-xs font-black text-slate-800 shadow-xs transition active:scale-95 hover:bg-slate-100 cursor-pointer"
+                      >
+                        +{step}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => handleStepQuantity(task.task_id, -1)}
+                      className="min-h-11 min-w-11 touch-manipulation rounded-xl border border-slate-200 bg-slate-50 text-xs font-black text-slate-800 shadow-xs transition active:scale-95 hover:bg-slate-100 cursor-pointer"
+                      title="Giảm 1"
+                    >
+                      -1
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleClearQuantity(task.task_id)}
+                      className="min-h-11 min-w-11 touch-manipulation rounded-xl border border-red-200 bg-red-50 text-xs font-black text-red-700 shadow-xs transition active:scale-95 hover:bg-red-100 cursor-pointer"
+                      title="Xóa ô nhập"
+                    >
+                      C
+                    </button>
+                  </div>
 
                   <div className="flex gap-2">
                     <input
@@ -944,46 +821,28 @@ export default function FieldPage() {
                       min="0.01"
                       max="9999999999.99"
                       step="0.01"
-                      value={
-                        quantities[
-                          task.task_id
-                        ] ?? ""
-                      }
+                      value={quantities[task.task_id] ?? ""}
                       onChange={(e) =>
-                        setQuantities(
-                          (prev) => ({
-                            ...prev,
-
-                            [task.task_id]:
-                              e.target
-                                .value,
-                          })
-                        )
+                        setQuantities((prev) => ({
+                          ...prev,
+                          [task.task_id]: e.target.value,
+                        }))
                       }
-                      placeholder="0"
-                      className="min-h-12 min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-3 text-base outline-none focus:border-blue-500"
+                      placeholder="0.00"
+                      className="min-h-12 min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-3 text-base font-bold outline-none focus:border-blue-500"
                     />
 
                     <button
                       type="button"
-                      onClick={() =>
-                        submitReport(
-                          task
-                        )
-                      }
-                      disabled={
-                        savingId ===
-                        task.task_id
-                      }
-                      className="inline-flex min-h-12 min-w-[104px] touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+                      onClick={() => submitReport(task)}
+                      disabled={savingId === task.task_id}
+                      className="inline-flex min-h-12 min-w-[104px] touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60 hover:bg-blue-700 active:scale-95 transition-all cursor-pointer shadow-sm"
                     >
-                      {savingId ===
-                      task.task_id ? (
+                      {savingId === task.task_id ? (
                         <Loader2 className="size-4 animate-spin" />
                       ) : (
                         <CheckCircle2 className="size-4" />
                       )}
-
                       Lưu
                     </button>
                   </div>
@@ -991,45 +850,31 @@ export default function FieldPage() {
               )}
 
               {/* ACTION BUTTONS */}
-
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() =>
-                    loadReportHistory(
-                      task
-                    )
-                  }
-                  className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  onClick={() => loadReportHistory(task)}
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 cursor-pointer active:scale-95"
                 >
-                  <History className="size-4" />
-
+                  <History className="size-3.5" />
                   Lịch sử báo cáo
                 </button>
 
                 <button
                   type="button"
-                  onClick={() =>
-                    setLogTask(task)
-                  }
-                  className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
+                  onClick={() => setLogTask(task)}
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 cursor-pointer active:scale-95"
                 >
-                  <Camera className="size-4 text-blue-600" />
-
+                  <Camera className="size-3.5 text-blue-600" />
                   Nhật ký & Ảnh
                 </button>
               </div>
 
               {/* LAST REPORT */}
-
               {task.last_reported_at && (
-                <p className="mt-3 text-xs text-slate-400">
+                <p className="mt-2.5 text-xs text-slate-400">
                   Lần báo gần nhất:{" "}
-                  {new Date(
-                    task.last_reported_at
-                  ).toLocaleString(
-                    "vi-VN"
-                  )}
+                  {new Date(task.last_reported_at).toLocaleString("vi-VN")}
                 </p>
               )}
             </article>
@@ -1038,179 +883,120 @@ export default function FieldPage() {
       </div>
 
       {/* =====================================================
-          REPORT HISTORY MODAL
+          REPORT HISTORY MODAL (S-39 Audit Timeline)
       ===================================================== */}
-
       {historyTask && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/50 backdrop-blur-xs p-0 sm:p-4">
-          <div className="max-h-[90dvh] w-full max-w-2xl overflow-hidden rounded-t-3xl sm:rounded-2xl bg-white shadow-2xl flex flex-col animate-in slide-in-from-bottom sm:slide-in-from-bottom-0 sm:fade-in">
-            {/* MODAL HEADER */}
-
+          <div className="max-h-[90dvh] w-full max-w-2xl overflow-hidden rounded-t-3xl sm:rounded-2xl bg-white shadow-2xl flex flex-col">
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <div>
-                <h2 className="flex items-center gap-2 font-bold text-slate-900">
+                <h2 className="flex items-center gap-2 text-base sm:text-lg font-bold text-slate-900">
                   <History className="size-5 text-blue-600" />
-
-                  Lịch sử báo cáo
-                  khối lượng
+                  Lịch sử báo cáo khối lượng
                 </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Công việc:{" "}
-                  <span className="font-semibold text-slate-700">
-                    {
-                      historyTask.name
-                    }
-                  </span>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Công việc: <strong className="text-slate-800">{historyTask.name}</strong>
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={
-                  closeHistory
-                }
-                className="flex size-10 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100"
+                onClick={closeHistory}
+                className="flex size-10 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 cursor-pointer"
                 aria-label="Đóng"
               >
                 <X className="size-5" />
               </button>
             </div>
 
-            {/* MODAL BODY */}
-
-            <div className="max-h-[65vh] overflow-y-auto p-5">
+            <div className="flex-1 overflow-y-auto p-5">
               {historyLoading ? (
                 <div className="flex min-h-40 items-center justify-center">
-                  <Loader2 className="size-7 animate-spin text-blue-600" />
+                  <Loader2 className="size-8 animate-spin text-blue-600" />
                 </div>
               ) : historyError ? (
-                <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
                   {historyError}
                 </div>
-              ) : historyRows.length ===
-                0 ? (
-                <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
-                  Chưa có báo cáo
-                  khối lượng nào.
+              ) : historyRows.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm font-semibold text-slate-500">
+                  Chưa có báo cáo khối lượng nào cho công việc này.
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[650px] text-left text-sm">
+                  <table className="w-full min-w-[550px] text-left text-sm">
                     <thead>
                       <tr className="border-b border-slate-200 text-xs uppercase text-slate-500">
-                        <th className="px-3 py-3">
-                          Ngày
-                        </th>
-
-                        <th className="px-3 py-3">
-                          Khối lượng
-                        </th>
-
-                        <th className="px-3 py-3">
-                          Đội
-                        </th>
-
-                        <th className="px-3 py-3">
-                          Người báo
-                        </th>
-
-                        <th className="px-3 py-3">
-                          Ghi nhận lúc
-                        </th>
-
-                        {/* S-39: cột audit "ai đã lập"
-                            để truy trách nhiệm
-                            khi có tranh chấp. */}
-                        <th className="px-3 py-3">
-                          Nhật ký thao tác
-                        </th>
+                        <th className="px-3 py-3">Ngày</th>
+                        <th className="px-3 py-3">Khối lượng</th>
+                        <th className="px-3 py-3">Đội</th>
+                        <th className="px-3 py-3">Người báo</th>
+                        <th className="px-3 py-3">Ghi nhận lúc</th>
+                        <th className="px-3 py-3">Nhật ký thao tác</th>
                       </tr>
                     </thead>
-
                     <tbody>
-                      {historyRows.map(
-                        (row) => (
-                          <tr
-                            key={row.id}
-                            className="border-b border-slate-100"
-                          >
-                            <td className="px-3 py-3 font-medium text-slate-700">
-                              {formatDate(
-                                row.report_date
-                              )}
-                            </td>
-
-                            <td className="px-3 py-3 font-semibold text-blue-700">
-                              {
-                                row.quantity
-                              }{" "}
-                              {historyTask.quantity_unit ||
-                                ""}
-                            </td>
-
-                            <td className="px-3 py-3 text-slate-600">
-                              {row.team_name ||
-                                "--"}
-                            </td>
-
-                            <td className="px-3 py-3 text-slate-600">
-                              {row.reported_by_name ||
-                                "--"}
-                            </td>
-
-                            <td className="px-3 py-3 text-slate-600">
-                              {row.created_at
-                                ? new Date(
-                                    row.created_at
-                                  ).toLocaleString(
-                                    "vi-VN"
-                                  )
-                                : "--"}
-                            </td>
-
-                            <td className="px-3 py-3 text-slate-600">
-                              {row.audit_action ? (
-                                <span title="Dòng nhật ký chỉ ghi thêm, không thể sửa/xóa">
-                                  <span className="font-semibold text-slate-700">
-                                    {row.audit_user_name ||
-                                      row.reported_by_name ||
-                                      "--"}
-                                  </span>{" "}
-                                  đã lập
-                                  <br />
-                                  <span className="text-xs text-slate-400">
-                                    {row.audit_created_at
-                                      ? new Date(
-                                          row.audit_created_at
-                                        ).toLocaleString(
-                                          "vi-VN"
-                                        )
-                                      : ""}
-                                  </span>
+                      {historyRows.map((row) => (
+                        <tr key={row.id} className="border-b border-slate-100 hover:bg-slate-50">
+                          <td className="px-3 py-3 font-medium text-slate-700">
+                            {formatDate(row.report_date)}
+                          </td>
+                          <td className="px-3 py-3 font-semibold text-blue-700">
+                            +{row.quantity} {historyTask.quantity_unit || ""}
+                          </td>
+                          <td className="px-3 py-3 text-slate-600">
+                            {row.team_name || "--"}
+                          </td>
+                          <td className="px-3 py-3 text-slate-600">
+                            {row.reported_by_name || "--"}
+                          </td>
+                          <td className="px-3 py-3 text-slate-600 text-xs">
+                            {row.created_at
+                              ? new Date(row.created_at).toLocaleString("vi-VN")
+                              : "--"}
+                          </td>
+                          <td className="px-3 py-3 text-slate-600 text-xs">
+                            {row.audit_action ? (
+                              <span title="Dòng nhật ký chỉ ghi thêm, không thể sửa/xóa">
+                                <span className="font-semibold text-slate-700">
+                                  {row.audit_user_name || row.reported_by_name || "--"}
+                                </span>{" "}
+                                đã lập
+                                <br />
+                                <span className="text-[11px] text-slate-400">
+                                  {row.audit_created_at
+                                    ? new Date(row.audit_created_at).toLocaleString("vi-VN")
+                                    : ""}
                                 </span>
-                              ) : (
-                                <span className="text-xs italic text-slate-400">
-                                  Báo cáo cũ (trước
-                                  S-39)
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        )
-                      )}
+                              </span>
+                            ) : (
+                              <span className="text-xs italic text-slate-400">
+                                Báo cáo cũ (trước S-39)
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
               )}
             </div>
+
+            <div className="border-t border-slate-200 p-4 bg-slate-50 flex justify-end">
+              <button
+                type="button"
+                onClick={closeHistory}
+                className="min-h-11 w-full sm:w-auto rounded-xl bg-slate-900 px-6 font-bold text-white shadow hover:bg-slate-800 cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* =====================================================
-          TASK LOG & PHOTO ATTACHMENTS MODAL (S-23 / T-53)
-      ===================================================== */}
+      {/* TASK LOG & PHOTO MODAL (S-23) */}
       {logTask && (
         <TaskLogModal
           projectId={Number(currentProjectId)}
