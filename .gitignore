@@ -53,6 +53,7 @@ frontend/mobile-shots/touch-audit.cjs
 server_key.txt
 *.key
 *.pem
+client_secret*.json
 
 # Local staging environment
 deploy/.env.staging

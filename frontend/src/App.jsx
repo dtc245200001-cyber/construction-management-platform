@@ -11,6 +11,8 @@ import PublicLayout from './layouts/PublicLayout';
 
 // Pages
 import LoginPage from './pages/LoginPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import HomePage from './pages/HomePage';
 import PublicProjectsPage from './pages/PublicProjectsPage';
 import PublicProjectDetailPage from './pages/PublicProjectDetailPage';
@@ -117,6 +119,8 @@ function App() {
         {/* ================= LOGIN ================= */}
         <Route element={<AuthLayout />}>
           <Route path="/login" element={<LoginPage setUser={setUser} />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
         </Route>
 
         <Route

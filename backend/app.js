@@ -92,6 +92,14 @@ const invitationLimiter = rateLimit({
   message: { message: "Bạn đã thử quá nhiều lần. Vui lòng thử lại sau." },
 });
 
+const passwordResetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 phút
+  max: Number(process.env.PASSWORD_RESET_RATE_LIMIT_MAX) || 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Bạn đã yêu cầu đặt lại mật khẩu quá nhiều lần. Vui lòng thử lại sau." },
+});
+
 // ─── APP ──────────────────────────────────────────────────────────────────────
 
 const app = express();
@@ -170,6 +178,8 @@ app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use("/api/auth/login", loginLimiter);
 app.use("/api/auth/register", registerLimiter);
+app.use("/api/auth/forgot-password", passwordResetLimiter);
+app.use("/api/auth/reset-password", passwordResetLimiter);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/categories", categoryRoutes);
