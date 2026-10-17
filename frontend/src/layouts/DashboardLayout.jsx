@@ -523,6 +523,8 @@ function DashboardShell({ user, setUser }) {
             {!isSidebarCollapsed && <span>Đăng xuất</span>}
           </button>
         </div>
+      </aside>
+
       {/* ================= KHUNG NỘI DUNG CHÍNH ================= */}
       <div className="flex min-w-0 flex-1 flex-col h-screen max-h-[100dvh] overflow-hidden">
         {/* TOPBAR CO GIÃN THÔNG MINH */}
@@ -660,6 +662,8 @@ function DashboardShell({ user, setUser }) {
               )}
             </div>
           </div>
+        </header>
+
         {/* NỘI DUNG TRANG CHÍNH: CÓ CHỪA CHỖ CHO BOTTOM NAV TRÊN MOBILE */}
         <main className="flex-1 overflow-y-auto bg-background pb-20 lg:pb-0">
           <RouteGuard>
