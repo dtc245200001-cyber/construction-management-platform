@@ -21,6 +21,9 @@ import {
   CheckCircle2,
   AlertTriangle,
   Plus,
+  Check,
+  RotateCcw,
+  History,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -69,6 +72,7 @@ export default function PaymentRequestsPage({ user: propUser } = {}) {
     projectRole === "system_admin"
   );
   const canCreate = isSystemAdmin || can(projectRole, "payment_request.create");
+  const canReview = isSystemAdmin || can(projectRole, "payment.approve");
 
   // Dialog lập đề nghị thanh toán
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -133,6 +137,13 @@ export default function PaymentRequestsPage({ user: propUser } = {}) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(null);
   const [detailForbidden, setDetailForbidden] = useState(false);
+
+  // S-44 / T-115: xác nhận duyệt / trả lại
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false);
+  const [returnDialogOpen, setReturnDialogOpen] = useState(false);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState("");
+  const [returnReason, setReturnReason] = useState("");
 
   // Tải danh sách đề nghị thanh toán
   const fetchPaymentRequests = useCallback(async () => {
@@ -215,6 +226,78 @@ export default function PaymentRequestsPage({ user: propUser } = {}) {
     setDetailError(null);
     if (urlParamId) {
       navigate("/payment-requests");
+    }
+  };
+
+  const refreshAfterReview = async () => {
+    await Promise.all([
+      fetchPaymentRequests(),
+      selectedId ? fetchPaymentRequestDetail(selectedId) : Promise.resolve(),
+    ]);
+  };
+
+  const handleOpenApprove = () => {
+    if (!detail || detail.status !== "DRAFT" || !canReview) return;
+    setReviewError("");
+    setApproveDialogOpen(true);
+  };
+
+  const handleConfirmApprove = async () => {
+    if (!detail || reviewLoading) return;
+    setReviewLoading(true);
+    setReviewError("");
+    try {
+      const res = await api.post(
+        `/projects/${projectId}/payment-requests/${detail.id}/approve`,
+        {}
+      );
+      toast.success(res.data?.message || "Đã duyệt đề nghị thanh toán");
+      setApproveDialogOpen(false);
+      await refreshAfterReview();
+    } catch (err) {
+      setReviewError(
+        err.response?.data?.message ||
+          err.response?.data?.error ||
+          "Không thể duyệt đề nghị thanh toán"
+      );
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+  const handleOpenReturn = () => {
+    if (!detail || detail.status !== "DRAFT" || !canReview) return;
+    setReturnReason("");
+    setReviewError("");
+    setReturnDialogOpen(true);
+  };
+
+  const handleConfirmReturn = async () => {
+    const reason = returnReason.trim();
+    if (!reason) {
+      setReviewError("Bắt buộc nhập lý do trả lại đề nghị thanh toán");
+      return;
+    }
+    if (!detail || reviewLoading) return;
+
+    setReviewLoading(true);
+    setReviewError("");
+    try {
+      const res = await api.post(
+        `/projects/${projectId}/payment-requests/${detail.id}/return`,
+        { reason }
+      );
+      toast.success(res.data?.message || "Đã trả lại đề nghị thanh toán");
+      setReturnDialogOpen(false);
+      await refreshAfterReview();
+    } catch (err) {
+      setReviewError(
+        err.response?.data?.message ||
+          err.response?.data?.error ||
+          "Không thể trả lại đề nghị thanh toán"
+      );
+    } finally {
+      setReviewLoading(false);
     }
   };
 
@@ -619,6 +702,65 @@ export default function PaymentRequestsPage({ user: propUser } = {}) {
                   )}
                 </div>
 
+                {/* S-44 / T-115: thông tin duyệt/trả lại và lịch sử trạng thái */}
+                {(detail.reviewed_at || detail.return_reason) && (
+                  <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2 text-sm">
+                    {detail.reviewed_at && (
+                      <div className="flex flex-wrap gap-x-2 gap-y-1">
+                        <span className="text-muted-foreground">Người thao tác:</span>
+                        <strong>{detail.reviewer_name || `#${detail.reviewed_by}`}</strong>
+                        <span className="text-muted-foreground">·</span>
+                        <span>{formatDateVN(detail.reviewed_at)}</span>
+                      </div>
+                    )}
+                    {detail.status === "RETURNED" && detail.return_reason && (
+                      <div className="text-rose-700">
+                        <strong>Lý do trả lại:</strong> {detail.return_reason}
+                      </div>
+                    )}
+                    {detail.status === "APPROVED" && (
+                      <div className="text-emerald-700 font-medium">
+                        Đề nghị đã duyệt được khóa; không còn thao tác chỉnh sửa hoặc đổi trạng thái.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                    <History className="size-4 text-primary" />
+                    Lịch sử trạng thái
+                  </h3>
+                  <div className="rounded-xl border border-border divide-y divide-border/60 overflow-hidden">
+                    {detail.history?.length ? (
+                      detail.history.map((item) => (
+                        <div key={item.id} className="p-3 flex items-start justify-between gap-4 text-xs">
+                          <div>
+                            <div className="font-semibold text-foreground">
+                              {item.action === "CREATED"
+                                ? "Lập đề nghị"
+                                : item.action === "APPROVED"
+                                  ? "Duyệt đề nghị"
+                                  : "Trả lại đề nghị"}
+                            </div>
+                            <div className="text-muted-foreground mt-0.5">
+                              {item.acted_by_name || `#${item.acted_by}`}
+                              {item.reason ? ` · Lý do: ${item.reason}` : ""}
+                            </div>
+                          </div>
+                          <span className="text-muted-foreground whitespace-nowrap">
+                            {formatDateVN(item.acted_at)}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-3 text-xs text-muted-foreground italic">
+                        Chưa có lịch sử trạng thái.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 {/* 2. Bảng dòng: Hạng mục, Khối lượng đợt, Đơn giá, Thành tiền + Hàng Tổng cộng */}
                 <div className="space-y-2">
                   <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
@@ -785,12 +927,121 @@ export default function PaymentRequestsPage({ user: propUser } = {}) {
             )}
           </div>
 
-          {/* Footer Modal: chỉ có nút Đóng, KHÔNG có nút duyệt/trả lại/sửa (theo phạm vi S-43) */}
-          <div className="p-4 border-t border-border bg-card flex justify-end shrink-0">
+          {/* S-44 / T-115: chỉ Chủ đầu tư được thao tác khi đề nghị còn DRAFT. */}
+          <div className="p-4 border-t border-border bg-card flex flex-wrap justify-end gap-2 shrink-0">
             <Button variant="outline" onClick={handleCloseDetail}>
               Đóng
             </Button>
+            {detail?.status === "DRAFT" && canReview && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleOpenReturn}
+                  className="text-rose-700 border-rose-200 hover:bg-rose-50"
+                >
+                  <RotateCcw className="size-4 mr-1.5" />
+                  Trả lại
+                </Button>
+                <Button
+                  onClick={handleOpenApprove}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  <Check className="size-4 mr-1.5" />
+                  Duyệt
+                </Button>
+              </>
+            )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ================= XÁC NHẬN DUYỆT ================= */}
+      <Dialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Xác nhận duyệt đề nghị thanh toán</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p>
+              Bạn đang duyệt đề nghị <strong>#{detail?.id}</strong>. Sau khi duyệt,
+              đề nghị sẽ bị khóa và không thể chỉnh sửa hoặc trả lại.
+            </p>
+            {reviewError && (
+              <div role="alert" className="p-3 rounded-lg border border-rose-200 bg-rose-50 text-rose-700">
+                {reviewError}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setApproveDialogOpen(false)}
+              disabled={reviewLoading}
+            >
+              Hủy
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirmApprove}
+              disabled={reviewLoading}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {reviewLoading ? "Đang duyệt..." : "Xác nhận duyệt"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ================= TRẢ LẠI ĐỀ NGHỊ ================= */}
+      <Dialog open={returnDialogOpen} onOpenChange={setReturnDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Trả lại đề nghị thanh toán</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="payment-return-reason">
+                Lý do trả lại <span className="text-rose-600">*</span>
+              </Label>
+              <textarea
+                id="payment-return-reason"
+                aria-label="Lý do trả lại"
+                rows={4}
+                maxLength={2000}
+                value={returnReason}
+                onChange={(e) => {
+                  setReturnReason(e.target.value);
+                  if (reviewError) setReviewError("");
+                }}
+                placeholder="Nhập lý do để Ban quản lý biết nội dung cần xử lý..."
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            {reviewError && (
+              <div role="alert" className="p-3 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-sm">
+                {reviewError}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setReturnDialogOpen(false)}
+              disabled={reviewLoading}
+            >
+              Hủy
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirmReturn}
+              disabled={reviewLoading}
+              className="bg-rose-600 hover:bg-rose-700 text-white"
+            >
+              {reviewLoading ? "Đang trả lại..." : "Xác nhận trả lại"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
