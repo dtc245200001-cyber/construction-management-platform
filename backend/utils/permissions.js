@@ -47,6 +47,8 @@ const PERMISSIONS = {
   // TREO: duyệt nghiệm thu NỘI BỘ — bước riêng, không gộp bảng/trạng thái với
   // acceptance.approve_official của Chủ đầu tư.
   "acceptance.review_internal": [BAN_QUAN_LY],
+  // S-50 / T-127: Xuất hồ sơ nghiệm thu hạng mục ra PDF — chỉ dành riêng cho Ban quản lý
+  "acceptance.export_dossier": [BAN_QUAN_LY],
 
   // ── Chỉ huy trưởng ─────────────────────────────────────────────────
   // TREO: chưa route nào dùng (route lịch/CPM hiện mở cho mọi thành viên — xem
@@ -92,6 +94,8 @@ const PERMISSIONS = {
   "task.upload_photo": [DOI_TRUONG],
 
   // ── Chủ đầu tư ─────────────────────────────────────────────────────
+  // S-49 / T-124: Dashboard tổng hợp tiến độ chỉ dành riêng cho Chủ đầu tư
+  "progress.view": [CHU_DAU_TU],
   // TREO: các route xem hiện mở cho mọi thành viên (dùng project.member), nên
   // key này để sẵn cho route tương lai cần siết "chỉ BQL + CĐT được xem".
   "project.view": [CHU_DAU_TU, BAN_QUAN_LY],

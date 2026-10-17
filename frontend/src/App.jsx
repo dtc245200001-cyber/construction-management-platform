@@ -28,6 +28,7 @@ import InvitationAcceptPage from './pages/InvitationAcceptPage';
 import SchedulePage from './pages/SchedulePage';
 import GanttPage from './pages/GanttPage';
 import MilestoneWarningsPage from './pages/MilestoneWarningsPage';
+import ProgressDashboardPage from './pages/ProgressDashboardPage';
 import ProjectCalendarPage from './pages/ProjectCalendarPage';
 import DiaryPage from './pages/DiaryPage';
 import { startDiarySync } from './services/diarySync';
@@ -269,6 +270,11 @@ function App() {
           <Route
             path="/warnings"
             element={<MilestoneWarningsPage user={user} />}
+          />
+
+          <Route
+            path="/progress"
+            element={<ProgressDashboardPage user={user} />}
           />
 
           <Route

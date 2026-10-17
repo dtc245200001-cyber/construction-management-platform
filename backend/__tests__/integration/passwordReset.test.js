@@ -135,10 +135,12 @@ describe("Password Reset Integration Tests (test DB only)", () => {
 
     const start = await request(app).get("/api/auth/google");
     expect(start.status).toBe(302);
-    expect(start.headers.location).toMatch(/^\/login\?oauth_error=google_not_configured$/);
+    // Route redirect về frontend (APP_BASE_URL) kèm oauth_error — chấp nhận cả
+    // đường dẫn tương đối lẫn absolute URL mà code thật sinh ra.
+    expect(start.headers.location).toMatch(/\/login\?oauth_error=google_not_configured$/);
 
     const callback = await request(app).get("/api/auth/google/callback?code=x&state=y");
     expect(callback.status).toBe(302);
-    expect(callback.headers.location).toMatch(/^\/login\?oauth_error=/);
+    expect(callback.headers.location).toMatch(/\/login\?oauth_error=/);
   });
 });

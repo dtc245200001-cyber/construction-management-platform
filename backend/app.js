@@ -94,7 +94,11 @@ const invitationLimiter = rateLimit({
 
 const passwordResetLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 phút
-  max: Number(process.env.PASSWORD_RESET_RATE_LIMIT_MAX) || 5,
+  // Giống loginLimiter: ở môi trường test cho ngân sách cao để suite integration
+  // (nhiều request reset-password liên tiếp) không bị 429; production giữ nguyên 5.
+  max:
+    Number(process.env.PASSWORD_RESET_RATE_LIMIT_MAX) ||
+    (process.env.NODE_ENV === "test" ? 100 : 5),
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Bạn đã yêu cầu đặt lại mật khẩu quá nhiều lần. Vui lòng thử lại sau." },
@@ -235,6 +239,8 @@ const paymentRequestRoutes = require("./routes/paymentRequestRoutes");
 app.use("/api/projects", paymentRequestRoutes);
 const actualCostRoutes = require("./routes/actualCostRoutes");
 app.use("/api/projects", actualCostRoutes);
+const progressRoutes = require("./routes/progressRoutes");
+app.use("/api/projects", progressRoutes);
 
 // â”€â”€â”€ ERROR HANDLERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(notFoundHandler);

@@ -37,3 +37,13 @@ if (isCI) {
 
 // Auth integration tests exercise public registration; keep this override test-only.
 process.env.ALLOW_PUBLIC_REGISTER = "true";
+
+// Cô lập Google OAuth trong test: xoá credential thật có thể rò từ ../.env
+// (app.js load ../.env lúc require, độc lập với .env.test) để test
+// "google/status trả configured=false khi chưa cấu hình" luôn xác định.
+// Chỉ ảnh hưởng môi trường test — không đổi behavior production.
+process.env.GOOGLE_CLIENT_ID = "";
+process.env.GOOGLE_CLIENT_SECRET = "";
+// authRoutes kiểm tra GOOGLE_CALLBACK_URL; xoá cả hai biến redirect cho chắc.
+process.env.GOOGLE_CALLBACK_URL = "";
+process.env.GOOGLE_REDIRECT_URI = "";

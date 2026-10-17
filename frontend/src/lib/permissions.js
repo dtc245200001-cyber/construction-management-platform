@@ -26,6 +26,7 @@ export const PERMISSIONS = {
   "member.manage": [ROLES.BAN_QUAN_LY],
   "work_item.manage": [ROLES.BAN_QUAN_LY, ROLES.CHI_HUY_TRUONG],
   "acceptance.review_internal": [ROLES.BAN_QUAN_LY],
+  "acceptance.export_dossier": [ROLES.BAN_QUAN_LY],
 
   // ── Chỉ huy trưởng ─────────────────────────────────────────────────
   "schedule.manage": [ROLES.CHI_HUY_TRUONG],

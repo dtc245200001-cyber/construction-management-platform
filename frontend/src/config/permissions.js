@@ -116,6 +116,15 @@ export const MENU_CONFIG = [
     roles: [CHU_DAU_TU, BAN_QUAN_LY],
   },
   {
+    // S-49 / T-125: Dashboard tiến độ CHỈ dành riêng cho Chủ đầu tư.
+    key: "progress",
+    label: "Tiến độ (chủ đầu tư)",
+    path: "/progress",
+    icon: Activity,
+    group: "overview",
+    roles: [CHU_DAU_TU],
+  },
+  {
     key: "calendar",
     label: "Lịch & Ngày nghỉ",
     path: "/calendar",
@@ -220,6 +229,8 @@ export const PERMISSIONS = {
   "acceptance.create": [KY_SU_GIAM_SAT],
   "acceptance.approve": [BAN_QUAN_LY],
   "acceptance.return": [BAN_QUAN_LY],
+  // S-50 / T-127: Xuất hồ sơ nghiệm thu
+  "acceptance.export_dossier": [BAN_QUAN_LY],
 
   // S-41 / T-107: Cấu hình phạm vi công trường
   "site_geofence.manage": [BAN_QUAN_LY, CHU_DAU_TU],

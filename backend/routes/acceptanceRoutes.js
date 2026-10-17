@@ -410,7 +410,7 @@ router.get(
   "/:projectId/acceptance-vouchers/items-summary",
   requireAuth,
   checkProjectAccess,
-  requireAcceptancePermission("acceptance.create_dossier"),
+  requireAcceptancePermission("acceptance.access"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) {
@@ -1587,6 +1587,45 @@ router.get(
     );
     res.setHeader("Cache-Control", "private, no-store");
     return res.send(responseImage);
+  })
+);
+
+// ─── GET /api/projects/:projectId/work-items/:workItemId/acceptance-dossier.pdf ─
+// S-50 / T-127: xuất hồ sơ nghiệm thu của 1 hạng mục ra PDF.
+// - Dữ liệu dựng 100% phía server (không nhận nội dung từ client).
+// - Quyền xuất hồ sơ: acceptance.export_dossier (chỉ Ban quản lý).
+// - Toạ độ thô chỉ in khi người xuất có quyền photo.view_gps (CĐT + BQL).
+router.get(
+  "/:projectId/work-items/:workItemId/acceptance-dossier.pdf",
+  requireAuth,
+  checkProjectAccess,
+  requireAcceptancePermission("acceptance.export_dossier"),
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+    const workItemId = parsePositiveInt(req.params.workItemId);
+    if (!projectId || !workItemId) {
+      return res.status(400).json({ message: "Tham số không hợp lệ" });
+    }
+
+    const canViewGps = Boolean(
+      can(req.projectRole, "photo.view_gps") || (req.user && req.user.is_system_admin)
+    );
+
+    const { generateAcceptanceDossier } = require("../services/acceptanceDossierService");
+    const result = await generateAcceptanceDossier(projectId, workItemId, { canViewGps });
+
+    if (result.notFound) {
+      return res.status(404).json({ message: "Không tìm thấy hạng mục trong dự án" });
+    }
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(result.filename)}"`
+    );
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Content-Length", result.buffer.length);
+    return res.send(result.buffer);
   })
 );
 
