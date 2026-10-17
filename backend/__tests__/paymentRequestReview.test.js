@@ -40,8 +40,23 @@ describe("S-44 / T-114 payment request review service", () => {
   test("duyệt DRAFT -> APPROVED và ghi người/thời điểm qua UPDATE", async () => {
     mockClientQuery.mockImplementation(async (sql) => {
       if (sql === "BEGIN" || sql === "COMMIT") return {};
+      if (sql.includes("SELECT id FROM projects")) {
+        return { rows: [{ id: 1 }] };
+      }
       if (sql.includes("FROM payment_requests") && sql.includes("FOR UPDATE")) {
-        return { rows: [{ id: 10, project_id: 1, status: "DRAFT" }] };
+        return {
+          rows: [{
+            id: 10,
+            project_id: 1,
+            status: "DRAFT",
+            total_amount: "1000.00",
+            retention_rate: "5.00",
+            retention_cap_amount: null,
+          }],
+        };
+      }
+      if (sql.includes("SUM(retention_amount)")) {
+        return { rows: [{ approved_retention: "100.00" }] };
       }
       if (sql.includes("UPDATE payment_requests")) {
         return {
@@ -51,6 +66,9 @@ describe("S-44 / T-114 payment request review service", () => {
             status: "APPROVED",
             reviewed_by: 20,
             reviewed_at: "2026-10-17T10:00:00Z",
+            retention_amount: "50.00",
+            payable_amount: "950.00",
+            cumulative_retention_amount: "150.00",
           }],
         };
       }
@@ -79,8 +97,20 @@ describe("S-44 / T-114 payment request review service", () => {
   test("đề nghị APPROVED bị khóa, không thể duyệt lại", async () => {
     mockClientQuery.mockImplementation(async (sql) => {
       if (sql === "BEGIN" || sql === "ROLLBACK") return {};
+      if (sql.includes("SELECT id FROM projects")) {
+        return { rows: [{ id: 1 }] };
+      }
       if (sql.includes("FROM payment_requests") && sql.includes("FOR UPDATE")) {
-        return { rows: [{ id: 10, project_id: 1, status: "APPROVED" }] };
+        return {
+          rows: [{
+            id: 10,
+            project_id: 1,
+            status: "APPROVED",
+            total_amount: "1000.00",
+            retention_rate: "5.00",
+            retention_cap_amount: null,
+          }],
+        };
       }
       throw new Error(`Unexpected SQL: ${sql}`);
     });

@@ -196,4 +196,78 @@ router.post(
   })
 );
 
+
+/**
+ * GET /api/projects/:projectId/payment-retention-config
+ * S-45 / T-116: đọc cấu hình tạm giữ của dự án.
+ */
+router.get(
+  "/:projectId/payment-retention-config",
+  requireAuth,
+  checkProjectAccess,
+  requirePermission("payment_request.view"),
+  asyncHandler(async (req, res) => {
+    try {
+      const config = await paymentRequestService.getRetentionConfig(
+        req.params.projectId
+      );
+      return res.status(200).json({ retention_config: config });
+    } catch (err) {
+      if (err.status) {
+        return res.status(err.status).json({
+          error: err.message,
+          message: err.message,
+        });
+      }
+      throw err;
+    }
+  })
+);
+
+/**
+ * PUT /api/projects/:projectId/payment-retention-config
+ * S-45 / T-116: Ban quản lý hoặc Chủ đầu tư cấu hình tỷ lệ/trần tạm giữ.
+ */
+router.put(
+  "/:projectId/payment-retention-config",
+  requireAuth,
+  checkProjectAccess,
+  requirePermission("payment_retention.manage"),
+  asyncHandler(async (req, res) => {
+    try {
+      const result = await paymentRequestService.updateRetentionConfig({
+        projectId: req.params.projectId,
+        retention_rate: req.body.retention_rate,
+        retention_cap_amount: req.body.retention_cap_amount,
+      });
+
+      await logAudit({
+        userId: req.user.id,
+        action: "UPDATE_PAYMENT_RETENTION_CONFIG",
+        entity: "projects",
+        entityId: Number(req.params.projectId),
+        projectId: Number(req.params.projectId),
+        details: {
+          old_value: result.before,
+          new_value: result.after,
+        },
+        ipAddress: req.ip,
+      });
+
+      return res.status(200).json({
+        message: "Đã cập nhật cấu hình tạm giữ",
+        retention_config: result.after,
+      });
+    } catch (err) {
+      if (err.status) {
+        return res.status(err.status).json({
+          error: err.message,
+          message: err.message,
+        });
+      }
+      throw err;
+    }
+  })
+);
+
 module.exports = router;

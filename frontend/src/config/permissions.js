@@ -227,6 +227,7 @@ export const PERMISSIONS = {
   // S-43 / T-113: Đề nghị thanh toán
   "payment_request.create": [BAN_QUAN_LY],
   "payment_request.view": [BAN_QUAN_LY, CHU_DAU_TU, KE_TOAN],
+  "payment_retention.manage": [BAN_QUAN_LY, CHU_DAU_TU],
 };
 
 function isKnownRole(role) {
