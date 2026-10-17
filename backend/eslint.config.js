@@ -2,7 +2,18 @@ const js = require("@eslint/js");
 
 module.exports = [
   {
-    ignores: ["node_modules/**", "coverage/**"],
+    // Script chạy tay / kiểm tra nhanh — không lint.
+    ignores: [
+      "node_modules/**",
+      "coverage/**",
+      "scratch_test.js",
+      "scratch_test_api.js",
+      "check_admin.js",
+      "check_roles.js",
+      "check_teams.js",
+      "fix_migrations.js",
+      "query.js",
+    ],
   },
 
   js.configs.recommended,
@@ -24,6 +35,7 @@ module.exports = [
         __filename: "readonly",
 
         // Timer globals (Node.js built-ins)
+        Buffer: "readonly",
         setTimeout: "readonly",
         clearTimeout: "readonly",
         setInterval: "readonly",

@@ -134,10 +134,9 @@ describe("Auth Integration Tests", () => {
       expect(res2.body.message).toBe("Email hoặc mật khẩu không đúng");
     });
 
-    it("B3. Sai 5 lần -> tài khoản bị khóa và trả 423", async () => {
-      // fix(S-02): MAX_LOGIN_FAILURES mặc định = 5 (theo spec AC3), không phải 10
-      const MAX_FAILURES = 5;
-      // Gửi sai 5 lần, tất cả đều phải trả về 401 (S-02)
+    it("B3. Sai 10 lần -> tài khoản bị khóa và trả 423", async () => {
+      const MAX_FAILURES = 10;
+      // Gửi sai 10 lần, tất cả đều phải trả về 401 (S-02)
       for (let i = 0; i < MAX_FAILURES; i++) {
         const res = await request(app)
           .post("/api/auth/login")

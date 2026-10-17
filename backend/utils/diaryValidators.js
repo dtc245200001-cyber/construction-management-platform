@@ -53,6 +53,52 @@ exports.validateCreateDiaryEntry = (body) => {
   return errors;
 };
 
+exports.validateUpdateDiaryEntry = (body) => {
+  const errors = [];
+
+  if (body.version === undefined || body.version === null) {
+    errors.push('version is required and must be a positive integer');
+  } else if (!Number.isInteger(body.version) || body.version <= 0) {
+    errors.push('version must be a positive integer');
+  }
+
+  if (typeof body.content !== 'string') {
+    errors.push('content is required and must be a string');
+  } else {
+    const trimmed = body.content.trim();
+    if (trimmed.length < 1 || trimmed.length > 5000) {
+      errors.push('content must be between 1 and 5000 characters');
+    }
+  }
+
+  if (body.work_item_id !== undefined && body.work_item_id !== null) {
+    if (!Number.isInteger(body.work_item_id) || body.work_item_id <= 0) {
+      errors.push('work_item_id must be a positive integer');
+    }
+  }
+
+  if (body.entry_at !== undefined && body.entry_at !== null) {
+    const time = new Date(body.entry_at).getTime();
+    if (isNaN(time)) {
+      errors.push('entry_at must be a valid ISO 8601 date');
+    } else {
+      const now = Date.now();
+      if (time > now + 10 * 60 * 1000) {
+        errors.push('entry_at cannot be more than 10 minutes in the future');
+      }
+    }
+  }
+
+  if (body.client_updated_at !== undefined && body.client_updated_at !== null) {
+    const time = new Date(body.client_updated_at).getTime();
+    if (isNaN(time)) {
+      errors.push('client_updated_at must be a valid ISO 8601 date');
+    }
+  }
+
+  return errors;
+};
+
 exports.validateGetDiaryEntries = (query) => {
   const errors = [];
 

@@ -2,9 +2,12 @@ import React, { useState, useEffect } from "react";
 import { useOutletContext } from "react-router-dom";
 import api from "../lib/api";
 import { mapScheduleToGantt, generateTimelineTicks } from "../utils/ganttUtils";
-import { AlertTriangle, RefreshCw, CalendarRange, Edit3 } from "lucide-react";
+import { AlertTriangle, RefreshCw, CalendarRange, Edit3, X } from "lucide-react";
 import { differenceInCalendarDays, parseISO, format } from "date-fns";
 import TaskProgressModal from "../components/TaskProgressModal";
+import { usePermission } from "../hooks/usePermission";
+import { readSnapshot, writeSnapshot, isNetworkError, SNAPSHOT_TYPES } from "../services/offlineSnapshotCache";
+import OfflineSnapshotBanner from "../components/OfflineSnapshotBanner";
 
 function formatDate(dateStr) {
   if (!dateStr) return "--";
@@ -17,6 +20,10 @@ function formatDate(dateStr) {
 }
 
 export default function GanttPage() {
+  // Kế hoạch gốc: chỉ Ban quản lý. Cập nhật tiến độ: BQL / CHT / CĐT (KSGS, KT chỉ xem).
+  const { can } = usePermission();
+  const canLockBaseline = can("baseline.lock");
+  const canUpdateProgress = can("progress.update");
   const [tasks, setTasks] = useState([]);
   const [dependencies, setDependencies] = useState([]);
   const [error, setError] = useState(null);
@@ -25,34 +32,80 @@ export default function GanttPage() {
   const [calendar, setCalendar] = useState(null);
   const [holidays, setHolidays] = useState([]);
   const [isPolling, setIsPolling] = useState(false);
-  const [viewMode, setViewMode] = useState("day");
+  const [viewMode, setViewMode] = useState(() => (typeof window !== "undefined" && window.innerWidth < 768 ? "week" : "day"));
   const [summary, setSummary] = useState(null);
   const context = useOutletContext();
   const currentProject = context?.currentProject;
   const [baselineBusy, setBaselineBusy] = useState(false);
   const [baselineMsg, setBaselineMsg] = useState(null);
+  const [isFromCache, setIsFromCache] = useState(false);
+  const [cachedAt, setCachedAt] = useState(null);
+  const [cacheMiss, setCacheMiss] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine !== false);
+  const isReadOnly = isFromCache || !isOnline;
+  const offlineMutationMessage = "Cần có mạng để thực hiện thao tác này";
 
   // T-33: thanh đang được hover / focus / click
   const [activeBar, setActiveBar] = useState(null);
   // T-35: công việc được chọn để cập nhật tiến độ thực tế
   const [selectedTaskForProgress, setSelectedTaskForProgress] = useState(null);
+  const scrollContainerRef = React.useRef(null);
 
   const PIXELS_PER_DAY = viewMode === "day" ? 30 : 5;
-
   const ROW_HEIGHT = 40;
+  const currentProjectId = currentProject?.id || localStorage.getItem("currentProjectId") || 1;
 
-  const currentProjectId = localStorage.getItem("currentProjectId") || 13;
+  const scrollToToday = () => {
+    if (!scrollContainerRef.current || !projectStartDate) return;
+    try {
+      const daysFromStart = differenceInCalendarDays(new Date(), parseISO(projectStartDate));
+      const todayX = Math.max(0, daysFromStart * PIXELS_PER_DAY);
+      scrollContainerRef.current.scrollTo({ left: Math.max(0, todayX - 120), behavior: "smooth" });
+    } catch (e) {
+      console.error("Scroll to today error:", e);
+    }
+  };
+
+  const fetchSeqRef = React.useRef(0);
+  React.useEffect(() => {
+    setTasks([]); setDependencies([]); setSummary(null); setScheduleSummary(null);
+    setCalendar(null); setHolidays([]); setError(null); setIsFromCache(false);
+    setCachedAt(null); setCacheMiss(false); setSelectedTaskForProgress(null);
+    setActiveBar(null); fetchSeqRef.current += 1;
+  }, [currentProjectId]);
 
   const fetchData = async () => {
+    const mySeq = ++fetchSeqRef.current;
+    const myProjectId = currentProjectId;
+    const isStale = () => mySeq !== fetchSeqRef.current || myProjectId !== (currentProject?.id || localStorage.getItem("currentProjectId") || 1);
     try {
       if (tasks.length === 0) setLoading(true);
+      if (!navigator.onLine) {
+        const snapshot = await readSnapshot(myProjectId, SNAPSHOT_TYPES.GANTT);
+        if (isStale()) return;
+        if (snapshot?.payload?.tasks) {
+          const payload = snapshot.payload;
+          setDependencies(payload.dependencies || []);
+          setSummary(payload.summary || null);
+          setScheduleSummary(payload.scheduleSummary || null);
+          setCalendar(payload.calendar || null);
+          setHolidays(payload.holidays || []);
+          setIsFromCache(true);
+          setCachedAt(snapshot.cachedAt);
+          setIsOnline(false);
+        } else {
+          setCacheMiss(true);
+          setIsOnline(false);
+        }
+        return;
+      }
       setError(null);
 
       let calcErrObj = null;
       let shouldFetchResults = true;
 
       try {
-        const calcRes = await api.post(`/projects/${currentProjectId}/schedule/recalculate`);
+        const calcRes = await api.post(`/projects/${myProjectId}/schedule/recalculate`);
 
         if (calcRes.status === 202 && calcRes.data?.jobId) {
           setIsPolling(true);
@@ -63,7 +116,7 @@ export default function GanttPage() {
           while (jobStatus === 'queued' || jobStatus === 'running') {
             await new Promise(r => setTimeout(r, currentDelay));
             try {
-              const jobRes = await api.get(`/projects/${currentProjectId}/schedule-jobs/${calcRes.data.jobId}`);
+              const jobRes = await api.get(`/projects/${myProjectId}/schedule-jobs/${calcRes.data.jobId}`);
               jobStatus = jobRes.data.job.status;
               if (jobStatus === 'failed') {
                 jobErrorDetails = jobRes.data.job.error_details ? JSON.parse(jobRes.data.job.error_details) : { message: 'Lỗi không xác định' };
@@ -99,11 +152,12 @@ export default function GanttPage() {
 
       if (shouldFetchResults) {
         const [res, summaryRes, calRes, holRes] = await Promise.all([
-          api.get(`/projects/${currentProjectId}/schedule-results`),
-          api.get(`/projects/${currentProjectId}/schedule-summary`).catch(() => ({ data: null })),
-          api.get(`/projects/${currentProjectId}/calendar`).catch(() => ({ data: { calendar: null } })),
-          api.get(`/projects/${currentProjectId}/holidays`).catch(() => ({ data: { holidays: [] } }))
+          api.get(`/projects/${myProjectId}/schedule-results`),
+          api.get(`/projects/${myProjectId}/schedule-summary`).catch(() => ({ data: null })),
+          api.get(`/projects/${myProjectId}/calendar`).catch(() => ({ data: { calendar: null } })),
+          api.get(`/projects/${myProjectId}/holidays`).catch(() => ({ data: { holidays: [] } }))
         ]);
+        if (isStale()) return;
         setTasks(res.data.data || []);
         setDependencies(res.data.dependencies || []);
         setSummary(res.data.summary || null);
@@ -116,15 +170,46 @@ export default function GanttPage() {
         if (holRes.data?.holidays) {
           setHolidays(holRes.data.holidays);
         }
+        await writeSnapshot(myProjectId, SNAPSHOT_TYPES.GANTT, {
+          tasks: res.data.data || [],
+          dependencies: res.data.dependencies || [],
+          summary: res.data.summary || null,
+          scheduleSummary: summaryRes.data || null,
+          calendar: calRes.data?.calendar || null,
+          holidays: holRes.data?.holidays || [],
+        });
+        setIsFromCache(false);
+        setCachedAt(null);
+        setCacheMiss(false);
+        setIsOnline(true);
       }
     } catch (err) {
-      setError(err.response?.data?.message || "Lỗi tải tiến độ dự án");
+      if (isNetworkError(err)) {
+        setIsOnline(false);
+        const snapshot = await readSnapshot(myProjectId, SNAPSHOT_TYPES.GANTT);
+        if (isStale()) return;
+        if (snapshot?.payload?.tasks) {
+          const payload = snapshot.payload;
+          setDependencies(payload.dependencies || []);
+          setSummary(payload.summary || null);
+          setScheduleSummary(payload.scheduleSummary || null);
+          setCalendar(payload.calendar || null);
+          setHolidays(payload.holidays || []);
+          setIsFromCache(true);
+          setCachedAt(snapshot.cachedAt);
+        } else {
+          setCacheMiss(true);
+        }
+      } else {
+        setError(err.response?.data?.message || "Lỗi tải tiến độ dự án");
+      }
     } finally {
-      setLoading(false);
+      if (!isStale()) setLoading(false); else setLoading(false);
       setIsPolling(false);
     }
   };
   const handleCreateBaseline = async () => {
+    if (isReadOnly) { setBaselineMsg(offlineMutationMessage); return; }
     try {
       setBaselineBusy(true);
       setBaselineMsg(null);
@@ -147,6 +232,15 @@ export default function GanttPage() {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProjectId]);
+
+  useEffect(() => {
+    if (!activeBar) return undefined;
+    const handleEscape = (event) => {
+      if (event.key === "Escape") setActiveBar(null);
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [activeBar]);
 
   if (error) {
     return (
@@ -245,145 +339,150 @@ export default function GanttPage() {
   );
 
   return (
-    <div className="flex-1 min-h-0 bg-[#F3F6FB] text-[#0F1B3D] flex flex-col">
-      <div className="flex-1 min-h-0 flex flex-col p-4 sm:p-6 gap-6 max-w-[1672px] mx-auto w-full">
+    <div className="flex-1 min-h-0 bg-[#F3F6FB] text-[#0F1B3D] flex flex-col overflow-y-auto">
+      <div className="flex-1 min-h-0 flex flex-col p-3.5 sm:p-6 pb-24 lg:pb-6 gap-4 sm:gap-6 max-w-[1672px] mx-auto w-full">
         {/* Hero Banner */}
-        <div className="relative h-[115px] rounded-2xl overflow-hidden shrink-0 flex items-center p-6 shadow-sm">
+        <div className="relative min-h-[105px] rounded-2xl overflow-hidden shrink-0 flex items-center p-4 sm:p-6 shadow-sm">
           <div
             className="absolute inset-0 bg-cover bg-center"
             style={{
               backgroundImage:
                 "url('https://images.unsplash.com/photo-1541888086425-d81bb19240f5?auto=format&fit=crop&q=80')",
             }}
-          ></div>
-          <div className="absolute inset-0 bg-gradient-to-r from-[#0B3FA8] to-transparent opacity-95"></div>
-          <div className="relative z-10 flex items-center justify-between w-full">
-            <div className="flex items-center gap-5">
-            <div className="size-[60px] bg-[#1F63E0] rounded-xl flex items-center justify-center shadow-lg border border-white/20">
-              <CalendarRange className="size-8 text-white" />
-            </div>
-            <div>
-              <h1 className="text-white text-[30px] font-bold leading-tight">
-                Tiến độ thi công (Gantt)
-              </h1>
-              <p className="text-white/90 text-[18px] font-medium mt-1.5 flex items-center gap-4">
-                <span>
-                  {currentProject
-                    ? `Dự án: ${currentProject.name}`
-                    : "Sơ đồ thanh ngang theo trục thời gian"}
-                </span>
-                {scheduleSummary && scheduleSummary.planned_finish_date && scheduleSummary.current_finish_date && (
-                  <span className={`px-2.5 py-1 rounded-full text-sm font-bold ${
-                    differenceInCalendarDays(
-                      parseISO(scheduleSummary.current_finish_date),
-                      parseISO(scheduleSummary.planned_finish_date)
-                    ) > 0 
-                      ? "bg-red-500/20 text-red-100 border border-red-500/30"
-                      : "bg-green-500/20 text-green-100 border border-green-500/30"
-                  }`}>
-                    {differenceInCalendarDays(
-                      parseISO(scheduleSummary.current_finish_date),
-                      parseISO(scheduleSummary.planned_finish_date)
-                    ) > 0 
-                      ? `Trễ ${differenceInCalendarDays(
-                          parseISO(scheduleSummary.current_finish_date),
-                          parseISO(scheduleSummary.planned_finish_date)
-                        )} ngày so với gốc`
-                      : "Đúng tiến độ gốc"}
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#0B3FA8] via-[#0B3FA8]/90 to-transparent" />
+          <div className="relative z-10 flex w-full flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-3 sm:gap-5">
+              <div className="size-11 sm:size-[60px] bg-[#1F63E0] rounded-xl flex items-center justify-center shadow-lg border border-white/20 shrink-0">
+                <CalendarRange className="size-6 sm:size-8 text-white" />
+              </div>
+              <div>
+                <h1 className="text-white text-lg sm:text-[26px] md:text-[30px] font-bold leading-tight">
+                  Tiến độ thi công (Gantt)
+                </h1>
+                <p className="text-white/90 text-xs sm:text-sm md:text-base font-medium mt-1 flex flex-wrap items-center gap-2">
+                  <span>
+                    {currentProject
+                      ? `Dự án: ${currentProject.name}`
+                      : "Sơ đồ thanh ngang theo trục thời gian"}
                   </span>
-                )}
-              </p>
+                  {scheduleSummary && scheduleSummary.planned_finish_date && scheduleSummary.current_finish_date && (
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                      differenceInCalendarDays(
+                        parseISO(scheduleSummary.current_finish_date),
+                        parseISO(scheduleSummary.planned_finish_date)
+                      ) > 0
+                        ? "bg-red-500/20 text-red-100 border border-red-500/30"
+                        : "bg-green-500/20 text-green-100 border border-green-500/30"
+                    }`}>
+                      {differenceInCalendarDays(
+                        parseISO(scheduleSummary.current_finish_date),
+                        parseISO(scheduleSummary.planned_finish_date)
+                      ) > 0
+                        ? `Trễ ${differenceInCalendarDays(
+                            parseISO(scheduleSummary.current_finish_date),
+                            parseISO(scheduleSummary.planned_finish_date)
+                          )} ngày so với gốc`
+                        : "Đúng tiến độ gốc"}
+                    </span>
+                  )}
+                </p>
+              </div>
             </div>
-          </div>
 
-          {/* Chú thích màu sắc */}
-          <div className="relative z-10 hidden lg:flex items-center gap-5 bg-white/10 backdrop-blur-md px-5 py-2.5 rounded-xl border border-white/20 shadow-sm ml-auto">
-            <div className="flex items-center gap-2.5">
-              <div className="size-4 rounded-[4px] bg-blue-500 border border-blue-600 shadow-sm"></div>
-              <span className="text-white text-[13px] font-medium tracking-wide">Không găng</span>
-            </div>
-            <div className="w-[1px] h-4 bg-white/20"></div>
-            <div className="flex items-center gap-2.5">
-              <div className="relative size-4 rounded-[4px] bg-red-500 border border-red-600 shadow-sm flex items-center justify-center">
-                <span className="text-[10px] font-black text-white">!</span>
+            {/* Chú giải trạng thái công việc (nằm phía bên phải của banner màu xanh) */}
+            <div className="flex items-center flex-wrap gap-2 sm:gap-2.5 sm:justify-end">
+              <div className="inline-flex items-center gap-2 bg-white/15 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/20 text-white shadow-xs shrink-0">
+                <div className="size-3.5 rounded-[4px] bg-blue-400 border border-white/40" />
+                <span className="text-xs font-semibold text-white">Không găng</span>
               </div>
-              <span className="text-white text-[13px] font-medium tracking-wide">Việc găng</span>
-            </div>
-            <div className="w-[1px] h-4 bg-white/20"></div>
-            <div className="flex items-center gap-2.5">
-              <div className="relative size-4 rounded-[4px] bg-orange-500 border border-orange-600 shadow-sm flex items-center justify-center">
-                <span className="text-[10px] font-black text-white">!</span>
+              <div className="inline-flex items-center gap-2 bg-white/15 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/20 text-white shadow-xs shrink-0">
+                <div className="size-3.5 rounded-[4px] bg-red-500 border border-white/40 flex items-center justify-center text-[9px] font-bold text-white">!</div>
+                <span className="text-xs font-semibold text-red-100">Việc găng</span>
               </div>
-              <span className="text-white text-[13px] font-medium tracking-wide">Găng (mới)</span>
+              <div className="inline-flex items-center gap-2 bg-white/15 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/20 text-white shadow-xs shrink-0">
+                <div className="size-3.5 rounded-[4px] bg-orange-400 border border-white/40 flex items-center justify-center text-[9px] font-bold text-white">!</div>
+                <span className="text-xs font-semibold text-orange-100">Găng mới</span>
+              </div>
+              {summary?.hasBaseline && (
+                <div className="inline-flex items-center gap-2 bg-white/15 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/20 text-white shadow-xs shrink-0">
+                  <span className="inline-block h-1.5 w-4 rounded bg-white/70" />
+                  <span className="text-xs font-semibold text-white">Kế hoạch gốc</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
-      </div>
+
+        <OfflineSnapshotBanner isFromCache={isFromCache} cachedAt={cachedAt} cacheMiss={cacheMiss} pageName="Gantt" />
 
         <div className="flex-1 flex flex-col bg-white overflow-hidden rounded-2xl border border-[#E6EBF3] shadow-sm">
           {/* Toolbar */}
-          <div className="min-h-[56px] h-auto py-2 border-b border-[#E6EBF3] bg-slate-50/50 flex flex-wrap items-center justify-between px-4 shrink-0 gap-3">
-            <div className="flex items-center gap-4">
-              <h1 className="font-bold text-gray-800 text-[15px] md:text-base hidden md:block">
+          <div className="min-h-[52px] h-auto py-2 border-b border-[#E6EBF3] bg-slate-50/50 flex flex-wrap items-center justify-between px-3 sm:px-4 shrink-0 gap-2.5">
+            <div className="flex items-center gap-3">
+              <h2 className="font-bold text-gray-800 text-sm md:text-base hidden sm:block">
                 Sơ đồ thanh ngang
-              </h1>
+              </h2>
               {isPolling && !summary && (
-                <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 px-3 py-1 rounded-full font-medium">
-                  <RefreshCw className="size-4 animate-spin" />
-                  Đang tính lại tiến độ...
+                <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full font-medium">
+                  <RefreshCw className="size-3.5 animate-spin" />
+                  Đang tính lại...
                 </div>
               )}
               {summary && (
-                <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm">
-                  <span>Hoàn thành hiện tại {formatDate(summary.currentFinish ?? summary.actualFinish)}</span>
+                <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm font-medium text-slate-700 bg-white border border-slate-200 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg shadow-xs">
+                  <span>Hoàn thành hiện tại: <strong>{formatDate(summary.currentFinish ?? summary.actualFinish)}</strong></span>
                   <span className="text-slate-300">•</span>
-                  <span>Kế hoạch {formatDate(summary.plannedFinish)}</span>
+                  <span>KH: <strong>{formatDate(summary.plannedFinish)}</strong></span>
                   <span className="text-slate-300">•</span>
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold ${summary.status === 'late' ? 'bg-red-100 text-red-700' :
+                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold ${
+                    summary.status === 'late' ? 'bg-red-100 text-red-700' :
                     summary.status === 'early' ? 'bg-emerald-100 text-emerald-700' :
-                      'bg-blue-100 text-blue-700'
-                    }`}>
-                    {summary?.hasBaseline && (
-                      <span className="inline-flex items-center gap-1.5 text-xs text-slate-600">
-                        <span className="inline-block h-1 w-5 rounded bg-slate-500/50" />
-                        Kế hoạch gốc
-                      </span>
-                    )}
+                    'bg-blue-100 text-blue-700'
+                  }`}>
                     {summary.status === 'late' && <AlertTriangle className="size-3" />}
                     {summary.status === 'late' ? `Chậm ${summary.delayWorkingDays} ngày` :
-                      summary.status === 'early' ? `Sớm ${Math.abs(summary.delayWorkingDays)} ngày` :
-                        'Đúng kế hoạch'}
+                     summary.status === 'early' ? `Sớm ${Math.abs(summary.delayWorkingDays)} ngày` :
+                     'Đúng hạn'}
                   </span>
-                  {isPolling && (
-                    <span className="text-xs text-slate-500 italic ml-1 flex items-center gap-1">
-                      <RefreshCw className="size-3 animate-spin" />
-                      đang cập nhật
-                    </span>
-                  )}
                 </div>
               )}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <button
-                onClick={() => setViewMode("day")}
-                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${viewMode === "day"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
-                  }`}
+                type="button"
+                onClick={scrollToToday}
+                className="px-2.5 h-9 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-blue-600 cursor-pointer shadow-2xs"
+                title="Nhảy tới ngày hiện tại"
               >
-                Chế độ Ngày
+                Hôm nay
               </button>
 
-              <button
-                onClick={() => setViewMode("week")}
-                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${viewMode === "week"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("day")}
+                  className={`px-2.5 h-8 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                    viewMode === "day"
+                      ? "bg-blue-600 text-white shadow-xs"
+                      : "text-gray-600 hover:text-gray-900"
                   }`}
-              >
-                Chế độ Tuần
-              </button>
+                >
+                  Ngày
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("week")}
+                  className={`px-2.5 h-8 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                    viewMode === "week"
+                      ? "bg-blue-600 text-white shadow-xs"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  Tuần
+                </button>
+              </div>
             </div>
           </div>
           {summary && (
@@ -393,26 +492,28 @@ export default function GanttPage() {
                 summary.hasBaseline ? "bg-slate-50 border-b border-slate-200 text-slate-600" : "bg-amber-50 border-b border-amber-200 text-amber-800"
               } text-sm flex flex-wrap items-center gap-3`}
             >
-              <span>{summary.hasBaseline ? "Kế hoạch gốc đã được chốt. Bạn có thể chốt lại bản mới nếu có thay đổi lớn." : "Chưa chốt kế hoạch gốc nên chưa có thanh so sánh."}</span>
+              <span>{summary.hasBaseline ? (canLockBaseline ? "Kế hoạch gốc đã được chốt. Bạn có thể chốt lại bản mới nếu có thay đổi lớn." : "Kế hoạch gốc đã được chốt.") : "Chưa chốt kế hoạch gốc nên chưa có thanh so sánh."}</span>
+              {canLockBaseline && (
               <button
                 type="button"
                 onClick={handleCreateBaseline}
-                disabled={baselineBusy}
-                className={`px-3 py-1 rounded-lg text-white text-xs font-semibold disabled:opacity-60 ${
+                disabled={baselineBusy || isReadOnly}
+                className={`px-3 min-h-11 rounded-lg text-white text-xs font-semibold disabled:opacity-60 ${
                   summary.hasBaseline ? "bg-slate-600 hover:bg-slate-700" : "bg-amber-600 hover:bg-amber-700"
                 }`}
               >
                 {baselineBusy ? "Đang xử lý..." : (summary.hasBaseline ? "Cập nhật Kế hoạch gốc" : "Chốt kế hoạch gốc")}
               </button>
+              )}
               {baselineMsg && <span className="text-red-600 font-medium">{baselineMsg}</span>}
             </div>
           )}
-          <div className="flex-1 overflow-auto bg-slate-50 relative custom-scrollbar">
+          <div ref={scrollContainerRef} className="flex-1 overflow-auto bg-slate-50 relative custom-scrollbar">
             <div className="flex w-max min-w-full">
               {/* CỘT TRÁI (Sticky Left) */}
-              <div className="sticky left-0 z-20 bg-white border-r border-gray-200 flex flex-col shrink-0 w-[140px] md:w-[180px] lg:w-max lg:min-w-[250px] lg:max-w-[350px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+              <div className="sticky left-0 z-20 bg-white border-r border-gray-200 flex flex-col shrink-0 w-[110px] sm:w-[150px] md:w-[180px] lg:w-max lg:min-w-[220px] lg:max-w-[320px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                 {/* Ô GÓC (Sticky Top & Left - Cao nhất) */}
-                <div className="sticky top-0 z-30 h-20 bg-slate-50 border-b border-gray-200 flex items-center px-4 font-semibold text-sm text-gray-600 shrink-0">
+                <div className="sticky top-0 z-30 h-20 bg-slate-50 border-b border-gray-200 flex items-center px-2.5 sm:px-4 font-semibold text-xs sm:text-sm text-gray-600 shrink-0">
                   Tên công việc
                 </div>
 
@@ -464,19 +565,23 @@ export default function GanttPage() {
                         )}
                       </div>
 
+                      {canUpdateProgress && (
                       <button
                         type="button"
                         aria-label={`Cập nhật tiến độ: ${bar.name}`}
-                        title="Cập nhật tiến độ thực tế"
+                        title={isReadOnly ? offlineMutationMessage : "Cập nhật tiến độ thực tế"}
+                        disabled={isReadOnly}
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (isReadOnly) return;
                           setSelectedTaskForProgress(bar);
                           setActiveBar(null);
                         }}
-                        className="opacity-70 hover:opacity-100 hover:text-blue-600 p-0.5 text-slate-400 cursor-pointer shrink-0"
+                        className="flex min-h-11 min-w-11 items-center justify-center opacity-70 hover:opacity-100 hover:text-blue-600 text-slate-400 cursor-pointer shrink-0"
                       >
                         <Edit3 className="size-3.5" />
                       </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -597,6 +702,7 @@ export default function GanttPage() {
                           onMouseEnter={() => setActiveBar(bar)}
                           onDoubleClick={(e) => {
                             e.stopPropagation();
+                            if (!canUpdateProgress || isReadOnly) return;
                             setSelectedTaskForProgress(bar);
                           }}
                           onTouchStart={(e) => {
@@ -764,14 +870,30 @@ export default function GanttPage() {
 
                 {/* T-33 + T-35: Tooltip chi tiết gọn nhẹ nằm TRÊN thanh công việc */}
                 {activeBar && (
-                  <div
-                    role="tooltip"
-                    className="pointer-events-auto absolute z-50 w-[280px] rounded-lg border border-slate-200 bg-white/95 backdrop-blur-sm p-3 shadow-xl"
-                    style={{
-                      left: Math.max(10, activeBar.x - 20),
-                      top: Math.max(0, 80 + activeBar.y - 120), // Đẩy lên trên thanh bar
-                    }}
-                  >
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Đóng chi tiết công việc"
+                      onClick={() => setActiveBar(null)}
+                      className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm sm:hidden"
+                    />
+                    <div
+                      role="tooltip"
+                      aria-label="Chi tiết công việc"
+                      className="pointer-events-auto absolute z-50 w-[280px] rounded-lg border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur-sm max-sm:fixed max-sm:left-1/2 max-sm:top-1/2 max-sm:z-[61] max-sm:w-[calc(100vw-2rem)] max-sm:max-w-[340px] max-sm:-translate-x-1/2 max-sm:-translate-y-1/2 sm:left-[var(--tooltip-left)] sm:top-[var(--tooltip-top)]"
+                      style={{
+                        "--tooltip-left": `${Math.max(10, activeBar.x - 20)}px`,
+                        "--tooltip-top": `${Math.max(0, 80 + activeBar.y - 120)}px`,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        aria-label="Đóng"
+                        onClick={() => setActiveBar(null)}
+                        className="absolute right-1 top-1 flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 sm:hidden"
+                      >
+                        <X className="size-4" />
+                      </button>
                     <div className="flex flex-col gap-1.5">
                       {/* Dòng 1: Tên và Label */}
                       <div className="flex items-start justify-between gap-2">
@@ -821,20 +943,26 @@ export default function GanttPage() {
                       </div>
 
                       {/* Dòng 3: Nút cập nhật (nhỏ gọn) */}
-                      <button
+                      {canUpdateProgress && (
+<button
                         type="button"
+                        disabled={isReadOnly}
+                        title={isReadOnly ? offlineMutationMessage : "Cập nhật tiến độ"}
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (isReadOnly) return;
                           setSelectedTaskForProgress(activeBar);
                           setActiveBar(null);
                         }}
-                        className="mt-1.5 w-full py-1.5 text-[11px] font-semibold rounded bg-slate-100 text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5 border border-blue-100"
+                        className="mt-1.5 w-full min-h-11 py-2.5 text-xs font-semibold rounded bg-slate-100 text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5 border border-blue-100"
                       >
                         <Edit3 className="size-3" />
                         Cập nhật tiến độ
                       </button>
+)}
+                      </div>
                     </div>
-                  </div>
+                  </>
                 )}
               </div>
             </div>

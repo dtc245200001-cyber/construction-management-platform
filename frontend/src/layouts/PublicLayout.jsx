@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Outlet, useLocation, useNavigate, Link } from "react-router-dom";
-import { Menu, Search, UserRound, X, FolderKanban, Shield } from "lucide-react";
+import { Menu, Search, UserRound, X, FolderKanban, Shield, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Check } from "lucide-react";
 import api from "../lib/api";
@@ -79,6 +79,54 @@ export default function PublicLayout({ user, setUser }) {
                 {label}
               </Link>
             ))}
+
+            {/* Menu thao tác nhanh dành cho điện thoại (khi bấm mở menu 3 gạch) */}
+            <div className="mobile-nav-actions">
+              {user ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => { setMobileMenu(false); navigate('/projects'); }}
+                    className="mobile-btn-primary"
+                  >
+                    <FolderKanban size={16} /> Vào xem dự án của tôi
+                  </button>
+                  {user.is_system_admin && (
+                    <button
+                      type="button"
+                      onClick={() => { setMobileMenu(false); navigate('/admin'); }}
+                      className="mobile-btn-outline"
+                    >
+                      <Shield size={16} /> Trang quản trị hệ thống
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { setMobileMenu(false); handleLogout(); }}
+                    className="mobile-btn-danger"
+                  >
+                    <LogOut size={16} /> Thoát tài khoản
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => { setMobileMenu(false); navigate('/login'); }}
+                    className="mobile-btn-primary"
+                  >
+                    <UserRound size={16} /> Đăng nhập
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMobileMenu(false); navigate('/register'); }}
+                    className="mobile-btn-outline"
+                  >
+                    Đăng ký tài khoản
+                  </button>
+                </>
+              )}
+            </div>
           </nav>
           <div className="header-actions">
             <Link className="header-search" to="/du-an" aria-label="Tìm kiếm">
@@ -91,14 +139,14 @@ export default function PublicLayout({ user, setUser }) {
                     <Shield size={15} style={{ marginRight: '6px' }}/> Quản trị
                   </Button>
                 )}
-                <Button variant="default" size="sm" onClick={() => navigate('/projects')}>
+                <Button variant="default" size="sm" className="btn-header-primary" onClick={() => navigate('/projects')}>
                   <FolderKanban size={15} style={{ marginRight: '6px' }}/> Dự án của tôi
                 </Button>
                 <Button variant="outline" size="sm" onClick={handleLogout}>Đăng xuất</Button>
               </>
             ) : (
               <>
-                 <Button variant="outline" size="sm" onClick={() => navigate('/login')}><UserRound size={15}/> Đăng nhập</Button>
+                 <Button variant="outline" size="sm" className="btn-header-primary" onClick={() => navigate('/login')}><UserRound size={15}/> Đăng nhập</Button>
                  <Button size="sm" onClick={() => navigate('/register')}>Đăng ký</Button>
               </>
             )}

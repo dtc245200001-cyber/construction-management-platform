@@ -140,15 +140,19 @@ describe("S-26 Integration: Đội trưởng xem việc được giao và báo k
   });
 
   afterAll(async () => {
-    if (projectId) {
-      await db.query(`DELETE FROM projects WHERE id = $1`, [projectId]);
-    }
-    if (teamLeaderUserId || siteManagerUserId || otherLeaderUserId) {
-      await db.query(`DELETE FROM users WHERE id IN ($1, $2, $3)`, [
-        teamLeaderUserId,
-        siteManagerUserId,
-        otherLeaderUserId,
-      ]);
+    try {
+      await db.query(
+        "TRUNCATE TABLE audit_logs, task_quantity_reports, task_assignments, team_members, teams, tasks, work_items, project_members, projects RESTART IDENTITY CASCADE"
+      );
+      if (teamLeaderUserId || siteManagerUserId || otherLeaderUserId) {
+        await db.query(`DELETE FROM users WHERE id IN ($1, $2, $3)`, [
+          teamLeaderUserId,
+          siteManagerUserId,
+          otherLeaderUserId,
+        ]);
+      }
+    } catch (e) {
+      // ignore cleanup errors
     }
   });
 

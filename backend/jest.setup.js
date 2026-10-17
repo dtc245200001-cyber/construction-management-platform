@@ -35,3 +35,5 @@ if (isCI) {
     "postgres://postgres:postgres123@localhost:5432/construction_db_test";
 }
 
+// Auth integration tests exercise public registration; keep this override test-only.
+process.env.ALLOW_PUBLIC_REGISTER = "true";

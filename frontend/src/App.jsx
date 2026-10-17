@@ -17,6 +17,7 @@ import PublicProjectDetailPage from './pages/PublicProjectDetailPage';
 import ProjectsPage from './pages/ProjectsPage';
 import LandingPage from './pages/LandingPage';
 import WBSPage from './pages/WBSPage';
+import WBSDiagramPage from './pages/WBSDiagramPage';
 import MembersPage from './pages/MembersPage';
 import AdminPage from './pages/AdminPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -27,12 +28,40 @@ import GanttPage from './pages/GanttPage';
 import MilestoneWarningsPage from './pages/MilestoneWarningsPage';
 import ProjectCalendarPage from './pages/ProjectCalendarPage';
 import DiaryPage from './pages/DiaryPage';
+import { startDiarySync } from './services/diarySync';
 
 // S-26 / T-60
 import FieldPage from './pages/FieldPage';
+import ContractQuantityPage from './pages/ContractQuantityPage';
+
+// S-36 / T-92
+import AcceptancePage from './pages/AcceptancePage';
+
+// S-39: Audit Portal cho Chủ đầu tư / Ban quản lý
+import AuditPortalPage from './pages/AuditPortalPage';
+
+// S-41 / T-107: Cấu hình phạm vi công trường
+import SiteGeofencePage from './pages/SiteGeofencePage';
+
+// S-51 / T-128 & T-129
+import SystemStatusPage from './pages/SystemStatusPage';
+
+// S-43 / T-113: Đề nghị thanh toán
+import PaymentRequestsPage from './pages/PaymentRequestsPage';
+
+
+// S-33 / T-80 / T-82 Upload Queue
+import { UploadQueueProvider } from './context/UploadQueueContext';
+import UploadQueueDrawer from './components/UploadQueueDrawer';
 
 function App() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('cached_auth_user') || 'null');
+    } catch {
+      return null;
+    }
+  });
   const [checkingSession, setCheckingSession] = useState(true);
 
   useEffect(() => {
@@ -40,8 +69,33 @@ function App() {
       try {
         const response = await api.get('/auth/me');
         setUser(response.data.user);
+        try {
+          localStorage.setItem('cached_auth_user', JSON.stringify(response.data.user));
+        } catch {
+          /* ignore */
+        }
       } catch (error) {
-        console.error('Không thể kiểm tra session', error);
+        const status = error?.response?.status;
+
+        if (status === 401 || status === 403) {
+          try {
+            localStorage.removeItem('cached_auth_user');
+          } catch {
+            /* ignore */
+          }
+          setUser(null);
+        } else {
+          // Ngoại tuyến hoặc lỗi kết nối: phục hồi phiên đăng nhập từ bộ nhớ máy
+          console.warn('Không thể kiểm tra session trực tuyến (có thể đang ngoại tuyến):', error?.message || error);
+          try {
+            const cachedUser = JSON.parse(localStorage.getItem('cached_auth_user') || 'null');
+            if (cachedUser) {
+              setUser(cachedUser);
+            }
+          } catch {
+            /* ignore */
+          }
+        }
       } finally {
         setCheckingSession(false);
       }
@@ -49,6 +103,11 @@ function App() {
 
     checkSession();
   }, []);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    return startDiarySync();
+  }, [user]);
 
   if (checkingSession) {
     return (
@@ -61,19 +120,16 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
+      <UploadQueueProvider>
+        <Routes>
 
         {/* ================= LOGIN ================= */}
         <Route element={<AuthLayout />}>
-          <Route
-            path="/login"
-            element={
-              user
-                ? <Navigate to="/" replace />
-                : <LoginPage setUser={setUser} />
-            }
-          />
+          <Route path="/login" element={<LoginPage setUser={setUser} />} />
         </Route>
+
+        {/* ================= HỆ THỐNG / HEALTH CHECK (T-128 & T-129) ================= */}
+        <Route path="/system-status" element={<SystemStatusPage />} />
 
         <Route
           path="/invitations/:token/accept"
@@ -187,6 +243,16 @@ function App() {
           />
 
           <Route
+            path="/wbs-diagram"
+            element={<WBSDiagramPage user={user} />}
+          />
+
+          <Route
+            path="/contract-quantities"
+            element={<ContractQuantityPage user={user} />}
+          />
+
+          <Route
             path="/schedule"
             element={<SchedulePage user={user} />}
           />
@@ -218,14 +284,45 @@ function App() {
           />
 
           <Route
+            path="/acceptance"
+            element={<AcceptancePage user={user} />}
+          />
+
+          <Route
+            path="/audit"
+            element={<AuditPortalPage user={user} />}
+          />
+
+          <Route
             path="/members"
             element={<MembersPage user={user} />}
+          />
+
+          <Route
+            path="/site-geofence"
+            element={<SiteGeofencePage user={user} />}
+          />
+
+          {/* S-43 / T-113: Đề nghị thanh toán */}
+          <Route
+            path="/payment-requests"
+            element={<PaymentRequestsPage user={user} />}
+          />
+          <Route
+            path="/payment-requests/:id"
+            element={<PaymentRequestsPage user={user} />}
+          />
+          <Route
+            path="/finance"
+            element={<Navigate to="/payment-requests" replace />}
           />
         </Route>
 
       </Routes>
-    </BrowserRouter>
-  );
+      <UploadQueueDrawer />
+    </UploadQueueProvider>
+  </BrowserRouter>
+);
 }
 
 export default App;

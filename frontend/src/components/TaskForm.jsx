@@ -95,6 +95,17 @@ function TaskForm({
   const handleSubmit = async (event) => {
     event.preventDefault();
 
+    // Guard: if task/workItem project changed while form was open, block stale submission
+    const liveProjectId = String(projectId);
+    if (task && task.project_id != null && String(task.project_id) !== liveProjectId) {
+      setError("Công việc không thuộc dự án hiện tại. Vui lòng đóng form và tải lại dữ liệu.");
+      return;
+    }
+    if (workItem && workItem.project_id != null && String(workItem.project_id) !== liveProjectId) {
+      setError("Hạng mục không thuộc dự án hiện tại. Vui lòng đóng form và chọn lại.");
+      return;
+    }
+
     setError("");
 
     const duration = Number(durationDays);

@@ -1,9 +1,16 @@
 /**
  * seed-demo.js — Tạo dữ liệu demo cho môi trường local
  * Chạy: node scripts/seed-demo.js
+ *
+ * 🛡️ Script này bị CHẶN tự động nếu DATABASE_URL trỏ vào Supabase/production.
  */
 
 require("dotenv").config();
+
+// 🛡️ GUARD: Chặn chạy trên production
+const guardProduction = require('./_production-guard');
+guardProduction('seed-demo.js');
+
 const { Pool } = require("pg");
 const argon2 = require("argon2");
 

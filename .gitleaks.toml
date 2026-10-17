@@ -1,0 +1,20 @@
+title = "Construction Management Gitleaks Configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "False positive test fixture in diarySyncQueue.test.js"
+commits = [
+  "5cac5bb7ee4bd53632baf86f342e7b99bd81acce"
+]
+paths = [
+  '''backend/__tests__/integration/diarySyncQueue\.test\.js'''
+]
+regexes = [
+  '''password=Secret123-khong-duoc-lot''',
+  '''Secret123-khong-duoc-lot'''
+]
+stopwords = [
+  '''Secret123-khong-duoc-lot'''
+]

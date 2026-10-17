@@ -98,6 +98,66 @@ describe("Diary API Integration Tests", () => {
     it("thiếu work_item_id thì 400", async () => {
       const res = await request(app).post(`/api/projects/${projectAId}/diary-entries`).set("Cookie", cookieKySu).send({ content: "Test" });
       expect(res.status).toBe(400);
+      expect(res.body.errors).toContain("work_item_id must be a positive integer");
+    });
+
+    it("stores diary images against the server entry and reuses the image client ID on retry", async () => {
+      const entryClientId = "d9051ac0-8370-4f2f-a1cd-8b921df42cc1";
+      const imageClientId = "bea41a53-6a6d-4654-b13d-c0a5c66a4d31";
+      const entryResponse = await request(app)
+        .post(`/api/projects/${projectAId}/diary-entries`)
+        .set("Cookie", cookieKySu)
+        .send({
+          work_item_id: projectAWorkItemId,
+          content: "Nhật ký có ảnh offline",
+          client_id: entryClientId,
+        });
+      expect(entryResponse.status).toBe(201);
+
+      const upload = () =>
+        request(app)
+          .post(
+            `/api/projects/${projectAId}/diary-entries/${entryResponse.body.id}/attachments`
+          )
+          .set("Cookie", cookieKySu)
+          .field("client_id", imageClientId)
+          .attach("image", Buffer.from("offline-image"), {
+            filename: "offline.png",
+            contentType: "image/png",
+          });
+
+      const firstUpload = await upload();
+      const retryUpload = await upload();
+      expect(firstUpload.status).toBe(201);
+      expect(retryUpload.status).toBe(200);
+      expect(retryUpload.body.id).toBe(firstUpload.body.id);
+
+      const list = await request(app)
+        .get(`/api/projects/${projectAId}/diary-entries`)
+        .set("Cookie", cookieKySu);
+      const savedEntry = list.body.data.find((entry) => entry.client_id === entryClientId);
+      expect(savedEntry.attachments).toHaveLength(1);
+
+      const imageResponse = await request(app)
+        .get(savedEntry.attachments[0].url)
+        .set("Cookie", cookieKySu);
+      expect(imageResponse.status).toBe(200);
+      expect(imageResponse.headers["content-type"]).toBe("image/png");
+      expect(imageResponse.body.toString()).toBe("offline-image");
+    });
+
+    it("work_item_id là null, 0 hoặc chuỗi sai định dạng thì 400", async () => {
+      const resNull = await request(app).post(`/api/projects/${projectAId}/diary-entries`).set("Cookie", cookieKySu).send({ work_item_id: null, content: "Test" });
+      expect(resNull.status).toBe(400);
+      expect(resNull.body.errors).toContain("work_item_id must be a positive integer");
+
+      const resZero = await request(app).post(`/api/projects/${projectAId}/diary-entries`).set("Cookie", cookieKySu).send({ work_item_id: 0, content: "Test" });
+      expect(resZero.status).toBe(400);
+      expect(resZero.body.errors).toContain("work_item_id must be a positive integer");
+
+      const resTask = await request(app).post(`/api/projects/${projectAId}/diary-entries`).set("Cookie", cookieKySu).send({ work_item_id: "task-1", content: "Test" });
+      expect(resTask.status).toBe(400);
+      expect(resTask.body.errors).toContain("work_item_id must be a positive integer");
     });
 
     it("thiếu content hoặc rỗng thì 400", async () => {
@@ -196,6 +256,27 @@ describe("Diary API Integration Tests", () => {
       const res = await request(app).delete(`/api/categories/${projectAId}/${projectAWorkItemId}`).set("Cookie", cookieAdmin);
       expect(res.status).toBe(409);
       expect(res.body.message).toContain("Hạng mục đã có nhật ký, không thể xóa");
+    });
+
+    it("xóa mục nhật ký thành công bằng DELETE /diary-entries/:entryId", async () => {
+      // Tạo một nhật ký để xóa
+      const createRes = await request(app)
+        .post(`/api/projects/${projectAId}/diary-entries`)
+        .set("Cookie", cookieKySu)
+        .send({ work_item_id: projectAWorkItemId, content: "Nhật ký sắp bị xóa" });
+      expect(createRes.status).toBe(201);
+      const entryId = createRes.body.id;
+
+      // Xóa thành công
+      const delRes = await request(app)
+        .delete(`/api/projects/${projectAId}/diary-entries/${entryId}`)
+        .set("Cookie", cookieKySu);
+      expect(delRes.status).toBe(200);
+      expect(delRes.body.success).toBe(true);
+
+      // Kiểm tra DB không còn
+      const check = await pool.query(`SELECT id FROM diary_entries WHERE id = $1`, [entryId]);
+      expect(check.rows.length).toBe(0);
     });
 
     it("xóa dự án có nhật ký thì thành công", async () => {

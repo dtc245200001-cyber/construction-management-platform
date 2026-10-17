@@ -12,7 +12,7 @@ const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
 const {
   checkProjectAccess,
-  allow,
+  requirePermission,
   createProjectRouter,
 } = require("../middleware/projectAccess");
 const asyncHandler = require("../utils/asyncHandler");
@@ -20,7 +20,6 @@ const {
   parsePositiveInt,
   normalizeName,
 } = require("../utils/validators");
-const { ROLES } = require("../utils/constants");
 
 const {
   markProjectScheduleDirty,
@@ -49,7 +48,7 @@ router.get(
   "/:projectId",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
 
@@ -120,7 +119,7 @@ router.get(
   "/:projectId/tree/all",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
 
@@ -235,7 +234,7 @@ router.post(
   "/:projectId",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY]),
+  requirePermission("work_item.manage"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
 
@@ -350,7 +349,7 @@ router.put(
   "/:projectId/:id",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY]),
+  requirePermission("work_item.manage"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     const id = parsePositiveInt(req.params.id);
@@ -466,7 +465,7 @@ router.patch(
   "/:projectId/:id/move",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY]),
+  requirePermission("work_item.manage"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     const id = parsePositiveInt(req.params.id);
@@ -629,7 +628,7 @@ router.delete(
   "/:projectId/:id",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY]),
+  requirePermission("work_item.manage"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     const id = parsePositiveInt(req.params.id);

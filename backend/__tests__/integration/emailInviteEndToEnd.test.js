@@ -134,11 +134,13 @@ describe("Email Invitation End-to-End Flow (Integration)", () => {
   test("2. Mời email đã có tài khoản: chấp nhận thư mời qua accept endpoint đưa user vào project_members", async () => {
     // Tạo user đã có sẵn tài khoản
     const existingEmail = "architect@company.com";
+    const argon2 = require("argon2");
+    const pwdHash = await argon2.hash("Password123!");
     const userRes = await pool.query(
       `INSERT INTO users (email, password_hash, name, role_id, is_system_admin)
-       VALUES ($1, 'hash', 'Kiến trúc sư', 2, false)
+       VALUES ($1, $2, 'Kiến trúc sư', 2, false)
        RETURNING id`,
-      [existingEmail]
+      [existingEmail, pwdHash]
     );
     const existingId = userRes.rows[0].id;
 
@@ -154,8 +156,14 @@ describe("Email Invitation End-to-End Flow (Integration)", () => {
     );
     const invId = invRes.rows[0].id;
 
-    // User đã có tài khoản gọi POST /api/public/invitations/:token/accept
-    const acceptRes = await request(app)
+    // User đã có tài khoản đăng nhập rồi gọi POST /api/public/invitations/:token/accept
+    const agent = request.agent(app);
+    const loginRes = await agent
+      .post("/api/auth/login")
+      .send({ email: existingEmail, password: "Password123!" });
+    expect(loginRes.status).toBe(200);
+
+    const acceptRes = await agent
       .post(`/api/public/invitations/${rawToken}/accept`)
       .send();
 

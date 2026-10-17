@@ -19,8 +19,19 @@ services:
       - key: SESSION_SECRET
         generateValue: true
       - key: CORS_ORIGINS
-        # Update this URL once Render provides the frontend domain
-        value: https://construction-ui.onrender.com
+        # Origin thật của frontend trên Render. Rewrite /api/* ở service
+        # frontend có forward header Origin xuống backend, nên khai báo đúng ở đây.
+        value: https://construction-management-platform-1.onrender.com
+      - key: COOKIE_SAMESITE
+        # Frontend gọi API qua rewrite /api/* cùng origin (xem service frontend
+        # bên dưới), nên cookie là first-party; Safari/Chrome iOS (ITP) giữ được
+        # cookie với SameSite=Lax. SameSite=None sẽ bị ITP chặn nếu quay lại cross-site.
+        value: lax
+      - key: COOKIE_SECURE
+        # SameSite=None chỉ có tác dụng khi cookie Secure (HTTPS).
+        value: true
+      - key: UPLOAD_DIR
+        value: ./uploads
 
   # ─── FRONTEND REACT ─────────────────────────────────────────────────────────
   - type: web
@@ -33,8 +44,14 @@ services:
     staticPublishPath: ./dist
     envVars:
       - key: VITE_API_BASE_URL
-        value: https://construction-api.onrender.com/api
+        # Đường dẫn tương đối: trình duyệt gọi cùng origin với frontend,
+        # Render proxy sang backend (rewrite bên dưới) -> cookie first-party.
+        value: /api
     routes:
+      # Phải đặt TRƯỚC rule /* để /api/* không bị rewrite về index.html
+      - type: rewrite
+        source: /api/*
+        destination: https://construction-management-platform.onrender.com/api/*
       # Redirect all requests to index.html for React Router (SPA)
       - type: rewrite
         source: /*

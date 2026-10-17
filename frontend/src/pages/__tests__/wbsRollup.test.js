@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { rollupCategoryDates } from "../WBSPage.jsx";
+import { rollupCategoryDates } from "../../utils/buildTree.js";
 
 // Cây giống dữ liệu dự án "huong": hạng mục chứa công việc có ES/EF từ CPM
 const task = (id, start, end) => ({

@@ -1,3 +1,12 @@
+
+// =======================================================
+// PRODUCTION GUARD — T? d?ng ch?n khi tr? vào production
+// =======================================================
+{
+  require('dotenv').config();
+  const _guard = require('./_production-guard');
+  _guard(__filename.split(/[\\/]/).pop());
+}
 require('dotenv').config();
 const db = require('../config/db');
 

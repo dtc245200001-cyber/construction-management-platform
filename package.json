@@ -7,7 +7,19 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "node start-dev.js",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "migrate:up": "npm --prefix backend run migrate:up",
+    "lint": "npm --prefix backend run lint && npm --prefix frontend run lint",
+    "typecheck": "npm --prefix frontend exec tsc --noEmit",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build",
+    "test:backend": "npm --prefix backend test",
+    "test:frontend": "npm --prefix frontend test",
+    "test": "npm run test:backend && npm run test:frontend",
+    "check:all": "npm run lint && npm run typecheck && npm run build && npm test",
+    "monitor:staging": "node deploy/staging-monitor.js",
+    "monitor:simulate": "node deploy/simulate-staging-alert.js"
   },
   "repository": {
     "type": "git",

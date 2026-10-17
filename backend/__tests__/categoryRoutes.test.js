@@ -20,6 +20,8 @@ jest.mock("../middleware/projectAccess", () => {
     checkProjectAccess: (req, res, next) => next(),
     requireProjectRoles: () => (req, res, next) => next(),
     allow: () => (req, res, next) => next(),
+    requirePermission: () => (req, res, next) => next(),
+    can: () => true,
     createProjectRouter: () => express.Router(),
     defaultDeny: (req, res, next) => next(),
   };

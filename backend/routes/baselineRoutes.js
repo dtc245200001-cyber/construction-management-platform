@@ -2,10 +2,9 @@
 
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
-const { checkProjectAccess, allow, createProjectRouter } = require("../middleware/projectAccess");
+const { checkProjectAccess, requirePermission, createProjectRouter } = require("../middleware/projectAccess");
 const asyncHandler = require("../utils/asyncHandler");
 const { parsePositiveInt } = require("../utils/validators");
-const { ROLES } = require("../utils/constants");
 
 const router = createProjectRouter();
 
@@ -14,7 +13,7 @@ router.post(
   "/:projectId/baselines",
   requireAuth,
   checkProjectAccess,
-  allow([ROLES.BAN_QUAN_LY]), // NFR: chỉ ban quản lý được chốt
+  requirePermission("baseline.manage"), // NFR: chỉ ban quản lý được chốt
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });
@@ -76,7 +75,7 @@ router.get(
   "/:projectId/baselines",
   requireAuth,
   checkProjectAccess,
-  allow(Object.values(ROLES)),
+  requirePermission("project.member"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     if (!projectId) return res.status(400).json({ message: "projectId không hợp lệ" });

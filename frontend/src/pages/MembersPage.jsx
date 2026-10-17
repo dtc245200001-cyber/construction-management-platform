@@ -5,6 +5,7 @@ import React, {
 } from "react";
 
 import api from "../lib/api";
+import { usePermission } from "../hooks/usePermission";
 
 import {
   BriefcaseBusiness,
@@ -17,10 +18,17 @@ import {
   RefreshCw,
   Search,
   Shield,
+  Trash2,
   Users,
   UserPlus,
   X,
+  AlertTriangle,
+  Calendar,
+  Clock,
+  AlertCircle,
 } from "lucide-react";
+import OverloadWarningDialog from "../components/OverloadWarningDialog";
+import { formatDateVN } from "../utils/dateVN";
 
 const roleLabels = {
   chu_dau_tu: "Chủ đầu tư",
@@ -30,6 +38,27 @@ const roleLabels = {
   doi_truong: "Đội trưởng thi công",
   ke_toan: "Kế toán",
 };
+
+// Trạng thái hiển thị cho 1 lời mời: ưu tiên trạng thái đang poll (real-time,
+// ngay sau khi bấm Gửi/Gửi lại), nếu không có thì dùng dữ liệu email_logs đã lưu.
+function getInvitationStatusBadge(inv, livePollStatus) {
+  if (inv.is_expired) {
+    return { label: "Đã hết hạn", className: "bg-site-baseline/10 text-site-baseline" };
+  }
+
+  const status = livePollStatus || inv.email_status;
+
+  if (status === "sent") {
+    return { label: "Đã gửi", className: "bg-site-success/10 text-site-success" };
+  }
+  if (status === "error") {
+    return { label: "Lỗi gửi", className: "bg-site-critical/10 text-site-critical" };
+  }
+  if (status === "pending") {
+    return { label: "Đang gửi...", className: "bg-site-warning/10 text-site-warning" };
+  }
+  return { label: "Chưa gửi", className: "bg-site-baseline/10 text-site-baseline" };
+}
 
 function getErrorMessage(
   error,
@@ -98,6 +127,19 @@ export default function MembersPage({
     resendingId,
     setResendingId,
   ] = useState(null);
+
+  // invitation_id -> 'pending' | 'sent' | 'error' — trạng thái gửi email THẬT,
+  // được cập nhật bằng cách hỏi lại backend (polling) sau khi bấm Gửi/Gửi lại,
+  // vì việc gửi mail chạy bất đồng bộ nên response ban đầu luôn là "đã tạo", chưa phải "đã gửi".
+  const [
+    sendingStatus,
+    setSendingStatus,
+  ] = useState({});
+
+  const [
+    inviteSubmitting,
+    setInviteSubmitting,
+  ] = useState(false);
 
   // ==========================================================
   // TEAMS
@@ -168,28 +210,70 @@ export default function MembersPage({
     setAssigning,
   ] = useState(false);
 
+  // T-57: Workload & Overload Warning states
+  const [teamWorkload, setTeamWorkload] = useState(null);
+  const [taskOverloadWarning, setTaskOverloadWarning] = useState(null);
+  const [showOverloadDialog, setShowOverloadDialog] = useState(false);
+  const [checkingOverload, setCheckingOverload] = useState(false);
+  // S-25: việc đang chọn chưa có lịch → không kiểm được chồng lịch
+  const [taskUnscheduled, setTaskUnscheduled] = useState(false);
+  // S-25: cảnh báo trả về SAU khi đã lưu phân công ({ warning, taskName })
+  const [assignedOverload, setAssignedOverload] = useState(null);
+
   // ==========================================================
   // ROLE PERMISSIONS
   // ==========================================================
 
-  const canInvite =
-    user?.role === "ban_quan_ly" ||
-    user?.role === "chu_dau_tu";
-
-  const canManageTeams =
-    user?.role === "chu_dau_tu" ||
-    user?.role === "ban_quan_ly" ||
-    user?.role === "chi_huy_truong";
-
-  // S-25 NFR:
-  // chỉ Chỉ huy trưởng được giao việc.
-  const canAssign =
-    user?.role === "chi_huy_truong";
+  // Quyền lấy từ config/permissions (vai trò TRONG DỰ ÁN, không dùng user.role toàn cục).
+  // S-25 NFR: chỉ Chỉ huy trưởng được giao việc.
+  const { can } = usePermission();
+  const canInvite = can("member.invite");
+  const canManageTeams = can("team.manage");
+  const canAssign = can("work.assign");
 
   // ==========================================================
   // LOAD DATA
   // ==========================================================
 
+  const [removingId, setRemovingId] = useState(null);
+
+  const handleRemoveMember = async (member) => {
+    if (Number(member.id) === Number(user?.id)) {
+      alert("Bạn không thể tự xóa mình khỏi dự án.");
+      return;
+    }
+
+    if (member.role === "chu_dau_tu") {
+      alert("Không thể xóa Chủ đầu tư khỏi dự án.");
+      return;
+    }
+
+    if (!window.confirm(
+      `Bạn có chắc muốn xóa ${member.name || member.email} khỏi dự án?
+Tài khoản và lịch sử thao tác vẫn được giữ lại.`
+    )) {
+      return;
+    }
+
+    setRemovingId(member.id);
+
+    try {
+      await api.delete(
+        `/projects/${currentProjectId}/members/${member.id}`
+      );
+
+      await fetchMembers();
+      alert("Đã xóa thành viên khỏi dự án thành công!");
+    } catch (err) {
+      alert(
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        "Không thể xóa thành viên"
+      );
+    } finally {
+      setRemovingId(null);
+    }
+  };
   const fetchMembers = async () => {
     try {
       setLoading(true);
@@ -322,6 +406,7 @@ export default function MembersPage({
     ) {
       setSelectedTeamMembers([]);
       setAssignedTasks([]);
+      setTeamWorkload(null);
       return;
     }
 
@@ -331,6 +416,7 @@ export default function MembersPage({
       const [
         membersRes,
         tasksRes,
+        workloadRes,
       ] = await Promise.all([
         api.get(
           `/projects/${currentProjectId}/teams/${teamId}/members`
@@ -339,6 +425,12 @@ export default function MembersPage({
         api.get(
           `/projects/${currentProjectId}/teams/${teamId}/tasks`
         ),
+
+        api
+          .get(
+            `/projects/${currentProjectId}/teams/${teamId}/workload`
+          )
+          .catch(() => ({ data: null })),
       ]);
 
       setSelectedTeamMembers(
@@ -347,6 +439,10 @@ export default function MembersPage({
 
       setAssignedTasks(
         tasksRes.data?.tasks || []
+      );
+
+      setTeamWorkload(
+        workloadRes?.data?.workload || null
       );
     } catch (err) {
       setTeamNotice({
@@ -366,6 +462,13 @@ export default function MembersPage({
       return;
     }
 
+    setMembers([]);
+    setTeams([]);
+    setTasks([]);
+    setSelectedTeamMembers([]);
+    setAssignedTasks([]);
+    setTeamWorkload(null);
+
     fetchMembers();
     fetchTeams();
     fetchTasks();
@@ -381,28 +484,142 @@ export default function MembersPage({
     setMemberToAdd("");
     setSelectedTaskId("");
     setPlannedQuantity("");
+    setTaskOverloadWarning(null);
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTeamId]);
 
+  // T-57: Tự động kiểm tra quá tải khi chọn công việc cho đội đang quản lý (Dry-run preview)
+  useEffect(() => {
+    if (
+      !currentProjectId ||
+      !selectedTeamId ||
+      !selectedTaskId
+    ) {
+      setTaskOverloadWarning(null);
+      setTaskUnscheduled(false);
+      return;
+    }
+
+    let isMounted = true;
+    setCheckingOverload(true);
+    setTaskUnscheduled(false);
+
+    api
+      .post(
+        `/projects/${currentProjectId}/tasks/${selectedTaskId}/check-assignment`,
+        {
+          team_id: Number(
+            selectedTeamId
+          ),
+        }
+      )
+      .then((res) => {
+        if (!isMounted) return;
+        if (
+          res.data?.warning?.is_overloaded
+        ) {
+          setTaskOverloadWarning(
+            res.data.warning
+          );
+        } else {
+          setTaskOverloadWarning(null);
+        }
+        setTaskUnscheduled(
+          Boolean(res.data?.task_unscheduled)
+        );
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        setTaskOverloadWarning(null);
+        setTeamNotice({
+          type: "error",
+          message: getErrorMessage(
+            err,
+            "Không kiểm tra được trùng lịch của đội. Hệ thống vẫn kiểm tra lại khi lưu."
+          ),
+        });
+      })
+      .finally(() => {
+        if (isMounted) {
+          setCheckingOverload(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    currentProjectId,
+    selectedTeamId,
+    selectedTaskId,
+  ]);
+
   // ==========================================================
   // MEMBERS
   // ==========================================================
+
+  // Hỏi lại trạng thái gửi email thật của 1 lời mời, lặp lại tối đa 5 lần
+  // (mỗi 1.5s) cho tới khi backend báo 'sent' hoặc 'error', rồi dừng.
+  // Nếu sau 5 lần vẫn 'pending', coi như đang gửi chậm — giữ nguyên hiển thị
+  // "Đang gửi...", lần fetchMembers() kế tiếp (vd. khi mở lại trang) sẽ cập nhật tiếp.
+  const pollInvitationStatus = (invitationId) => {
+    if (!invitationId) return;
+
+    setSendingStatus((prev) => ({ ...prev, [invitationId]: "pending" }));
+
+    let attempt = 0;
+    const maxAttempts = 5;
+
+    const tick = async () => {
+      attempt += 1;
+      try {
+        const res = await api.get(
+          `/projects/${currentProjectId}/invitations/${invitationId}/status`
+        );
+        const status = res.data.status;
+
+        if (status === "sent" || status === "error") {
+          setSendingStatus((prev) => ({ ...prev, [invitationId]: status }));
+          await fetchMembers();
+          return;
+        }
+      } catch {
+        // Lỗi mạng khi poll: thử lại ở lượt sau, không coi là gửi thất bại ngay.
+      }
+
+      if (attempt < maxAttempts) {
+        setTimeout(tick, 1500);
+      } else {
+        // Hết lượt hỏi mà vẫn pending: không khẳng định lỗi, chỉ bỏ trạng thái tạm
+        // để quay về hiển thị theo email_logs đã lưu (từ fetchMembers()).
+        setSendingStatus((prev) => {
+          const next = { ...prev };
+          delete next[invitationId];
+          return next;
+        });
+        await fetchMembers();
+      }
+    };
+
+    setTimeout(tick, 1500);
+  };
 
   const handleInvite = async (e) => {
     e.preventDefault();
 
     setInviteError("");
     setInviteSuccess("");
+    setInviteSubmitting(true);
 
     try {
-      await api.post(
+      const res = await api.post(
         `/projects/${currentProjectId}/members`,
         inviteData
       );
 
       setInviteSuccess(
-        "Đã mời thành viên thành công!"
+        "Đã tạo lời mời, đang gửi email..."
       );
 
       setInviteData({
@@ -411,6 +628,12 @@ export default function MembersPage({
       });
 
       await fetchMembers();
+
+      // Chỉ có invitation_id khi email chưa có tài khoản (trường hợp tạo invitation thật).
+      // Trường hợp email đã có tài khoản thì được thêm thẳng vào dự án, không có email nào để gửi.
+      if (res.data.invitation_id) {
+        pollInvitationStatus(res.data.invitation_id);
+      }
 
       setTimeout(() => {
         setShowInviteModal(false);
@@ -422,6 +645,8 @@ export default function MembersPage({
           "Lỗi khi mời thành viên"
         )
       );
+    } finally {
+      setInviteSubmitting(false);
     }
   };
 
@@ -438,10 +663,11 @@ export default function MembersPage({
       );
 
       setInviteSuccess(
-        "Đã gửi lại thư mời thành công!"
+        "Đã tạo lại thư mời, đang gửi email..."
       );
 
       await fetchMembers();
+      pollInvitationStatus(invitationId);
     } catch (err) {
       setInviteError(
         getErrorMessage(
@@ -596,9 +822,12 @@ export default function MembersPage({
   // ==========================================================
 
   const handleAssignTask = async (
-    e
+    e,
+    forceProceed = false
   ) => {
-    e.preventDefault();
+    if (e && typeof e.preventDefault === "function") {
+      e.preventDefault();
+    }
 
     if (!selectedTeamId) {
       setTeamNotice({
@@ -657,6 +886,12 @@ export default function MembersPage({
       return;
     }
 
+    // T-57 / S-25: Nếu việc thứ 4 gây chồng lịch và người dùng chưa xác nhận, mở modal cảnh báo
+    if (!forceProceed && taskOverloadWarning?.is_overloaded) {
+      setShowOverloadDialog(true);
+      return;
+    }
+
     try {
       setAssigning(true);
       setTeamNotice(null);
@@ -671,7 +906,7 @@ export default function MembersPage({
       );
 
       // 2. Giao công việc cho đội.
-      await api.post(
+      const assignRes = await api.post(
         `/projects/${currentProjectId}/tasks/${selectedTaskId}/assignment`,
         {
           team_id: Number(
@@ -680,14 +915,33 @@ export default function MembersPage({
         }
       );
 
-      setTeamNotice({
-        type: "success",
-        message:
-          "Đã đặt khối lượng kế hoạch và giao công việc cho đội.",
-      });
+      setShowOverloadDialog(false);
+
+      if (assignRes.data?.warning?.is_overloaded) {
+        setTeamNotice({
+          type: "warning",
+          message: `Đã giao việc thành công! ⚠️ ${assignRes.data.warning.message}`,
+        });
+
+        // S-25: người dùng chưa xác nhận qua dialog (vd lưu trước khi
+        // kiểm tra trước xong) → vẫn bật pop-up nêu rõ khoảng bị chồng.
+        if (!forceProceed) {
+          setAssignedOverload({
+            warning: assignRes.data.warning,
+            taskName: selectedTask?.name || "Công việc",
+          });
+        }
+      } else {
+        setTeamNotice({
+          type: "success",
+          message:
+            "Đã đặt khối lượng kế hoạch và giao công việc cho đội.",
+        });
+      }
 
       setSelectedTaskId("");
       setPlannedQuantity("");
+      setTaskOverloadWarning(null);
 
       await fetchSelectedTeam(
         selectedTeamId
@@ -748,7 +1002,7 @@ export default function MembersPage({
       return members.filter(
         (member) =>
           member.role ===
-            "doi_truong" &&
+          "doi_truong" &&
           !memberIds.has(
             Number(member.id)
           )
@@ -783,7 +1037,7 @@ export default function MembersPage({
   ) =>
     Number(
       member.failed_login_attempts ||
-        0
+      0
     ) > 0;
 
   // ==========================================================
@@ -852,14 +1106,17 @@ export default function MembersPage({
 
           {teamNotice && (
             <div
-              className={`mx-5 mt-5 rounded-xl border p-3 text-sm font-medium ${
-                teamNotice.type ===
-                "success"
+              className={`mx-5 mt-5 rounded-xl border p-3.5 text-sm font-medium flex items-start gap-2.5 ${teamNotice.type === "success"
                   ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                  : "border-red-200 bg-red-50 text-red-700"
-              }`}
+                  : teamNotice.type === "warning"
+                    ? "border-amber-300 bg-amber-50 text-amber-900"
+                    : "border-red-200 bg-red-50 text-red-700"
+                }`}
             >
-              {teamNotice.message}
+              {teamNotice.type === "warning" && (
+                <AlertTriangle className="size-4 shrink-0 mt-0.5 text-amber-600" />
+              )}
+              <div className="flex-1">{teamNotice.message}</div>
             </div>
           )}
 
@@ -955,6 +1212,40 @@ export default function MembersPage({
                     <RefreshCw className="size-4" />
                   </button>
                 </div>
+
+                {/* T-57: Trạng thái tải của đội đang chọn */}
+                {selectedTeamId && teamWorkload && (
+                  <div className="mt-2.5">
+                    {teamWorkload.is_overloaded ? (
+                      <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 shadow-sm flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className="size-4 text-amber-600 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-bold text-amber-950">
+                              ⚠️ Đội có lịch trình bị quá tải ({teamWorkload.overloaded_intervals?.length || 1} khoảng)
+                            </p>
+                            <p className="mt-0.5 text-amber-800">
+                              Cao nhất {teamWorkload.max_concurrent} công việc chồng lịch đồng thời (vượt ngưỡng 3 việc).
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setShowOverloadDialog(true)}
+                          className="shrink-0 rounded-lg bg-amber-200/80 hover:bg-amber-300/80 px-2.5 py-1 text-xs font-semibold text-amber-950 transition-colors"
+                        >
+                          Chi tiết
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5 text-xs text-emerald-800 flex items-center gap-1.5">
+                        <CheckCircle2 className="size-3.5 text-emerald-600" />
+                        <span>Tải bình thường (tối đa {teamWorkload.max_concurrent}/3 việc đồng thời)</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {selectedTeamId && (
@@ -1018,15 +1309,15 @@ export default function MembersPage({
 
                   {teamLeaderCandidates.length ===
                     0 && (
-                    <p className="mt-2 text-xs text-site-baseline">
-                      Không còn tài
-                      khoản Đội trưởng
-                      phù hợp. Nếu chưa
-                      có, hãy mời thành
-                      viên với vai trò
-                      Đội trưởng trước.
-                    </p>
-                  )}
+                      <p className="mt-2 text-xs text-site-baseline">
+                        Không còn tài
+                        khoản Đội trưởng
+                        phù hợp. Nếu chưa
+                        có, hãy mời thành
+                        viên với vai trò
+                        Đội trưởng trước.
+                      </p>
+                    )}
 
                   <div className="mt-4">
                     <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-site-baseline">
@@ -1079,6 +1370,7 @@ export default function MembersPage({
             </div>
 
             {/* TASK ASSIGNMENT */}
+            {canAssign && (
             <div>
               <div className="rounded-xl border border-site-border bg-site-bg/40 p-4">
                 <div className="mb-4 flex items-start gap-3">
@@ -1098,20 +1390,7 @@ export default function MembersPage({
                   </div>
                 </div>
 
-                {!canAssign ? (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                    Tài khoản hiện tại
-                    có thể quản lý đội,
-                    nhưng không có quyền
-                    giao việc. Hãy đăng
-                    nhập bằng tài khoản
-                    <strong>
-                      {" "}
-                      Chỉ huy trưởng
-                    </strong>{" "}
-                    để phân công.
-                  </div>
-                ) : !selectedTeamId ? (
+                {!selectedTeamId ? (
                   <div className="rounded-xl border border-dashed border-site-border p-6 text-center text-sm text-site-baseline">
                     Hãy chọn đội ở bên
                     trái trước.
@@ -1159,12 +1438,12 @@ export default function MembersPage({
                           if (current) {
                             setPlannedQuantity(
                               current.planned_quantity ??
-                                ""
+                              ""
                             );
 
                             setQuantityUnit(
                               current.quantity_unit ||
-                                "m3"
+                              "m3"
                             );
                           } else {
                             setPlannedQuantity(
@@ -1225,12 +1504,72 @@ export default function MembersPage({
                             "Chưa xác định"}
                           {selectedTask.start_date
                             ? ` • Bắt đầu: ${new Date(
-                                selectedTask.start_date
-                              ).toLocaleDateString(
-                                "vi-VN"
-                              )}`
+                              selectedTask.start_date
+                            ).toLocaleDateString(
+                              "vi-VN"
+                            )}`
                             : ""}
                         </p>
+                      )}
+
+                      {checkingOverload && (
+                        <p className="mt-1 text-xs text-blue-600 flex items-center gap-1.5">
+                          <RefreshCw className="size-3 animate-spin" />
+                          Đang kiểm tra trùng lịch trình...
+                        </p>
+                      )}
+
+                      {!checkingOverload && taskUnscheduled && (
+                        <p className="mt-1 text-xs text-site-baseline flex items-center gap-1.5">
+                          <AlertTriangle className="size-3 shrink-0 text-amber-600" />
+                          Công việc chưa có lịch — hãy tính tiến độ trước để kiểm tra chồng lịch của đội.
+                        </p>
+                      )}
+
+                      {taskOverloadWarning?.is_overloaded && (
+                        <div className="mt-2.5 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 shadow-sm animate-in fade-in">
+                          <div className="flex items-start gap-2.5">
+                            <AlertTriangle className="size-4 shrink-0 text-amber-600 mt-0.5" />
+                            <div className="flex-1">
+                              <p className="font-bold text-amber-950">
+                                ⚠️ Cảnh báo: Việc này sẽ làm đội bị quá tải lịch trình
+                              </p>
+                              {taskOverloadWarning.overloaded_intervals?.length > 0 && (
+                                <div className="mt-1 space-y-0.5">
+                                  <p className="text-amber-900">
+                                    <strong>Khoảng thời gian bị chồng:</strong> Từ{" "}
+                                    <span className="font-semibold underline">
+                                      {formatDateVN(
+                                        taskOverloadWarning.overloaded_intervals[0].start_date
+                                      )}
+                                    </span>{" "}
+                                    đến{" "}
+                                    <span className="font-semibold underline">
+                                      {formatDateVN(
+                                        taskOverloadWarning.overloaded_intervals[0].end_date
+                                      )}
+                                    </span>{" "}
+                                    ({taskOverloadWarning.overloaded_intervals[0].duration_days} ngày)
+                                  </p>
+                                  <p className="text-amber-800">
+                                    Có{" "}
+                                    <strong>
+                                      {taskOverloadWarning.overloaded_intervals[0].concurrent_count} công việc
+                                    </strong>{" "}
+                                    cùng diễn ra đồng thời (vượt ngưỡng 3 việc quy định).
+                                  </p>
+                                </div>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setShowOverloadDialog(true)}
+                                className="mt-2 inline-flex items-center gap-1 font-semibold text-amber-800 underline hover:text-amber-950"
+                              >
+                                Xem chi tiết danh sách việc bị chồng
+                              </button>
+                            </div>
+                          </div>
+                        </div>
                       )}
                     </div>
 
@@ -1298,7 +1637,8 @@ export default function MembersPage({
                     <button
                       type="submit"
                       disabled={
-                        assigning
+                        assigning ||
+                        checkingOverload
                       }
                       className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-site-primary px-4 font-semibold text-white disabled:opacity-50"
                     >
@@ -1317,7 +1657,7 @@ export default function MembersPage({
                     </p>
 
                     {assignedTasks.length ===
-                    0 ? (
+                      0 ? (
                       <p className="text-sm text-site-baseline">
                         Chưa có công việc
                         nào.
@@ -1334,17 +1674,33 @@ export default function MembersPage({
                             >
                               <div className="flex items-start justify-between gap-3">
                                 <div>
-                                  <p className="text-sm font-semibold text-site-dark">
-                                    {
-                                      task.name
-                                    }
-                                  </p>
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-sm font-semibold text-site-dark">
+                                      {task.name}
+                                    </p>
+                                    {task.is_critical && (
+                                      <span className="rounded bg-red-50 border border-red-200 px-1.5 py-0.5 text-[10px] font-bold text-red-600">
+                                        GĂNG
+                                      </span>
+                                    )}
+                                  </div>
 
-                                  <p className="mt-0.5 text-xs text-site-baseline">
-                                    {
-                                      task.work_item_name
-                                    }
-                                  </p>
+                                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-site-baseline">
+                                    <span>{task.work_item_name}</span>
+                                    {(task.early_start || task.actual_start_date) && (
+                                      <span className="font-medium text-site-dark">
+                                        • Lịch:{" "}
+                                        {new Date(
+                                          task.early_start || task.actual_start_date
+                                        ).toLocaleDateString("vi-VN")}
+                                        {(task.early_finish || task.actual_end_date)
+                                          ? ` - ${new Date(
+                                            task.early_finish || task.actual_end_date
+                                          ).toLocaleDateString("vi-VN")}`
+                                          : ""}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
 
                                 <span className="shrink-0 rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
@@ -1363,6 +1719,7 @@ export default function MembersPage({
                 )}
               </div>
             </div>
+            )}
           </div>
         </section>
       )}
@@ -1406,7 +1763,8 @@ export default function MembersPage({
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Desktop Table */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-site-border bg-site-bg/50 font-semibold text-site-baseline">
                 <tr>
@@ -1444,18 +1802,17 @@ export default function MembersPage({
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             <div
-                              className={`flex size-9 shrink-0 items-center justify-center rounded-full font-bold ${
-                                locked
+                              className={`flex size-9 shrink-0 items-center justify-center rounded-full font-bold ${locked
                                   ? "bg-site-critical/10 text-site-critical"
                                   : "bg-site-primary/10 text-site-primary"
-                              }`}
+                                }`}
                             >
                               {locked ? (
                                 <Lock className="size-4" />
                               ) : (
                                 String(
                                   member.name ||
-                                    "?"
+                                  "?"
                                 )
                                   .substring(
                                     0,
@@ -1517,8 +1874,8 @@ export default function MembersPage({
                               )}
                             </div>
                           ) : hasFailedAttempts(
-                              member
-                            ) ? (
+                            member
+                          ) ? (
                             <div className="flex flex-wrap items-center justify-end gap-2">
                               <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">
                                 Sai{" "}
@@ -1549,6 +1906,21 @@ export default function MembersPage({
                               Đã tham gia
                             </span>
                           )}
+
+                          {canInvite &&
+                            Number(member.id) !== Number(user?.id) &&
+                            member.role !== "chu_dau_tu" && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveMember(member)}
+                                disabled={removingId === member.id}
+                                title="Xóa thành viên khỏi dự án"
+                                className="ml-2 inline-flex items-center gap-1.5 rounded-full bg-site-critical/10 px-2.5 py-1 text-xs font-medium text-site-critical hover:bg-site-critical hover:text-white disabled:opacity-50"
+                              >
+                                <Trash2 className="size-3" />
+                                {removingId === member.id ? "Đang xóa..." : "Xóa"}
+                              </button>
+                            )}
                         </td>
                       </tr>
                     );
@@ -1559,7 +1931,7 @@ export default function MembersPage({
                   (inv) => (
                     <tr
                       key={`inv-${inv.id}`}
-                      className="border-l-4 border-site-alert opacity-75"
+                      className="border-l-4 border-site-warning opacity-75"
                     >
                       <td className="px-6 py-4">
                         <p className="font-semibold italic text-site-dark">
@@ -1578,26 +1950,46 @@ export default function MembersPage({
                       </td>
 
                       <td className="px-6 py-4 text-right">
-                        {canInvite && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleResend(
-                                inv.id
-                              )
-                            }
-                            disabled={
-                              resendingId ===
+                        <div className="flex items-center justify-end gap-2">
+                          {(() => {
+                            const badge = getInvitationStatusBadge(
+                              inv,
+                              sendingStatus[inv.id]
+                            );
+                            return (
+                              <span
+                                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}
+                              >
+                                <span className="size-1.5 rounded-full bg-current" />
+                                {badge.label}
+                              </span>
+                            );
+                          })()}
+
+                          {canInvite && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleResend(
+                                  inv.id
+                                )
+                              }
+                              disabled={
+                                resendingId ===
+                                  inv.id ||
+                                sendingStatus[
+                                  inv.id
+                                ] === "pending"
+                              }
+                              className="rounded-lg bg-site-primary/10 px-3 py-1.5 text-xs font-semibold text-site-primary disabled:opacity-50"
+                            >
+                              {resendingId ===
                               inv.id
-                            }
-                            className="rounded-lg bg-site-primary/10 px-3 py-1.5 text-xs font-semibold text-site-primary disabled:opacity-50"
-                          >
-                            {resendingId ===
-                            inv.id
-                              ? "Đang gửi..."
-                              : "Gửi lại"}
-                          </button>
-                        )}
+                                ? "Đang gửi..."
+                                : "Gửi lại"}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )
@@ -1606,7 +1998,7 @@ export default function MembersPage({
                 {filteredMembers.length ===
                   0 &&
                   invitations.length ===
-                    0 && (
+                  0 && (
                     <tr>
                       <td
                         colSpan="3"
@@ -1621,6 +2013,151 @@ export default function MembersPage({
               </tbody>
             </table>
           </div>
+
+          {/* Mobile Card List */}
+          <div className="md:hidden flex flex-col divide-y divide-site-border">
+            {filteredMembers.map((member) => {
+              const locked = isLocked(member);
+              return (
+                <div
+                  key={`m-card-${member.id}`}
+                  className={`p-4 flex flex-col gap-3 ${locked ? "bg-site-critical/5" : "bg-white"}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`flex size-10 shrink-0 items-center justify-center rounded-full font-bold text-sm ${
+                          locked
+                            ? "bg-site-critical/10 text-site-critical"
+                            : "bg-site-primary/10 text-site-primary"
+                        }`}
+                      >
+                        {locked ? (
+                          <Lock className="size-4" />
+                        ) : (
+                          String(member.name || "?").substring(0, 2).toUpperCase()
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-site-dark text-sm">{member.name}</p>
+                        <p className="mt-0.5 flex items-center gap-1 text-xs text-site-baseline">
+                          <Mail className="size-3" />
+                          {member.email}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-site-bg text-site-dark border border-site-border shrink-0">
+                      <Shield className="size-3.5 text-site-baseline" />
+                      <span>{roleLabels[member.role] || member.role}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-site-border/60">
+                    <div>
+                      {locked ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-site-critical/10 px-2.5 py-1 text-xs font-medium text-site-critical">
+                          <Lock className="size-3" />
+                          Đang bị khóa
+                        </span>
+                      ) : hasFailedAttempts(member) ? (
+                        <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">
+                          Sai {member.failed_login_attempts}/10 lần
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-site-success/10 px-2.5 py-1 text-xs font-medium text-site-success">
+                          <span className="size-1.5 rounded-full bg-current" />
+                          Đã tham gia
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {locked && canInvite && (
+                        <button
+                          type="button"
+                          onClick={() => handleUnlock(member.id)}
+                          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg bg-site-primary/10 px-3 py-1.5 text-xs font-semibold text-site-primary hover:bg-site-primary/20 touch-target"
+                        >
+                          <LockOpen className="size-3.5" />
+                          Mở khóa
+                        </button>
+                      )}
+
+                      {!locked && hasFailedAttempts(member) && canInvite && (
+                        <button
+                          type="button"
+                          onClick={() => handleUnlock(member.id)}
+                          className="inline-flex min-h-[36px] items-center gap-1 rounded-lg bg-site-primary/10 px-3 py-1.5 text-xs font-semibold text-site-primary hover:bg-site-primary/20 touch-target"
+                        >
+                          <LockOpen className="size-3.5" />
+                          Reset
+                        </button>
+                      )}
+
+                      {canInvite &&
+                        Number(member.id) !== Number(user?.id) &&
+                        member.role !== "chu_dau_tu" && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveMember(member)}
+                            disabled={removingId === member.id}
+                            title="Xóa thành viên khỏi dự án"
+                            className="inline-flex min-h-[36px] items-center gap-1 rounded-lg bg-site-critical/10 px-3 py-1.5 text-xs font-semibold text-site-critical hover:bg-site-critical hover:text-white disabled:opacity-50 touch-target"
+                          >
+                            <Trash2 className="size-3.5" />
+                            {removingId === member.id ? "Đang xóa..." : "Xóa"}
+                          </button>
+                        )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {invitations.map((inv) => {
+              const badge = getInvitationStatusBadge(inv, sendingStatus[inv.id]);
+              return (
+                <div
+                  key={`inv-card-${inv.id}`}
+                  className="p-4 bg-amber-50/30 border-l-4 border-site-warning flex flex-col gap-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold italic text-site-dark text-sm">Chưa đăng ký</p>
+                      <p className="mt-0.5 text-xs text-site-baseline">{inv.email}</p>
+                    </div>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-site-bg text-site-dark border border-site-border shrink-0">
+                      {roleLabels[inv.role] || inv.role}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-site-border/60">
+                    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}>
+                      <span className="size-1.5 rounded-full bg-current" />
+                      {badge.label}
+                    </span>
+
+                    {canInvite && (
+                      <button
+                        type="button"
+                        onClick={() => handleResend(inv.id)}
+                        disabled={resendingId === inv.id || sendingStatus[inv.id] === "pending"}
+                        className="min-h-[36px] rounded-lg bg-site-primary/10 px-3 py-1.5 text-xs font-semibold text-site-primary disabled:opacity-50 touch-target"
+                      >
+                        {resendingId === inv.id ? "Đang gửi..." : "Gửi lại"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {filteredMembers.length === 0 && invitations.length === 0 && (
+              <div className="p-8 text-center text-sm text-site-baseline">
+                Chưa có thành viên nào trong dự án.
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1629,13 +2166,13 @@ export default function MembersPage({
       ===================================================== */}
 
       {showInviteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-site-dark/50 p-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-site-dark/50 p-0 sm:p-4 backdrop-blur-xs">
           <form
             onSubmit={handleInvite}
-            className="w-full max-w-md overflow-hidden rounded-2xl bg-site-surface shadow-xl"
+            className="w-full max-w-md overflow-hidden rounded-t-2xl sm:rounded-2xl bg-site-surface shadow-2xl safe-pb"
           >
-            <div className="flex items-center justify-between border-b border-site-border px-6 py-4">
-              <h3 className="text-lg font-bold">
+            <div className="flex items-center justify-between border-b border-site-border px-5 py-4">
+              <h3 className="text-base sm:text-lg font-bold">
                 Mời thành viên mới
               </h3>
 
@@ -1646,12 +2183,13 @@ export default function MembersPage({
                     false
                   )
                 }
+                className="p-1 touch-target text-site-baseline hover:text-site-dark"
               >
                 <X className="size-5" />
               </button>
             </div>
 
-            <div className="space-y-4 p-6">
+            <div className="space-y-4 p-5 sm:p-6">
               {inviteError && (
                 <div className="rounded-lg bg-site-critical/10 p-3 text-sm text-site-critical">
                   {inviteError}
@@ -1665,7 +2203,7 @@ export default function MembersPage({
               )}
 
               <div>
-                <label className="mb-1.5 block text-sm font-medium">
+                <label className="mb-1.5 block text-sm font-semibold">
                   Email người dùng *
                 </label>
 
@@ -1682,13 +2220,13 @@ export default function MembersPage({
                         e.target.value,
                     })
                   }
-                  className="w-full rounded-lg border border-site-border bg-site-bg px-3 py-2.5 text-sm"
+                  className="w-full min-h-[44px] rounded-xl border border-site-border bg-site-bg px-3.5 py-2.5 text-[15px]"
                   placeholder="VD: nv.a@cong-truong-360.vn"
                 />
               </div>
 
               <div>
-                <label className="mb-1.5 block text-sm font-medium">
+                <label className="mb-1.5 block text-sm font-semibold">
                   Vai trò *
                 </label>
 
@@ -1703,7 +2241,7 @@ export default function MembersPage({
                         e.target.value,
                     })
                   }
-                  className="w-full rounded-lg border border-site-border bg-site-bg px-3 py-2.5 text-sm"
+                  className="w-full min-h-[44px] rounded-xl border border-site-border bg-site-bg px-3.5 py-2.5 text-[15px]"
                 >
                   <option value="ban_quan_ly">
                     Ban quản lý
@@ -1728,7 +2266,7 @@ export default function MembersPage({
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 border-t border-site-border bg-site-bg/50 px-6 py-4">
+            <div className="flex justify-end gap-3 border-t border-site-border bg-site-bg/50 px-5 py-4">
               <button
                 type="button"
                 onClick={() =>
@@ -1736,21 +2274,48 @@ export default function MembersPage({
                     false
                   )
                 }
-                className="px-4 py-2 text-sm font-medium"
+                className="min-h-[44px] px-4 py-2 text-sm font-medium touch-target"
               >
                 Hủy
               </button>
 
               <button
                 type="submit"
-                className="rounded-lg bg-site-primary px-4 py-2 text-sm font-medium text-white"
+                disabled={inviteSubmitting}
+                className="min-h-[44px] rounded-xl bg-site-primary px-5 py-2 text-sm font-bold text-white disabled:opacity-50 touch-target"
               >
-                Gửi lời mời
+                {inviteSubmitting ? "Đang gửi..." : "Gửi lời mời"}
               </button>
             </div>
           </form>
         </div>
       )}
+
+      {/* T-57: Hộp thoại cảnh báo quá tải đội thi công */}
+      <OverloadWarningDialog
+        isOpen={showOverloadDialog || Boolean(assignedOverload)}
+        onClose={() => {
+          setShowOverloadDialog(false);
+          setAssignedOverload(null);
+        }}
+        onConfirm={() => handleAssignTask(null, true)}
+        warning={
+          assignedOverload?.warning ||
+          taskOverloadWarning ||
+          teamWorkload
+        }
+        alreadyAssigned={Boolean(assignedOverload)}
+        teamName={
+          teams.find((t) => String(t.id) === String(selectedTeamId))?.name ||
+          "Đội thi công"
+        }
+        taskName={
+          assignedOverload?.taskName ||
+          selectedTask?.name ||
+          "Công việc"
+        }
+        isSubmitting={assigning}
+      />
     </div>
   );
 }

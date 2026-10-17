@@ -38,6 +38,7 @@ describe('DiaryPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    localStorage.setItem('currentProjectId', '13');
     
     api.get.mockImplementation((url) => {
       if (url.includes('/projects/') && !url.includes('/diary-entries') && !url.includes('/diary-locks')) {
@@ -171,7 +172,10 @@ describe('DiaryPage', () => {
       
       renderPage(mockUserWrite, { openForm: true });
       await waitFor(() => expect(screen.getByText('Ghi nhật ký thi công')).toBeInTheDocument());
-      
+      // Đợi hạng mục nạp xong (tránh flaky trên CI chậm: select chưa có option
+      // thì fireEvent.change không set được workItemId → submit bị chặn).
+      await screen.findByTestId('category-option-101');
+
       const user = userEvent.setup();
       
       // Select category
@@ -202,13 +206,23 @@ describe('DiaryPage', () => {
       expect(screen.getByText('Ghi test')).toBeInTheDocument();
     });
 
-    it('Lỗi mạng: giữ form, hiện nút Gửi lại, gửi lại đúng client_id, sau đó thành công', async () => {
+    it('Lỗi mạng: lưu cục bộ rồi tự đồng bộ lại với cùng client_id', async () => {
       // Fail first
       api.post.mockRejectedValueOnce(new Error('Network error')); // No response obj
+      api.post.mockResolvedValueOnce({
+        data: {
+          entry: {
+            id: 2, work_item_id: 101, content: 'Loi mang test', entry_at: new Date().toISOString(), entry_date: format(new Date(), 'yyyy-MM-dd'), created_by_name: 'Ky su'
+          }
+        }
+      });
       
       renderPage(mockUserWrite, { openForm: true });
       await waitFor(() => expect(screen.getByText('Ghi nhật ký thi công')).toBeInTheDocument());
-      
+      // Đợi hạng mục nạp xong (tránh flaky trên CI chậm: select chưa có option
+      // thì fireEvent.change không set được workItemId → submit bị chặn).
+      await screen.findByTestId('category-option-101');
+
       const user = userEvent.setup();
       
       // Select & Fill
@@ -219,35 +233,23 @@ describe('DiaryPage', () => {
       const submitBtn = screen.getByTestId('submit-diary-btn');
       fireEvent.submit(submitBtn.closest('form'));
       
-      await waitFor(() => expect(screen.getByText(/Chưa gửi được, nội dung vẫn được giữ/i)).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText(/đã được đồng bộ thành công/i)).toBeInTheDocument());
       
       // Content still there
       expect(screen.getByDisplayValue('Loi mang test')).toBeInTheDocument();
       
-      // Draft should be saved
-      expect(localStorage.getItem('diary_draft_13')).toContain('Loi mang test');
-      
-      // Second attempt success
-      api.post.mockResolvedValueOnce({
-        data: {
-          entry: {
-            id: 2, work_item_id: 101, content: 'Loi mang test', entry_at: new Date().toISOString(), entry_date: format(new Date(), 'yyyy-MM-dd'), created_by_name: 'Ky su'
-          }
-        }
-      });
-      
-      const retryBtn = screen.getByRole('button', { name: /Gửi lại/i });
-      fireEvent.click(retryBtn);
+      // The queued diary is already stored in IndexedDB, not an unsent draft.
+      expect(localStorage.getItem('diary_draft_13')).toBeNull();
       
       await waitFor(() => {
-        // Should be called twice with SAME UUID
+        // The offline queue retries automatically with the same UUID.
         expect(api.post).toHaveBeenCalledTimes(2);
         expect(api.post.mock.calls[0][1].client_id).toBe('test-uuid-123');
         expect(api.post.mock.calls[1][1].client_id).toBe('test-uuid-123');
       });
       
-      // Form closes, draft removed
-      await waitFor(() => expect(screen.queryByText('Ghi nhật ký thi công')).not.toBeInTheDocument());
+      // The diary remains visible with an acknowledged synced state.
+      await waitFor(() => expect(screen.getByText(/đã được đồng bộ thành công/i)).toBeInTheDocument());
       expect(localStorage.getItem('diary_draft_13')).toBeNull();
     });
 
@@ -258,7 +260,10 @@ describe('DiaryPage', () => {
       
       renderPage(mockUserWrite, { openForm: true });
       await waitFor(() => expect(screen.getByText('Ghi nhật ký thi công')).toBeInTheDocument());
-      
+      // Đợi hạng mục nạp xong (tránh flaky trên CI chậm: select chưa có option
+      // thì fireEvent.change không set được workItemId → submit bị chặn).
+      await screen.findByTestId('category-option-101');
+
       const user = userEvent.setup();
       
       const select = screen.getByTestId('category-dropdown');
@@ -277,6 +282,66 @@ describe('DiaryPage', () => {
       fireEvent.submit(submitBtn.closest('form'));
       
       await waitFor(() => expect(screen.getByText(/Bạn không có quyền ghi nhật ký/i)).toBeInTheDocument());
+    });
+  });
+
+  describe('Chốt / mở sổ nhật ký (S-24, đồng bộ backend)', () => {
+    // Render với membership role cho trước và ngày quá khứ (hôm qua) để nút
+    // Chốt sổ đủ điều kiện hiển thị (backend chỉ cho chốt ngày đã qua).
+    const renderWithRole = async (membership, dateFilter, isLocked = false) => {
+      api.get.mockImplementation((url) => {
+        if (url.includes('/projects/') && !url.includes('/diary-entries') && !url.includes('/diary-locks')) {
+          return Promise.resolve({ data: { membership } });
+        }
+        if (url.includes('/tree/all')) {
+          return Promise.resolve({ data: mockCategories });
+        }
+        if (url.includes('/diary-entries')) {
+          return Promise.resolve({ data: mockEntries });
+        }
+        if (url.includes('/diary-locks/')) {
+          return Promise.resolve({ data: { is_locked: isLocked } });
+        }
+        return Promise.reject(new Error('not mocked'));
+      });
+      renderPage({ id: 9, name: 'Test user' });
+      await waitFor(() => expect(screen.getByText('Đổ bê tông')).toBeInTheDocument());
+      if (dateFilter) {
+        fireEvent.change(document.querySelector('input[type="date"]'), {
+          target: { value: dateFilter },
+        });
+      }
+    };
+
+    // Hôm qua (trừ 1 ngày tuyệt đối — chắc chắn < hôm nay dù múi giờ nào).
+    const yesterday = format(new Date(Date.now() - 24 * 60 * 60 * 1000), 'yyyy-MM-dd');
+
+    it('Kỹ sư giám sát thấy nút Chốt sổ ở ngày đã qua', async () => {
+      await renderWithRole('ky_su_giam_sat', yesterday);
+      expect(await screen.findByText('Chốt sổ')).toBeInTheDocument();
+    });
+
+    it('Chỉ huy trưởng KHÔNG thấy nút Chốt sổ', async () => {
+      await renderWithRole('chi_huy_truong', yesterday);
+      await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/diary-entries')));
+      expect(screen.queryByText('Chốt sổ')).not.toBeInTheDocument();
+    });
+
+    it('Ban quản lý KHÔNG thấy nút Chốt sổ', async () => {
+      await renderWithRole('ban_quan_ly', yesterday);
+      await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/diary-entries')));
+      expect(screen.queryByText('Chốt sổ')).not.toBeInTheDocument();
+    });
+
+    it('Ban quản lý thấy nút Mở khóa sổ khi ngày đã bị khóa', async () => {
+      await renderWithRole('ban_quan_ly', yesterday, true);
+      expect(await screen.findByText(/Mở khóa sổ/i)).toBeInTheDocument();
+    });
+
+    it('Kỹ sư giám sát KHÔNG thấy nút Mở khóa sổ khi ngày đã bị khóa', async () => {
+      await renderWithRole('ky_su_giam_sat', yesterday, true);
+      await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/diary-entries')));
+      expect(screen.queryByText(/Mở khóa sổ/i)).not.toBeInTheDocument();
     });
   });
 });

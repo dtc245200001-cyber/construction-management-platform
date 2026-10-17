@@ -68,15 +68,17 @@ describe(
         "currentProjectId",
         "4"
       );
+      localStorage.setItem("project_role_4", "ban_quan_ly");
 
       api.post.mockResolvedValue({
         data: {},
       });
 
-      api.get.mockResolvedValue({
-        data: {
-          data: rows,
-        },
+      api.get.mockImplementation((url) => {
+        if (typeof url === "string" && /^\/projects\/\d+$/.test(url)) {
+          return Promise.resolve({ data: { project: { id: 4 }, membership: "ban_quan_ly" } });
+        }
+        return Promise.resolve({ data: { data: rows } });
       });
     });
 
@@ -267,16 +269,13 @@ describe(
     );
 
     test("T-37: dải hiện 'Chậm 3 ngày' với summary giả", async () => {
-      api.get.mockResolvedValueOnce({
-        data: {
-          data: rows,
-          summary: {
-            currentFinish: "2026-10-25T00:00:00.000Z",
-            plannedFinish: "2026-10-22T00:00:00.000Z",
-            delayWorkingDays: 3,
-            status: "late",
-          }
-        },
+      api.get.mockImplementation((url) => {
+        if (typeof url === "string" && url.startsWith("/projects/")) {
+          if (/^\/projects\/\d+$/.test(url)) return Promise.resolve({ data: { project: { id: 4 }, membership: "ban_quan_ly" } });
+          if (url.includes("/schedule-recalculate") || url.includes("/schedule/recalculate")) return Promise.resolve({ data: {} });
+          return Promise.resolve({ data: { data: rows, summary: { currentFinish: "2026-10-25T00:00:00.000Z", plannedFinish: "2026-10-22T00:00:00.000Z", delayWorkingDays: 3, status: "late" } } });
+        }
+        return Promise.resolve({ data: { data: rows, summary: { currentFinish: "2026-10-25T00:00:00.000Z", plannedFinish: "2026-10-22T00:00:00.000Z", delayWorkingDays: 3, status: "late" } } });
       });
 
       render(<GanttPage />);
@@ -285,19 +284,10 @@ describe(
     });
 
     test("T-37: ký hiệu việc mới găng khác việc găng từ đầu và có aria-label", async () => {
-      api.get.mockResolvedValueOnce({
-        data: {
-          data: [
-            ...rows,
-            {
-              id: 3,
-              name: "Việc mới",
-              early_start: "2026-10-10T00:00:00.000Z",
-              early_finish: "2026-10-14T00:00:00.000Z",
-              newly_critical: true,
-            }
-          ]
-        },
+      const extra = [...rows, { id: 3, name: "Việc mới", early_start: "2026-10-10T00:00:00.000Z", early_finish: "2026-10-14T00:00:00.000Z", newly_critical: true }];
+      api.get.mockImplementation((url) => {
+        if (typeof url === "string" && /^\/projects\/\d+$/.test(url)) return Promise.resolve({ data: { project: { id: 4 }, membership: "ban_quan_ly" } });
+        return Promise.resolve({ data: { data: extra } });
       });
 
       render(<GanttPage />);
@@ -365,6 +355,9 @@ describe("GanttPage - T-42", () => {
       data: { data: rows, summary: { hasBaseline: false } },
     });
     render(<GanttPage />);
+    await screen.findByRole("button", { name: /Chốt kế hoạch gốc/i });
+    // fetchData gọi /schedule/recalculate ở lần đầu, xóa lịch sử trước khi bấm nút
+    api.post.mockClear();
     await userEvent.click(
       await screen.findByRole("button", { name: /Chốt kế hoạch gốc/i }),
     );

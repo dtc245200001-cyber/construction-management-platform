@@ -56,5 +56,22 @@ services:
     depends_on:
       - postgres
 
+  staging_monitor:
+    image: ghcr.io/dtc245200001-cyber/construction-management-platform-backend:latest
+    container_name: construction_staging_monitor
+    restart: unless-stopped
+    environment:
+      MONITOR_TARGET_URL: ${MONITOR_TARGET_URL:-http://backend:3000/health}
+      CHECK_INTERVAL_SECONDS: ${CHECK_INTERVAL_SECONDS:-30}
+      ALERT_THRESHOLD_SECONDS: ${ALERT_THRESHOLD_SECONDS:-300}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL}
+      ALERT_CHANNEL_TYPE: ${ALERT_CHANNEL_TYPE:-auto}
+      ALERT_ENVIRONMENT: staging
+    volumes:
+      - ./staging-monitor.js:/app/deploy/staging-monitor.js:ro
+    entrypoint: ["node", "/app/deploy/staging-monitor.js"]
+    depends_on:
+      - backend
+
 volumes:
   postgres_staging_data:

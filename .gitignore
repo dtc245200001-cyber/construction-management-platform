@@ -1,11 +1,20 @@
 node_modules/
 .env
+.env.*
+!.env.example
+!backend/.env.example
+!deploy/.env.staging.example
+!backend/.env.test
+backend/.env
+frontend/.env
 npm-debug.log*
 coverage/
-backend/.env
 *.log
 *_output.txt
 dist/
+*.zip
+TTCS.xlsx
+
 
 # Thu muc cong cu AI
 .agents/
@@ -32,6 +41,14 @@ backend/uploads/
 uploads/
 .postman/
 
+# Mobile screenshot tooling (chua credential test + anh nang, khong commit)
+frontend/mobile-shots/.creds.json
+frontend/mobile-shots/before/
+frontend/mobile-shots/after*/
+frontend/mobile-shots/*.bak
+frontend/mobile-shots/verify-mobile.cjs
+frontend/mobile-shots/touch-audit.cjs
+
 # Keys and credentials
 server_key.txt
 *.key
@@ -44,3 +61,11 @@ deploy/.env.staging
 deploy/backups/
 .env
 node_modules/
+
+# Local database backups
+*.dump
+*.sql
+
+# Playwright generated artifacts
+frontend/playwright-report/
+frontend/test-results/

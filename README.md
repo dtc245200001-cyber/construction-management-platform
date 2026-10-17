@@ -53,6 +53,13 @@ Toàn bộ các cấu hình được quản lý qua biến môi trường. Vui l
   docker compose up -d
   ```
 - **Port Conflict (Cổng đã được sử dụng):** Nếu cổng 5432, 3000 hoặc 5173 đã bị chiếm dụng, hãy tắt các dịch vụ đang chạy cổng này hoặc đổi port trong file `.env` và `docker-compose.yml`.
+- **Login hoạt động trên online nhưng không hoạt động trên localhost:** Đây thường là lỗi cookie/session cross-site. Khi frontend chạy ở localhost nhưng backend đang ở domain khác, browser sẽ chặn cookie nếu `SameSite`/`Secure` không phù hợp. Cần thêm domain của frontend vào `CORS_ORIGINS` và thiết lập:
+  ```bash
+  CORS_ORIGINS=http://localhost:5173,https://your-online-domain.com
+  COOKIE_SAMESITE=none
+  COOKIE_SECURE=true
+  ```
+  Nếu chạy local hoàn toàn trên localhost, giữ `COOKIE_SAMESITE=lax` và `COOKIE_SECURE=false`.
 
 ## 4. Triển khai (Deployment)
 
@@ -192,3 +199,310 @@ Trong quá trình kiểm thử T-47, kết quả sau khi restore khớp với da
 | `roles` | 6 | 6 |
 
 Việc kiểm thử cũng xác nhận rằng script từ chối restore trực tiếp vào database đang chạy của ứng dụng.
+
+## Khối lượng và đơn giá hợp đồng (S-35, T-85)
+
+### Bảng cấu trúc cột (bảng `work_items`)
+
+| Tên cột | Kiểu dữ liệu | Ý nghĩa | Ràng buộc |
+|---|---|---|---|
+| `quantity` | `NUMERIC(14,3)` | Khối lượng hợp đồng của hạng mục lá | Cho phép `NULL`, `>= 0` (`work_items_quantity_non_negative`) |
+| `unit` | `VARCHAR(30)` | Đơn vị tính hợp đồng (m3, m2, tấn...) | Cho phép `NULL`, không rỗng, đã trim khoảng trắng đầu/cuối (`work_items_unit_trimmed_not_empty`) |
+| `unit_price` | `NUMERIC(16,2)` | Đơn giá hợp đồng của hạng mục lá | Cho phép `NULL`, `>= 0` (`work_items_unit_price_non_negative`) |
+| `contract_value` | `NUMERIC(30,2)` | Thành tiền / giá trị hợp đồng của hạng mục lá | Cột sinh tự động: `GENERATED ALWAYS AS (ROUND(quantity * unit_price, 2)) STORED` |
+
+- Ràng buộc phối hợp `work_items_contract_all_or_none`: hoặc cả 3 cột (`quantity`, `unit`, `unit_price`) đều `NULL`, hoặc cả 3 cột đều `NOT NULL`.
+- Cột sinh `contract_value` được bảo vệ: PostgreSQL từ chối can thiệp trực tiếp (lỗi mã `428C9`).
+
+### Định nghĩa hạng mục lá
+- Hạng mục lá là `work_item` không có bất kỳ hạng mục con nào (`parent_id = item.id`).
+- Công việc ở bảng `tasks` trực thuộc hạng mục KHÔNG tính là hạng mục con. Hạng mục lá có chứa tasks vẫn được phép khai báo khối lượng, đơn vị và đơn giá hợp đồng bình thường.
+
+### Quy tắc làm tròn của `contract_value`
+- Giá trị hợp đồng của từng lá được làm tròn bằng hàm `ROUND` của PostgreSQL: `ROUND(quantity * unit_price, 2)` (quy tắc làm tròn nửa ra xa số 0 - round half away from zero).
+- Mỗi hạng mục lá làm tròn độc lập trước khi lưu trữ (`STORED`).
+- Giá trị hợp đồng của hạng mục cha sau này sẽ bằng tổng (`SUM`) các giá trị `contract_value` đã làm tròn của các hạng mục lá con cháu. Nhờ đó, tổng ở cha luôn khớp tuyệt đối 100% với các lá, không có độ lệch số học do làm tròn sau phép cộng.
+
+### Ba lưu ý quan trọng cho lập trình viên T-86 (API) và T-87 (Giao diện)
+1. **Kiểu dữ liệu và định dạng chuỗi**:
+   - Thư viện `pg` trả về kiểu `NUMERIC` dưới dạng `string` (chuỗi ký tự).
+   - **TUYỆT ĐỐI KHÔNG** dùng `Number()`, `parseFloat()`, hay các phép toán số thực (`+`, `-`, `*`, `/`) nguyên bản của JavaScript trên các cột này để tránh lỗi mất độ chính xác dấu phẩy động nhị phân (binary floating-point).
+   - Nếu cần tính toán ở tầng backend/frontend, hãy sử dụng thư viện số học thập phân chính xác (như `decimal.js`, `bignumber.js`) hoặc ủy quyền cho SQL (`SUM()`, `ROUND()`).
+2. **Kiểm tra số chữ số thập phân ở API (chống làm tròn im lặng)**:
+   - PostgreSQL tự động làm tròn im lặng các số vượt quá scale của cột (ví dụ `1.0005` thành `1.001` cho `numeric(14,3)` và `0.005` thành `0.01` cho `numeric(16,2)`).
+   - Do database không chủ động từ chối, tầng API (T-86) **BẮT BUỘC** phải validate dữ liệu đầu vào: từ chối các giá trị có quá 3 chữ số thập phân đối với `quantity` và quá 2 chữ số thập phân đối với `unit_price`.
+3. **Ánh xạ lỗi cơ sở dữ liệu sang thông báo người dùng**:
+   - Khi trigger hoặc constraint cơ sở dữ liệu phát hiện vi phạm, Postgres trả về mã lỗi:
+     - `23514` (`check_violation`):
+       - `work_items_contract_leaf_only`: Ánh xạ sang thông báo tiếng Việt giải thích hạng mục cha không được khai giá trị hoặc không được thêm con vào cha đã có giá trị.
+       - `work_items_contract_all_or_none`: Phải nhập đồng thời cả khối lượng, đơn vị tính và đơn giá.
+       - `work_items_quantity_non_negative`: Khối lượng hợp đồng không được âm.
+       - `work_items_unit_price_non_negative`: Đơn giá hợp đồng không được âm.
+       - `work_items_unit_trimmed_not_empty`: Đơn vị tính không được rỗng hoặc chứa khoảng trắng thừa.
+     - `22003` (`numeric_value_out_of_range`): Số lượng hoặc đơn giá vượt quá giới hạn lưu trữ cho phép.
+     - `22001` (`string_data_right_truncation`): Đơn vị tính vượt quá 30 ký tự.
+
+### Phân biệt với `tasks.planned_quantity`
+- `work_items.quantity` / `unit` / `unit_price`: Khối lượng và đơn giá HỢP ĐỒNG ký kết với chủ đầu tư/nhà thầu cho từng hạng mục công việc WBS (Story S-35).
+- `tasks.planned_quantity` / `quantity_unit`: Khối lượng KẾ HOẠCH thi công chi tiết của từng đầu việc (task) do đội thi công thực hiện (Story S-26). Hai khái niệm này độc lập và không thay thế cho nhau.
+
+## API khối lượng và đơn giá hợp đồng (S-35, T-86)
+
+### 1. Bảng phân quyền (Server-side Role Matrix)
+
+| Endpoint | Phương thức | Quyền xem/thao tác | Mô tả phản hồi |
+|---|---|---|---|
+| `/api/projects/:projectId/contract-quantities` | `GET` | `CHU_DAU_TU`, `BAN_QUAN_LY`, `KE_TOAN` | Đầy đủ: gồm `quantity`, `unit`, `unit_price`, `contract_value`, `contract_total` và `project_total`. |
+| `/api/projects/:projectId/contract-quantities` | `GET` | `KY_SU_GIAM_SAT`, `CHI_HUY_TRUONG` | Chỉ khối lượng: BỎ HẲN các khoá giá (`unit_price`, `contract_value`, `contract_total`, `project_total`). |
+| `/api/projects/:projectId/contract-quantities` | `GET` | `DOI_TRUONG`, người ngoài dự án | Từ chối: `403 Forbidden`. |
+| `/api/projects/:projectId/work-items/:workItemId/contract-quantity` | `PUT` | `CHU_DAU_TU`, `BAN_QUAN_LY` | Cập nhật khối lượng, đơn vị, đơn giá cho hạng mục lá (`200 OK`). Các vai trò khác: `403`. |
+| `/api/projects/:projectId/work-items/:workItemId/contract-quantity` | `DELETE` | `CHU_DAU_TU`, `BAN_QUAN_LY` | Xoá giá trị (đưa về NULL - idempotent `200 OK`). Các vai trò khác: `403`. |
+
+### 2. Danh sách Endpoint & Định dạng dữ liệu
+
+#### 2.1. GET `/api/projects/:projectId/contract-quantities`
+- Header: `Cache-Control: no-store`
+- Phản hồi mẫu (đầy đủ giá - `can_view_prices = true`):
+```json
+{
+  "project_id": 1,
+  "can_view_prices": true,
+  "units": ["m", "m2", "m3", "md", "kg", "tấn", "lít", "cái", "bộ", "cây", "viên", "tấm", "công", "ca", "trọn gói"],
+  "items": [
+    {
+      "id": 10,
+      "parent_id": null,
+      "code": "HM-01",
+      "name": "Phần ngầm",
+      "is_leaf": false,
+      "quantity": null,
+      "unit": null,
+      "unit_price": null,
+      "contract_value": null,
+      "contract_total": "1003.69"
+    },
+    {
+      "id": 11,
+      "parent_id": 10,
+      "code": "HM-01.01",
+      "name": "Đào đất móng",
+      "is_leaf": true,
+      "quantity": "333.333",
+      "unit": "bộ",
+      "unit_price": "3.00",
+      "contract_value": "1000.00",
+      "contract_total": "1000.00"
+    }
+  ],
+  "project_total": "1003.69"
+}
+```
+- Phản hồi mẫu (chỉ khối lượng - `can_view_prices = false`):
+```json
+{
+  "project_id": 1,
+  "can_view_prices": false,
+  "units": ["m", "m2", "m3", "md", "kg", "tấn", "lít", "cái", "bộ", "cây", "viên", "tấm", "công", "ca", "trọn gói"],
+  "items": [
+    {
+      "id": 11,
+      "parent_id": 10,
+      "code": "HM-01.01",
+      "name": "Đào đất móng",
+      "is_leaf": true,
+      "quantity": "333.333",
+      "unit": "bộ"
+    }
+  ]
+}
+```
+
+#### 2.2. PUT `/api/projects/:projectId/work-items/:workItemId/contract-quantity`
+- Body mẫu:
+```json
+{
+  "quantity": "1234.567",
+  "unit": "m3",
+  "unit_price": "89000.50"
+}
+```
+- Phản hồi thành công `200 OK`:
+```json
+{
+  "id": 11,
+  "quantity": "1234.567",
+  "unit": "m3",
+  "unit_price": "89000.50",
+  "contract_value": "109877080.28"
+}
+```
+
+#### 2.3. DELETE `/api/projects/:projectId/work-items/:workItemId/contract-quantity`
+- Phản hồi thành công `200 OK` (idempotent):
+```json
+{
+  "id": 11,
+  "quantity": null,
+  "unit": null,
+  "unit_price": null,
+  "contract_value": null
+}
+```
+
+### 3. Quy tắc kiểm tra số thập phân và đơn vị tính
+- **Số thập phân**:
+  - `quantity`: tối đa 11 chữ số nguyên, tối đa 3 chữ số thập phân (`NUMERIC(14,3)`).
+  - `unit_price`: tối đa 14 chữ số nguyên, tối đa 2 chữ số thập phân (`NUMERIC(16,2)`).
+  - Từ chối số âm, phân tách hàng nghìn bằng dấu chấm `"1.000.000"`, dấu phẩy, dạng khoa học `"1e3"`, chuỗi rỗng.
+  - Phần thập phân thừa toàn số 0 được chấp nhận và cắt gọn (ví dụ `"1.2300"` -> lưu `"1.230"`). Phần thập phân thừa khác 0 bị từ chối để chống Postgres làm tròn im lặng.
+- **Đơn vị tính**:
+  - Tự động chuẩn hoá Unicode NFC, trim khoảng trắng, hỗ trợ ký hiệu mũ `"m²" -> "m2"`, `"m³" -> "m3"`.
+  - So khớp không phân biệt hoa thường với danh mục chuẩn: `m`, `m2`, `m3`, `md`, `kg`, `tấn`, `lít`, `cái`, `bộ`, `cây`, `viên`, `tấm`, `công`, `ca`, `trọn gói`.
+
+### 4. Bảng mã lỗi HTTP trả về
+- `200 OK`: Thành công.
+- `400 Bad Request`: Tham số ID sai, đơn vị tính không hợp lệ, hoặc dữ liệu số sai định dạng (trả về `{ message, errors: { quantity, unit, unit_price } }` gom toàn bộ lỗi).
+- `401 Unauthorized`: Chưa đăng nhập.
+- `403 Forbidden`: Người dùng không có quyền trên endpoint này hoặc không thuộc dự án.
+- `404 Not Found`: Không tìm thấy hạng mục trong dự án (`"Không tìm thấy hạng mục"`).
+- `422 Unprocessable Entity`: Cố tình khai khối lượng cho hạng mục cha (`"Hạng mục cha không khai khối lượng hợp đồng trực tiếp; hãy khai ở các hạng mục lá bên dưới (hiện có N hạng mục con)."`).
+
+### 5. Lệnh cURL mẫu
+```bash
+# 1. Đăng nhập lấy cookie
+curl -i -X POST http://localhost:5000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"bql@company.com","password":"Password123"}'
+
+# 2. Đọc danh sách khối lượng và giá trị hợp đồng
+curl -X GET http://localhost:5000/api/projects/1/contract-quantities \
+  -b "cmp.sid=s%3AosBnnoMXD1SJEj56..."
+
+# 3. Cập nhật khối lượng hợp đồng cho hạng mục lá ID 5
+curl -X PUT http://localhost:5000/api/projects/1/work-items/5/contract-quantity \
+  -b "cmp.sid=s%3AosBnnoMXD1SJEj56..." \
+  -H "Content-Type: application/json" \
+  -d '{"quantity":"1234.567","unit":"m3","unit_price":"89000.50"}'
+
+# 4. Xoá khối lượng hợp đồng
+curl -X DELETE http://localhost:5000/api/projects/1/work-items/5/contract-quantity \
+  -b "cmp.sid=s%3AosBnnoMXD1SJEj56..."
+```
+
+---
+
+## 7. Giám sát sức khỏe Staging & Cảnh báo khi ngừng phản hồi (T-128 & T-129 / S-51)
+
+Hệ thống cung cấp cơ chế giám sát sức khỏe toàn diện và cảnh báo tự động khi môi trường Staging gặp sự cố gián đoạn kéo dài quá 5 phút.
+
+### 7.1. Endpoint Health Check (`T-128`)
+
+- **Đường dẫn**: `GET /health` (hoặc alias `GET /api/health`).
+- **Liveness Probe**: `GET /health/live` (chỉ kiểm tra tiến trình sống của ứng dụng, không truy vấn DB).
+- **Readiness Probe**: `GET /ready` (kiểm tra DB sẵn sàng, phục vụ kiểm tra tự động trong script deploy Blue/Green).
+
+#### Định dạng phản hồi:
+
+* **Khi hệ thống hoạt động bình thường (HTTP 200 OK):**
+```json
+{
+  "status": "healthy",
+  "timestamp": "2026-10-15T09:50:00.000Z",
+  "app": {
+    "status": "healthy",
+    "uptime": 1250,
+    "environment": "staging"
+  },
+  "database": {
+    "status": "healthy",
+    "responseTimeMs": 8
+  }
+}
+```
+
+* **Khi cơ sở dữ liệu gặp sự cố hoặc timeout (HTTP 503 Service Unavailable):**
+```json
+{
+  "status": "unhealthy",
+  "timestamp": "2026-10-15T09:51:00.000Z",
+  "app": {
+    "status": "healthy",
+    "uptime": 1310,
+    "environment": "staging"
+  },
+  "database": {
+    "status": "unhealthy",
+    "error": "Không thể kết nối cơ sở dữ liệu"
+  }
+}
+```
+
+#### Đặc tính kỹ thuật & An toàn (NFR):
+1. **Phân biệt độc lập**: Tách biệt rõ trạng thái của ứng dụng (`app`) và PostgreSQL (`database`).
+2. **Giới hạn thời gian chờ (Timeout Guard)**: Truy vấn kiểm tra DB có timeout tối đa qua biến `HEALTHCHECK_DB_TIMEOUT_MS` (mặc định 3000ms), ngăn ngừa nguy cơ treo pool kết nối khi cơ sở dữ liệu bị đóng băng.
+3. **Bảo mật tuyệt đối**: Không bao giờ để lộ mật khẩu, tài khoản, host, port hay chuỗi kết nối (`DATABASE_URL`) trong mã phản hồi và log công khai.
+
+---
+
+### 7.2. Quy tắc giám sát & Cảnh báo sự cố (`T-129`)
+
+Hệ thống chạy dịch vụ giám sát `staging_monitor` định kỳ gọi endpoint `/health`:
+- **Chu kỳ kiểm tra**: Mặc định 30 giây (`CHECK_INTERVAL_SECONDS=30`).
+- **Ngưỡng cảnh báo**: Nếu Staging thất bại liên tục **quá 5 phút** (`ALERT_THRESHOLD_SECONDS=300`), hệ thống sẽ gửi cảnh báo khẩn cấp tới kênh thông báo đã thống nhất.
+- **Tự động chuyển trạng thái khi phục hồi (Recovery)**: Khi Staging phản hồi thành công trở lại, hệ thống lập tức gửi thông báo **PHỤC HỒI (RECOVERED)** kèm tổng thời gian gián đoạn và tự động thiết lập lại bộ đếm theo dõi.
+
+#### Các kênh thông báo hỗ trợ:
+Hệ thống hỗ trợ gửi thông báo tới các nền tảng nhóm:
+* **Discord Webhook** (Tự động format rich embed kèm màu Đỏ khi Down và Xanh lá khi Phục hồi).
+* **Slack Webhook** (Format theo cấu trúc Blocks & Sections).
+* **Telegram Bot** (Gửi tin nhắn định dạng Markdown qua Telegram Bot API).
+* **Generic HTTP Webhook** (Gửi JSON payload chuẩn cho các hệ thống giám sát tập trung).
+
+#### Cấu hình biến môi trường (NFR - Không commit Secret vào Git):
+Trên máy chủ Staging, cấu hình các biến trong file `deploy/.env.staging` (tuyệt đối không đưa vào Git):
+```bash
+MONITOR_TARGET_URL=http://backend:3000/health
+CHECK_INTERVAL_SECONDS=30
+ALERT_THRESHOLD_SECONDS=300
+HEALTHCHECK_DB_TIMEOUT_MS=3000
+ALERT_CHANNEL_TYPE=auto
+
+# Webhook URL hoặc bot token (lấy từ Discord/Slack/Telegram của team):
+ALERT_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_SECRET_WEBHOOK
+```
+
+---
+
+### 7.3. Hướng dẫn thử nghiệm & Mô phỏng sự cố (Testing & Simulation)
+
+#### Cách 1: Chạy kịch bản mô phỏng tự động (Khuyến nghị cho kiểm thử nhanh)
+Chạy script mô phỏng có sẵn trong dự án:
+```bash
+npm run monitor:simulate
+```
+Kịch bản tự động thực hiện:
+1. Dựng mock server đại diện cho Staging.
+2. Kiểm tra chu kỳ bình thường (Healthy).
+3. Mô phỏng sự cố ngắt kết nối DB kéo dài vượt ngưỡng -> Kích hoạt cảnh báo `🚨 STAGING DOWN`.
+4. Mô phỏng Staging phục hồi trở lại -> Kích hoạt chuyển trạng thái `✅ STAGING RECOVERED`.
+
+#### Cách 2: Thử nghiệm thực tế trên môi trường Docker Staging
+1. Khởi động môi trường Staging:
+   ```bash
+   docker compose -f deploy/docker-compose.yml up -d
+   ```
+2. Đặt `ALERT_THRESHOLD_SECONDS=10` trong `deploy/.env.staging` nếu muốn thử nghiệm nhanh trong 10 giây thay vì đợi 5 phút thực tế.
+3. Giả lập sự cố tắt DB:
+   ```bash
+   docker stop construction_postgres_staging
+   ```
+4. Quan sát log của container giám sát:
+   ```bash
+   docker logs -f construction_staging_monitor
+   ```
+   Sau thời gian vượt ngưỡng, cảnh báo sự cố sẽ được bắn về kênh Discord/Slack/Telegram của team.
+5. Khôi phục lại DB:
+   ```bash
+   docker start construction_postgres_staging
+   ```
+   Hệ thống kiểm tra thấy khỏe trở lại và gửi ngay thông báo phục hồi thành công.

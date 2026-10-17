@@ -13,7 +13,8 @@ import {
   Mail,
   Lock,
   EyeOff,
-  ArrowRight
+  ArrowRight,
+  Activity
 } from 'lucide-react';
 import loginBg from '../assets/login-bg.png';
 import loginIllustration from '../assets/login-illustration.png';
@@ -52,8 +53,29 @@ const LoginPage = ({ setUser }) => {
 
     try {
       const response = await api.post('/auth/login', { email, password });
+      // Xác minh cookie session có được trình duyệt giữ lại không.
+      // WebView trong app chat (Zalo/Messenger/Facebook) và chế độ chặn
+      // cookie bên thứ ba thường nuốt Set-Cookie cross-site: login vẫn 200
+      // nhưng request sau mất session -> user bị đá về login khó hiểu.
+      try {
+        await api.get('/auth/me');
+      } catch (verifyErr) {
+        if (verifyErr.response?.status === 401) {
+          setMessage("Đăng nhập thành công nhưng trình duyệt đã chặn cookie phiên làm việc. Vui lòng mở link bằng Safari/Chrome (không mở trong Zalo/Messenger), bật cho phép cookie rồi đăng nhập lại.");
+          return;
+        }
+        throw verifyErr;
+      }
       setUser(response.data.user);
-      navigate('/projects');
+
+const redirect = new URLSearchParams(location.search).get('redirect');
+
+navigate(
+  redirect?.startsWith('/') && !redirect.startsWith('//')
+    ? redirect
+    : '/projects',
+  { replace: true }
+);
     } catch (error) {
       console.error("LOGIN ERROR:", error);
       if (error.response?.status === 429) {
@@ -128,7 +150,14 @@ const LoginPage = ({ setUser }) => {
 
   return (
     <div className="nl-login-page">
-      <img src={loginBg} className="nl-login-bg" alt="Background" />
+      <img
+        src={loginBg}
+        className="nl-login-bg"
+        alt="Background"
+        onError={(e) => {
+          e.currentTarget.style.display = 'none';
+        }}
+      />
       
       <main className="nl-main">
         <div className="nl-left-column">
@@ -178,7 +207,14 @@ const LoginPage = ({ setUser }) => {
               <div className="nl-line"></div>
             </div>
             
-            <img src={loginIllustration} alt="Illustration" className="nl-illustration" />
+            <img
+              src={loginIllustration}
+              alt="Illustration"
+              className="nl-illustration"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
             
             <div className="nl-benefits">
               <div className="nl-benefit">
@@ -257,6 +293,25 @@ const LoginPage = ({ setUser }) => {
                     </svg>
                     Đăng nhập với Google
                   </button>
+
+                  <div style={{ textAlign: 'center', marginTop: '16px' }}>
+                    <a
+                      href="/system-status"
+                      style={{
+                        fontSize: '13px',
+                        color: '#64748b',
+                        textDecoration: 'none',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        transition: 'color 0.2s',
+                      }}
+                      onMouseOver={(e) => (e.currentTarget.style.color = '#2563eb')}
+                      onMouseOut={(e) => (e.currentTarget.style.color = '#64748b')}
+                    >
+                      <Activity size={14} /> Kiểm tra sức khỏe hệ thống & Giám sát
+                    </a>
+                  </div>
                 </form>
 
                 <form className={`nl-form-pane ${isRegister ? 'nl-active' : ''}`} onSubmit={handleRegister}>
@@ -330,6 +385,7 @@ const LoginPage = ({ setUser }) => {
           box-sizing: border-box;
           overflow-x: hidden;
           font-family: inherit;
+          background: linear-gradient(135deg, #e8f0fe 0%, #f1f5f9 100%);
         }
 
         .nl-login-bg {
@@ -929,18 +985,33 @@ const LoginPage = ({ setUser }) => {
         }
 
         @media (max-width: 639px) {
-          .nl-tagline, .nl-features {
+          /* Mobile: ẩn hero marketing để form lên ngay đầu fold,
+             không còn bug "login bị đẩy xuống" */
+          .nl-hero {
             display: none;
+          }
+          .nl-left-column {
+            height: auto;
+            padding: 0;
           }
           .nl-title {
             font-size: 32px;
           }
           .nl-main {
-            padding: 20px;
+            padding: 12px 16px 24px 16px;
+            gap: 0;
+            align-items: start;
           }
           .nl-header {
-            padding-left: 20px;
-            padding-right: 20px;
+            padding-left: 4px;
+            padding-right: 4px;
+          }
+          /* Touch target tối thiểu 44px */
+          .nl-tabs button {
+            min-height: 44px;
+          }
+          .nl-card-right {
+            padding: calc(var(--u) * 24) calc(var(--u) * 20);
           }
         }
       `}</style>

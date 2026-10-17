@@ -1,6 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 
 vi.mock("../../lib/api", () => ({
   default: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
@@ -25,7 +26,11 @@ const flatRows = [
 
 const renderPage = async () => {
   api.get.mockResolvedValue({ data: flatRows });
-  render(<WBSPage />);
+  render(
+    <MemoryRouter>
+      <WBSPage />
+    </MemoryRouter>
+  );
   return screen.findByText("Hạng mục Phần thân");
 };
 

@@ -4,6 +4,7 @@ const express = require("express");
 const pool = require("../config/db");
 const logger = require("../utils/logger");
 const asyncHandler = require("../utils/asyncHandler");
+const { PERMISSIONS, ROLE_LABELS, can: canPermission } = require("../utils/permissions");
 
 // Middleware xác thực thành viên thuộc dự án
 const checkProjectAccess = asyncHandler(async (req, res, next) => {
@@ -92,6 +93,48 @@ const allow = (roles = []) => {
   return mw;
 };
 
+// Middleware kiểm tra quyền theo ma trận trung tâm (utils/permissions.js).
+// THAY THẾ dần cho allow([...]) rải rác ở từng route — thêm role mới hoặc đổi
+// quyền chỉ cần sửa 1 chỗ (PERMISSIONS), không phải sửa từng route.
+// Yêu cầu chạy sau checkProjectAccess (để có req.projectRole).
+const requirePermission = (permissionKey) => {
+  const mw = (req, res, next) => {
+    if (req.user && req.user.is_system_admin) {
+      res.locals.roleChecked = true;
+      return next();
+    }
+
+    const currentRole = req.projectRole ? String(req.projectRole) : "";
+
+    if (canPermission(currentRole, permissionKey)) {
+      res.locals.roleChecked = true;
+      return next();
+    }
+
+    const roleLabel = ROLE_LABELS[currentRole] || currentRole || "chưa xác định";
+
+    logger.warn({
+      userId: req.user && req.user.id,
+      projectId: req.params.projectId,
+      currentRole,
+      permissionKey,
+      allowedRoles: PERMISSIONS[permissionKey] || [],
+      method: req.method,
+      path: req.path,
+      reason: "PERMISSION_DENIED",
+      ip: req.ip,
+    }, "Truy cập bị từ chối: vai trò không đủ quyền");
+
+    return res.status(403).json({
+      error: `Vai trò ${roleLabel} không có quyền ${permissionKey}`,
+    });
+  };
+
+  // Gắn cờ để createProjectRouter nhận biết route này có check quyền
+  mw.permissionKey = permissionKey;
+  return mw;
+};
+
 // Trình trợ giúp tạo Router dự án mặc định từ chối
 const createProjectRouter = () => {
   const router = express.Router({ mergeParams: true });
@@ -101,8 +144,9 @@ const createProjectRouter = () => {
     const original = router[method].bind(router);
     
     router[method] = (path, ...handlers) => {
-      // Tìm xem có middleware allow() nào không
-      const hasRoleCheck = handlers.some(h => h && h.allowedRoles);
+      // Tìm xem có middleware kiểm tra quyền nào không
+      // (allow() cũ gắn allowedRoles, requirePermission() mới gắn permissionKey)
+      const hasRoleCheck = handlers.some(h => h && (h.allowedRoles || h.permissionKey));
       
       if (!hasRoleCheck) {
         // Gắn middleware default deny vào đầu chuỗi xử lý
@@ -144,5 +188,7 @@ module.exports = {
   checkProjectAccess,
   requireProjectRoles: allow,
   allow,
+  requirePermission,
+  can: canPermission,
   createProjectRouter,
 };

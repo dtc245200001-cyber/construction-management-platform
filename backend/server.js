@@ -11,11 +11,21 @@
 const app = require("./app");
 const pool = require("./config/db");
 const logger = require("./utils/logger");
+const { reapStalePendingLogs } = require("./lib/emailSender");
 
 const PORT = Number(process.env.PORT) || 3000;
 
 const server = app.listen(PORT, () => {
   logger.info(`Server đang chạy trên cổng ${PORT}`);
+
+  // Dọn các email_logs kẹt 'pending' từ lần chạy trước (tác vụ gửi đã chết
+  // giữa chừng do crash/restart) để UI không kẹt "Đang gửi..." vĩnh viễn.
+  // Chạy nền, không chặn listen; lỗi thì chỉ warn để server vẫn lên.
+  reapStalePendingLogs()
+    .then((count) => {
+      if (count > 0) logger.info(`Đã dọn ${count} email_logs kẹt ở 'pending'.`);
+    })
+    .catch((err) => logger.warn({ err }, "Không dọn được email_logs kẹt."));
 });
 
 // ─── GRACEFUL SHUTDOWN ────────────────────────────────────────────────────────

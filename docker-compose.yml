@@ -11,7 +11,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?missing} -d ${POSTGRES_DB:?missing}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:?missing} -d ${POSTGRES_DB:?missing}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -25,13 +29,20 @@ services:
       PORT: ${PORT:-3000}
       DATABASE_URL: ${DATABASE_URL:?missing}
       SESSION_SECRET: ${SESSION_SECRET:?missing}
+      UPLOAD_DIR: /app/uploads
     ports:
-      - "3000:3000"
+      - "3001:3000"
+    volumes:
+      - backend_uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/ready"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://localhost:3000/ready > /dev/null || exit 1",
+        ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -54,3 +65,4 @@ services:
 volumes:
   postgres_data:
   pgadmin_data:
+  backend_uploads:
