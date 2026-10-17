@@ -91,7 +91,7 @@ describe("AcceptancePage Component (S-36 / T-92)", () => {
     expect(screen.getByText("Có đợt âm")).toBeInTheDocument();
   });
 
-  test("TC-UI-2: Nút Lập phiếu bị disable nếu không phải kỹ sư giám sát", async () => {
+  test("TC-UI-2: Vai trò khác không truy cập được chức năng nghiệm thu", async () => {
     api.get.mockImplementation((url) => {
       if (url.includes("/acceptance-vouchers")) {
         return Promise.resolve({ data: { vouchers: [] } });
@@ -105,10 +105,11 @@ describe("AcceptancePage Component (S-36 / T-92)", () => {
     render(<AcceptancePage user={{ id: 3, name: "Đội trưởng Hải" }} />);
 
     await waitFor(() => {
-      const btn = screen.getByText(/Lập phiếu \(Cần quyền Kỹ sư giám sát\)/i);
-      expect(btn).toBeInTheDocument();
-      expect(btn.closest("button")).toBeDisabled();
+      expect(
+        screen.getByText(/không có quyền truy cập chức năng nghiệm thu/i)
+      ).toBeInTheDocument();
     });
+    expect(api.get).toHaveBeenCalledTimes(1);
   });
 
   test("TC-UI-3: Mở modal lập phiếu, hiển thị số đội báo S-26 và tự tính đợt", async () => {

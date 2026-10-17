@@ -23,8 +23,8 @@ const ALL_MEMBERS = Object.values(ROLES);
 
 export const PERMISSIONS = {
   // ── Ban quản lý dự án ──────────────────────────────────────────────
-  "member.manage": [ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU],
-  "work_item.manage": [ROLES.BAN_QUAN_LY],
+  "member.manage": [ROLES.BAN_QUAN_LY],
+  "work_item.manage": [ROLES.BAN_QUAN_LY, ROLES.CHI_HUY_TRUONG],
   "acceptance.review_internal": [ROLES.BAN_QUAN_LY],
 
   // ── Chỉ huy trưởng ─────────────────────────────────────────────────
@@ -38,11 +38,12 @@ export const PERMISSIONS = {
   "schedule.view_delays": [ROLES.CHI_HUY_TRUONG],
 
   // ── Kỹ sư giám sát ─────────────────────────────────────────────────
-  "site_log.create": [ROLES.KY_SU_GIAM_SAT, ROLES.CHI_HUY_TRUONG, ROLES.BAN_QUAN_LY, ROLES.DOI_TRUONG],
+  "site_log.create": [ROLES.KY_SU_GIAM_SAT, ROLES.CHI_HUY_TRUONG, ROLES.BAN_QUAN_LY],
   "site_log.upload_photo": [ROLES.KY_SU_GIAM_SAT],
   "quantity.verify": [ROLES.KY_SU_GIAM_SAT],
   "acceptance.create_dossier": [ROLES.KY_SU_GIAM_SAT],
   "acceptance.update_dossier": [ROLES.KY_SU_GIAM_SAT],
+  "acceptance.access": [ROLES.KY_SU_GIAM_SAT, ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY],
 
   // ── Đội trưởng thi công ────────────────────────────────────────────
   "task.view_own_team": [ROLES.DOI_TRUONG],
@@ -53,7 +54,8 @@ export const PERMISSIONS = {
   // ── Chủ đầu tư ─────────────────────────────────────────────────────
   "project.view": [ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY],
   "acceptance.view_verified": [ROLES.CHU_DAU_TU],
-  "acceptance.approve_official": [ROLES.CHU_DAU_TU],
+  "acceptance.approve_official": [ROLES.BAN_QUAN_LY],
+  "acceptance.return_official": [ROLES.BAN_QUAN_LY],
   "payment.approve": [ROLES.CHU_DAU_TU],
   // S-39: Audit Portal cho Chủ đầu tư / Ban quản lý.
   "audit.view_project": [ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY],
@@ -77,6 +79,17 @@ export const PERMISSIONS = {
   "invitation.manage": [ROLES.CHI_HUY_TRUONG, ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY],
   "schedule.recalculate": ALL_MEMBERS,
   "site_log.create_daily": [ROLES.KY_SU_GIAM_SAT, ROLES.CHI_HUY_TRUONG, ROLES.BAN_QUAN_LY],
+
+  // S-43: Đề nghị thanh toán (T-112 / T-113)
+  "payment_request.create": [ROLES.BAN_QUAN_LY],
+  "payment_request.view": [ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU, ROLES.KE_TOAN],
+
+  // S-40 / T-106: Siêu dữ liệu ảnh hiện trường và quyền riêng tư vị trí
+  "photo.view_metadata": ALL_MEMBERS,
+  "photo.view_gps": [ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY],
+
+  // S-41 / T-107: Cấu hình phạm vi công trường (geofence)
+  "site_geofence.manage": [ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY],
 };
 
 // Tra cứu 1 role có 1 quyền không. Pure — không bypass, không IO.

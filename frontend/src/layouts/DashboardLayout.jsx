@@ -22,6 +22,7 @@ import {
   ChevronsUpDown,
   PanelLeftClose,
   PanelLeftOpen,
+  Activity,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "../components/ui/command";
@@ -635,6 +636,18 @@ function DashboardShell({ user, setUser }) {
                       Quản trị hệ thống
                     </button>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      navigate("/system-status");
+                    }}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-foreground hover:bg-accent transition-colors text-left outline-none cursor-pointer"
+                  >
+                    <Activity className="size-4 text-emerald-600" />
+                    Giám sát hệ thống
+                  </button>
 
                   <div className="border-t border-border/50 mt-1 pt-1">
                     <button

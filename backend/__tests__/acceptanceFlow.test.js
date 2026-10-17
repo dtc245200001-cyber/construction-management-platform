@@ -484,7 +484,7 @@ describe("Acceptance Flow & Security Verification (S-36 / T-93)", () => {
 
       // Check voucher tồn tại
       mockQuery.mockResolvedValueOnce({
-        rows: [{ id: 101, status: "draft" }],
+        rows: [{ id: 101, status: "draft", created_by: 10 }],
       });
       // Insert photo
       mockQuery.mockResolvedValueOnce({
@@ -515,8 +515,8 @@ describe("Acceptance Flow & Security Verification (S-36 / T-93)", () => {
       expect(res.body.url).toMatch(/\/photos\/501$/);
     });
 
-    test("TC-8.3: Tải ảnh với tư cách thành viên dự án -> 200 binary", async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [{ role: "ky_su_giam_sat" }] });
+    test("TC-8.3: Chủ đầu tư tải được ảnh gốc -> 200 binary", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "chu_dau_tu" }] });
 
       const sampleBinary = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
       mockQuery.mockResolvedValueOnce({

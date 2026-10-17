@@ -97,6 +97,6 @@ describe("S-38 / T-98 acceptance approval RBAC", () => {
       .send({});
 
     expect(res.status).toBe(409);
-        expect(res.body.code).toBe("INVALID_STATE");
+    expect(res.body.code).toBe("INVALID_STATE");
   });
 });

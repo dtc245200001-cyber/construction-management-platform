@@ -120,13 +120,46 @@ app.use(
   })
 );
 
-// Body parser
-app.use(express.json({ limit: "100kb" }));
-app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 
 // HTTP request logging (pino-http)
 const pinoHttp = require("pino-http")({ logger });
 app.use(pinoHttp);
+
+// ─── HEALTH CHECK & PROBES (T-128 / S-51) ──────────────────────────────────
+// Đặt trước session & body parser để đảm bảo:
+// 1. Không bị nghẽn bởi PgSession khi DB gặp sự cố
+// 2. Tối ưu hiệu năng cho orchestrator và monitor pings
+const { getHealthReport, checkDatabase } = require("./services/healthCheck");
+
+const healthHandler = async (_req, res) => {
+  const { statusCode, body } = await getHealthReport(pool);
+  if (statusCode >= 500) {
+    logger.warn({ health: body }, "Health check phát hiện hệ thống không khỏe");
+  }
+  return res.status(statusCode).json(body);
+};
+
+app.get("/health", healthHandler);
+app.get("/api/health", healthHandler);
+
+// Pure liveness probe — dành cho orchestrator chỉ cần kiểm tra tiến trình sống
+app.get("/health/live", (_req, res) => {
+  res.status(200).json({ status: "ok", uptime: process.uptime() });
+});
+
+// Readiness probe — kiểm tra DB (tương thích deploy.sh Blue/Green deployment)
+app.get("/ready", async (_req, res) => {
+  const dbCheck = await checkDatabase(pool);
+  if (dbCheck.healthy) {
+    return res.status(200).json({ status: "ready", db: "ok" });
+  }
+  logger.error({ error: dbCheck.error }, "Readiness check: lỗi kết nối DB");
+  return res.status(503).json({ status: "unavailable", db: "error" });
+});
+
+// Body parser
+app.use(express.json({ limit: "100kb" }));
+app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 
 // Session
 const sameSite = process.env.COOKIE_SAMESITE || (isProd ? "none" : "lax");
@@ -152,26 +185,7 @@ app.use(
   })
 );
 
-// â”€â”€â”€ ROUTES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-// Liveness probe â€” khÃ´ng Ä‘á»¥ng DB, tráº£ ngay
-app.get("/health", (_req, res) => {
-  res.status(200).json({
-    status: "ok",
-    uptime: process.uptime(),
-  });
-});
-
-// Readiness probe â€” kiá»ƒm tra DB
-app.get("/ready", async (_req, res) => {
-  try {
-    await pool.query("SELECT 1");
-    res.status(200).json({ status: "ready", db: "ok" });
-  } catch (err) {
-    logger.error({ err }, "Readiness check: lá»—i káº¿t ná»‘i DB");
-    res.status(503).json({ status: "unavailable", db: "error" });
-  }
-});
+// ─── ROUTES ──────────────────────────────────────────────────────────
 
 // Swagger docs
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
@@ -213,6 +227,14 @@ const contractQuantityRoutes = require("./routes/contractQuantityRoutes");
 app.use("/api/projects", contractQuantityRoutes);
 const acceptanceRoutes = require("./routes/acceptanceRoutes");
 app.use("/api/projects", acceptanceRoutes);
+const photoMetadataRoutes = require("./routes/photoMetadataRoutes");
+app.use("/api/projects", photoMetadataRoutes);
+const siteGeofenceRoutes = require("./routes/siteGeofenceRoutes");
+app.use("/api/projects", siteGeofenceRoutes);
+const paymentRequestRoutes = require("./routes/paymentRequestRoutes");
+app.use("/api/projects", paymentRequestRoutes);
+const actualCostRoutes = require("./routes/actualCostRoutes");
+app.use("/api/projects", actualCostRoutes);
 
 // â”€â”€â”€ ERROR HANDLERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(notFoundHandler);

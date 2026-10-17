@@ -24,6 +24,8 @@ import {
   Calendar,
   Coins,
   History,
+  MapPin,
+  Activity,
 } from "lucide-react";
 
 
@@ -111,7 +113,7 @@ export const MENU_CONFIG = [
     path: "/warnings",
     icon: Bell,
     group: "planning",
-    roles: [CHU_DAU_TU],
+    roles: [CHU_DAU_TU, BAN_QUAN_LY],
   },
   {
     key: "calendar",
@@ -145,7 +147,7 @@ export const MENU_CONFIG = [
     path: "/acceptance",
     icon: CheckSquare,
     group: "site",
-    roles: [BAN_QUAN_LY, CHI_HUY_TRUONG, KY_SU_GIAM_SAT, CHU_DAU_TU],
+    roles: [BAN_QUAN_LY, KY_SU_GIAM_SAT, CHU_DAU_TU],
   },
   {
   key: "audit",
@@ -156,13 +158,12 @@ export const MENU_CONFIG = [
   roles: [BAN_QUAN_LY, CHU_DAU_TU],
 },
   {
-    // Chưa có trang thật. Cần xác nhận vai trò.
-    key: "finance",
-    label: "Thanh toán & Chi phí",
-    path: "/finance",
+    key: "payment-requests",
+    label: "Đề nghị thanh toán",
+    path: "/payment-requests",
+    paths: ["/finance", "/payment-requests"],
     icon: Wallet,
     group: "manage",
-    implemented: false,
     roles: [BAN_QUAN_LY, CHU_DAU_TU, KE_TOAN],
   },
   {
@@ -173,15 +174,31 @@ export const MENU_CONFIG = [
     group: "manage",
     roles: [BAN_QUAN_LY, CHI_HUY_TRUONG, CHU_DAU_TU],
   },
+  {
+    key: "site-geofence",
+    label: "Phạm vi công trường",
+    path: "/site-geofence",
+    icon: MapPin,
+    group: "manage",
+    roles: ALL_ROLES,
+  },
+  {
+    key: "system-status",
+    label: "Giám sát hệ thống",
+    path: "/system-status",
+    icon: Activity,
+    group: "manage",
+    roles: ALL_ROLES,
+  },
 ];
 
 // action -> danh sách vai trò được phép.
 export const PERMISSIONS = {
-  "member.invite": [BAN_QUAN_LY, CHU_DAU_TU],
+  "member.invite": [BAN_QUAN_LY],
   "team.manage": [BAN_QUAN_LY, CHI_HUY_TRUONG, CHU_DAU_TU], // khu "Đội thi công"
   "work.assign": [CHI_HUY_TRUONG], // khu "Giao việc"
 
-  "wbs.manage": [BAN_QUAN_LY],
+  "wbs.manage": [BAN_QUAN_LY, CHI_HUY_TRUONG],
   "contract_quantity.edit": [BAN_QUAN_LY, CHU_DAU_TU],
 
   "calendar.edit": [BAN_QUAN_LY, CHI_HUY_TRUONG, CHU_DAU_TU],
@@ -194,9 +211,22 @@ export const PERMISSIONS = {
   "field.report": [DOI_TRUONG],
   "field.viewAll": ALL_ROLES.filter((r) => r !== DOI_TRUONG),
 
-  "diary.create": [BAN_QUAN_LY, CHI_HUY_TRUONG, KY_SU_GIAM_SAT, DOI_TRUONG],
+  "diary.create": [BAN_QUAN_LY, CHI_HUY_TRUONG, KY_SU_GIAM_SAT],
   "diary.lock": [KY_SU_GIAM_SAT],
   "diary.unlock": [BAN_QUAN_LY],
+
+  // S-36, S-38: Nghiệm thu khối lượng
+  "acceptance.access": [BAN_QUAN_LY, KY_SU_GIAM_SAT, CHU_DAU_TU],
+  "acceptance.create": [KY_SU_GIAM_SAT],
+  "acceptance.approve": [BAN_QUAN_LY],
+  "acceptance.return": [BAN_QUAN_LY],
+
+  // S-41 / T-107: Cấu hình phạm vi công trường
+  "site_geofence.manage": [BAN_QUAN_LY, CHU_DAU_TU],
+
+  // S-43 / T-113: Đề nghị thanh toán
+  "payment_request.create": [BAN_QUAN_LY],
+  "payment_request.view": [BAN_QUAN_LY, CHU_DAU_TU, KE_TOAN],
 };
 
 function isKnownRole(role) {

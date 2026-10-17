@@ -45,6 +45,28 @@ describe("permissions matrix (phân quyền 6 vai trò)", () => {
       expect(can(ROLES.KY_SU_GIAM_SAT, "acceptance.review_internal")).toBe(false);
       expect(can(ROLES.KY_SU_GIAM_SAT, "acceptance.approve_official")).toBe(false);
       expect(can(ROLES.KY_SU_GIAM_SAT, "acceptance.view_verified")).toBe(false);
+      expect(can(ROLES.KY_SU_GIAM_SAT, "acceptance.return_official")).toBe(false);
+    });
+    test("kỹ sư giám sát, chủ đầu tư, ban quản lý truy cập nghiệm thu; chỉ ban quản lý duyệt/trả lại (S-38)", () => {
+      expect(can(ROLES.KY_SU_GIAM_SAT, "acceptance.access")).toBe(true);
+      expect(can(ROLES.CHU_DAU_TU, "acceptance.access")).toBe(true);
+      expect(can(ROLES.BAN_QUAN_LY, "acceptance.access")).toBe(true);
+
+      // BQL không tạo hồ sơ, nhưng duyệt và trả lại phiếu nghiệm thu theo S-38
+      expect(can(ROLES.BAN_QUAN_LY, "acceptance.create_dossier")).toBe(false);
+      expect(can(ROLES.BAN_QUAN_LY, "acceptance.approve_official")).toBe(true);
+      expect(can(ROLES.BAN_QUAN_LY, "acceptance.return_official")).toBe(true);
+
+      for (const role of [
+        ROLES.CHI_HUY_TRUONG,
+        ROLES.DOI_TRUONG,
+        ROLES.KE_TOAN,
+        ROLES.CHU_DAU_TU,
+      ]) {
+        expect(can(role, "acceptance.create_dossier")).toBe(false);
+        expect(can(role, "acceptance.approve_official")).toBe(false);
+        expect(can(role, "acceptance.return_official")).toBe(false);
+      }
     });
   });
 
@@ -88,6 +110,25 @@ describe("permissions matrix (phân quyền 6 vai trò)", () => {
       expect(can(ROLES.DOI_TRUONG, "quantity.report")).toBe(true);
       expect(can(ROLES.CHI_HUY_TRUONG, "quantity.report")).toBe(false);
       expect(can(ROLES.BAN_QUAN_LY, "quantity.report")).toBe(false);
+    });
+  });
+
+  describe("S-40: phân quyền siêu dữ liệu ảnh và quyền riêng tư vị trí GPS", () => {
+    test("mọi thành viên dự án (cả 6 role) đều được xem photo.view_metadata", () => {
+      for (const role of Object.values(ROLES)) {
+        expect(can(role, "photo.view_metadata")).toBe(true);
+      }
+    });
+
+    test("chỉ chu_dau_tu và ban_quan_ly được xem toạ độ thô (photo.view_gps)", () => {
+      expect(can(ROLES.CHU_DAU_TU, "photo.view_gps")).toBe(true);
+      expect(can(ROLES.BAN_QUAN_LY, "photo.view_gps")).toBe(true);
+
+      // Các vai trò khác không được xem toạ độ thô để bảo vệ vị trí người lao động
+      expect(can(ROLES.KY_SU_GIAM_SAT, "photo.view_gps")).toBe(false);
+      expect(can(ROLES.CHI_HUY_TRUONG, "photo.view_gps")).toBe(false);
+      expect(can(ROLES.DOI_TRUONG, "photo.view_gps")).toBe(false);
+      expect(can(ROLES.KE_TOAN, "photo.view_gps")).toBe(false);
     });
   });
 });
