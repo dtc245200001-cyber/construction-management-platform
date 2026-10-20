@@ -100,16 +100,49 @@ async function batchUpdatePhotoGeofence(client, tableName, photos, siteConfig) {
       pIdx += 5;
     }
 
-    const query = `
-      UPDATE ${tableName} AS t
-      SET geofence_status = v.geofence_status,
-          geofence_distance_m = v.geofence_distance_m,
-          geofence_checked_at = v.geofence_checked_at,
-          geofence_basis = v.geofence_basis
-      FROM (VALUES ${valuesPlaceholders.join(", ")}) AS v(id, geofence_status, geofence_distance_m, geofence_checked_at, geofence_basis)
-      WHERE t.id = v.id
-    `;
-    await client.query(query, valuesParams);
+    try {
+      const query = `
+        UPDATE ${tableName} AS t
+        SET geofence_status = v.geofence_status,
+            geofence_distance_m = v.geofence_distance_m,
+            geofence_checked_at = v.geofence_checked_at,
+            geofence_basis = v.geofence_basis
+        FROM (VALUES ${valuesPlaceholders.join(", ")}) AS v(id, geofence_status, geofence_distance_m, geofence_checked_at, geofence_basis)
+        WHERE t.id = v.id
+      `;
+      await client.query(query, valuesParams);
+    } catch (updateErr) {
+      if (updateErr.code === "42703") {
+        // Fallback khi DB chưa có cột geofence_basis
+        const fbParams = [];
+        const fbPlaceholders = [];
+        let fIdx = 1;
+        for (const p of chunk) {
+          const evalRes = evaluateGeofence({
+            photo: {
+              gps_latitude: p.gps_latitude,
+              gps_longitude: p.gps_longitude,
+              gps_accuracy_m: p.gps_accuracy_m,
+            },
+            site: siteConfig,
+          });
+          fbPlaceholders.push(`($${fIdx}::int, $${fIdx + 1}::varchar, $${fIdx + 2}::numeric, $${fIdx + 3}::timestamptz)`);
+          fbParams.push(p.id, evalRes.status, evalRes.distance_m, evalRes.checked_at);
+          fIdx += 4;
+        }
+        const fbQuery = `
+          UPDATE ${tableName} AS t
+          SET geofence_status = v.geofence_status,
+              geofence_distance_m = v.geofence_distance_m,
+              geofence_checked_at = v.geofence_checked_at
+          FROM (VALUES ${fbPlaceholders.join(", ")}) AS v(id, geofence_status, geofence_distance_m, geofence_checked_at)
+          WHERE t.id = v.id
+        `;
+        await client.query(fbQuery, fbParams);
+      } else {
+        throw updateErr;
+      }
+    }
     updatedCount += chunk.length;
   }
   return updatedCount;
@@ -203,7 +236,8 @@ router.put(
     }
 
     // Transaction
-    const client = await db.getClient();
+    const numericProjectId = parseInt(projectId, 10);
+    const client = await (typeof db.connect === "function" ? db.connect() : db.getClient());
     try {
       await client.query("BEGIN");
 
@@ -213,7 +247,7 @@ router.put(
          FROM projects
          WHERE id = $1
          FOR UPDATE`,
-        [projectId]
+        [numericProjectId]
       );
 
       if (projRes.rows.length === 0) {
@@ -237,7 +271,7 @@ router.put(
              site_geofence_updated_by = $4
          WHERE id = $5
          RETURNING site_latitude, site_longitude, site_radius_m, site_geofence_updated_at, site_geofence_updated_by`,
-        [numLat, numLng, numRad, req.user?.id || null, projectId]
+        [numLat, numLng, numRad, req.user?.id || null, numericProjectId]
       );
 
       const afterConfig = {
@@ -255,13 +289,28 @@ router.put(
       };
 
       // 1. Tính lại cho acceptance_voucher_photos (chỉ lấy toạ độ, TUYỆT ĐỐI không file_data)
-      const accPhotosRes = await client.query(
-        `SELECT avp.id, avp.gps_latitude, avp.gps_longitude, avp.gps_accuracy_m, avp.gps_source
-         FROM acceptance_voucher_photos avp
-         JOIN acceptance_vouchers av ON avp.voucher_id = av.id
-         WHERE av.project_id = $1`,
-        [projectId]
-      );
+      let accPhotosRes;
+      try {
+        accPhotosRes = await client.query(
+          `SELECT avp.id, avp.gps_latitude, avp.gps_longitude, avp.gps_accuracy_m, avp.gps_source
+           FROM acceptance_voucher_photos avp
+           JOIN acceptance_vouchers av ON avp.voucher_id = av.id
+           WHERE av.project_id = $1`,
+          [numericProjectId]
+        );
+      } catch (selErr) {
+        if (selErr.code === "42703") {
+          accPhotosRes = await client.query(
+            `SELECT avp.id, avp.gps_latitude, avp.gps_longitude, avp.gps_accuracy_m
+             FROM acceptance_voucher_photos avp
+             JOIN acceptance_vouchers av ON avp.voucher_id = av.id
+             WHERE av.project_id = $1`,
+            [numericProjectId]
+          );
+        } else {
+          throw selErr;
+        }
+      }
       const accUpdated = await batchUpdatePhotoGeofence(
         client,
         "acceptance_voucher_photos",
@@ -270,13 +319,28 @@ router.put(
       );
 
       // 2. Tính lại cho diary_entry_attachments
-      const diaryPhotosRes = await client.query(
-        `SELECT dea.id, dea.gps_latitude, dea.gps_longitude, dea.gps_accuracy_m, dea.gps_source
-         FROM diary_entry_attachments dea
-         JOIN diary_entries de ON dea.diary_entry_id = de.id
-         WHERE de.project_id = $1`,
-        [projectId]
-      );
+      let diaryPhotosRes;
+      try {
+        diaryPhotosRes = await client.query(
+          `SELECT dea.id, dea.gps_latitude, dea.gps_longitude, dea.gps_accuracy_m, dea.gps_source
+           FROM diary_entry_attachments dea
+           JOIN diary_entries de ON dea.diary_entry_id = de.id
+           WHERE de.project_id = $1`,
+          [numericProjectId]
+        );
+      } catch (selErr) {
+        if (selErr.code === "42703") {
+          diaryPhotosRes = await client.query(
+            `SELECT dea.id, dea.gps_latitude, dea.gps_longitude, dea.gps_accuracy_m
+             FROM diary_entry_attachments dea
+             JOIN diary_entries de ON dea.diary_entry_id = de.id
+             WHERE de.project_id = $1`,
+            [numericProjectId]
+          );
+        } else {
+          throw selErr;
+        }
+      }
       const diaryUpdated = await batchUpdatePhotoGeofence(
         client,
         "diary_entry_attachments",
@@ -287,7 +351,6 @@ router.put(
       // 3. Ghi audit_logs append-only trong cùng giao dịch
       const userId = req.user ? req.user.id : null;
       const ipAddress = req.ip || req.connection?.remoteAddress || null;
-      const numericProjectId = parseInt(projectId, 10);
       await client.query(
         `INSERT INTO audit_logs (user_id, action, entity, entity_id, project_id, details, ip_address)
          VALUES ($1, $2, $3, $4::int, $5::int, $6, $7)`,
@@ -340,7 +403,8 @@ router.delete(
   asyncHandler(async (req, res) => {
     const { projectId } = req.params;
 
-    const client = await db.getClient();
+    const numericProjectId = parseInt(projectId, 10);
+    const client = await (typeof db.connect === "function" ? db.connect() : db.getClient());
     try {
       await client.query("BEGIN");
 
@@ -349,7 +413,7 @@ router.delete(
          FROM projects
          WHERE id = $1
          FOR UPDATE`,
-        [projectId]
+        [numericProjectId]
       );
 
       if (projRes.rows.length === 0) {
@@ -372,17 +436,32 @@ router.delete(
              site_geofence_updated_at = NOW(),
              site_geofence_updated_by = $1
          WHERE id = $2`,
-        [req.user?.id || null, projectId]
+        [req.user?.id || null, numericProjectId]
       );
 
       // Cập nhật lại ảnh với siteConfig = null
-      const accPhotosRes = await client.query(
-        `SELECT avp.id, avp.gps_latitude, avp.gps_longitude, avp.gps_accuracy_m, avp.gps_source
-         FROM acceptance_voucher_photos avp
-         JOIN acceptance_vouchers av ON avp.voucher_id = av.id
-         WHERE av.project_id = $1`,
-        [projectId]
-      );
+      let accPhotosRes;
+      try {
+        accPhotosRes = await client.query(
+          `SELECT avp.id, avp.gps_latitude, avp.gps_longitude, avp.gps_accuracy_m, avp.gps_source
+           FROM acceptance_voucher_photos avp
+           JOIN acceptance_vouchers av ON avp.voucher_id = av.id
+           WHERE av.project_id = $1`,
+          [numericProjectId]
+        );
+      } catch (selErr) {
+        if (selErr.code === "42703") {
+          accPhotosRes = await client.query(
+            `SELECT avp.id, avp.gps_latitude, avp.gps_longitude, avp.gps_accuracy_m
+             FROM acceptance_voucher_photos avp
+             JOIN acceptance_vouchers av ON avp.voucher_id = av.id
+             WHERE av.project_id = $1`,
+            [numericProjectId]
+          );
+        } else {
+          throw selErr;
+        }
+      }
       const accUpdated = await batchUpdatePhotoGeofence(
         client,
         "acceptance_voucher_photos",
@@ -390,13 +469,28 @@ router.delete(
         null
       );
 
-      const diaryPhotosRes = await client.query(
-        `SELECT dea.id, dea.gps_latitude, dea.gps_longitude, dea.gps_accuracy_m, dea.gps_source
-         FROM diary_entry_attachments dea
-         JOIN diary_entries de ON dea.diary_entry_id = de.id
-         WHERE de.project_id = $1`,
-        [projectId]
-      );
+      let diaryPhotosRes;
+      try {
+        diaryPhotosRes = await client.query(
+          `SELECT dea.id, dea.gps_latitude, dea.gps_longitude, dea.gps_accuracy_m, dea.gps_source
+           FROM diary_entry_attachments dea
+           JOIN diary_entries de ON dea.diary_entry_id = de.id
+           WHERE de.project_id = $1`,
+          [numericProjectId]
+        );
+      } catch (selErr) {
+        if (selErr.code === "42703") {
+          diaryPhotosRes = await client.query(
+            `SELECT dea.id, dea.gps_latitude, dea.gps_longitude, dea.gps_accuracy_m
+             FROM diary_entry_attachments dea
+             JOIN diary_entries de ON dea.diary_entry_id = de.id
+             WHERE de.project_id = $1`,
+            [numericProjectId]
+          );
+        } else {
+          throw selErr;
+        }
+      }
       const diaryUpdated = await batchUpdatePhotoGeofence(
         client,
         "diary_entry_attachments",
@@ -407,7 +501,6 @@ router.delete(
       // Ghi audit_logs append-only trong cùng giao dịch
       const userId = req.user ? req.user.id : null;
       const ipAddress = req.ip || req.connection?.remoteAddress || null;
-      const numericProjectId = parseInt(projectId, 10);
       await client.query(
         `INSERT INTO audit_logs (user_id, action, entity, entity_id, project_id, details, ip_address)
          VALUES ($1, $2, $3, $4::int, $5::int, $6, $7)`,

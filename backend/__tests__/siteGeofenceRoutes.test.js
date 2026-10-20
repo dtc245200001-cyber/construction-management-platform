@@ -14,6 +14,7 @@ const mockClient = {
 
 jest.mock("../config/db", () => ({
   query: (...args) => mockQuery(...args),
+  connect: jest.fn().mockImplementation(async () => mockClient),
   getClient: jest.fn().mockImplementation(async () => mockClient),
 }));
 

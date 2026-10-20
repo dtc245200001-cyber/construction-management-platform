@@ -61,4 +61,8 @@ pool.on("error", (err) => {
   console.error("Lỗi pg pool (idle client):", err.message);
 });
 
+pool.getClient = function () {
+  return pool.connect();
+};
+
 module.exports = pool;
