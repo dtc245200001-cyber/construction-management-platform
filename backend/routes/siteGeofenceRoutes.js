@@ -287,15 +287,16 @@ router.put(
       // 3. Ghi audit_logs append-only trong cùng giao dịch
       const userId = req.user ? req.user.id : null;
       const ipAddress = req.ip || req.connection?.remoteAddress || null;
+      const numericProjectId = parseInt(projectId, 10);
       await client.query(
         `INSERT INTO audit_logs (user_id, action, entity, entity_id, project_id, details, ip_address)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+         VALUES ($1, $2, $3, $4::int, $5::int, $6, $7)`,
         [
           userId,
           "SITE_GEOFENCE_SET",
           "projects",
-          projectId,
-          projectId,
+          numericProjectId,
+          numericProjectId,
           JSON.stringify({
             before: beforeConfig,
             after: {
@@ -406,15 +407,16 @@ router.delete(
       // Ghi audit_logs append-only trong cùng giao dịch
       const userId = req.user ? req.user.id : null;
       const ipAddress = req.ip || req.connection?.remoteAddress || null;
+      const numericProjectId = parseInt(projectId, 10);
       await client.query(
         `INSERT INTO audit_logs (user_id, action, entity, entity_id, project_id, details, ip_address)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+         VALUES ($1, $2, $3, $4::int, $5::int, $6, $7)`,
         [
           userId,
           "SITE_GEOFENCE_CLEAR",
           "projects",
-          projectId,
-          projectId,
+          numericProjectId,
+          numericProjectId,
           JSON.stringify({
             before: beforeConfig,
           }),

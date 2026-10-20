@@ -53,6 +53,7 @@ import PaymentRequestsPage from './pages/PaymentRequestsPage';
 // S-33 / T-80 / T-82 Upload Queue
 import { UploadQueueProvider } from './context/UploadQueueContext';
 import UploadQueueDrawer from './components/UploadQueueDrawer';
+import { Toaster } from './components/ui/sonner';
 
 function App() {
   const [user, setUser] = useState(() => {
@@ -320,6 +321,7 @@ function App() {
 
       </Routes>
       <UploadQueueDrawer />
+      <Toaster position="top-right" richColors />
     </UploadQueueProvider>
   </BrowserRouter>
 );
