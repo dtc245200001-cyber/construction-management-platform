@@ -169,9 +169,9 @@ router.post(
       // Băm mật khẩu bằng Argon2id
       const passwordHash = await argon2.hash(password);
 
-      // Lấy role mặc định
+      // Lấy role mặc định: Khách (chưa được gán vai trò thật)
       const roleResult = await client.query(
-        "SELECT id FROM roles WHERE name = 'doi_truong'"
+        "SELECT id FROM roles WHERE name = 'khach'"
       );
 
       if (roleResult.rows.length === 0) {
@@ -207,6 +207,12 @@ router.post(
           await client.query(
             'INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, $3)',
             [invitation.project_id, newUser.id, invitation.project_role]
+          );
+          // Đồng bộ vai trò hệ thống theo lời mời (tài khoản mới luôn là Khách)
+          await client.query(
+            `UPDATE users SET role_id = (SELECT id FROM roles WHERE name = $1)
+             WHERE id = $2 AND role_id = (SELECT id FROM roles WHERE name = 'khach')`,
+            [invitation.project_role, newUser.id]
           );
         }
       }
@@ -977,7 +983,7 @@ router.get("/google/callback", asyncHandler(async (req, res) => {
       return res.redirect(`${frontendBase}/login?oauth_error=google_failed`);
     }
 
-    const roleResult = await pool.query("SELECT id FROM roles WHERE name = 'doi_truong'");
+    const roleResult = await pool.query("SELECT id FROM roles WHERE name = 'khach'");
     if (roleResult.rows.length === 0) {
       logger.error("Không tìm thấy vai trò mặc định cho Google OAuth");
       return res.redirect(`${frontendBase}/login?oauth_error=google_failed`);

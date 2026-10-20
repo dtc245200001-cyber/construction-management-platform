@@ -27,7 +27,8 @@ describe("Auth Integration Tests", () => {
         ('ky_su_giam_sat'),
         ('chi_huy_truong'),
         ('doi_truong'),
-        ('ke_toan')
+        ('ke_toan'),
+        ('khach')
     `);
   });
 
@@ -50,6 +51,26 @@ describe("Auth Integration Tests", () => {
 
       expect(rows[0].password).toBeNull();
       expect(rows[0].password_hash).toMatch(/^\$argon2/);
+    });
+
+    it("Tài khoản mới mặc định là Khách", async () => {
+      const res = await request(app)
+        .post("/api/auth/register")
+        .send({
+          name: "Guest",
+          email: "guest@example.com",
+          password: "Password123",
+          confirmPassword: "Password123",
+        });
+
+      expect(res.status).toBe(201);
+
+      const { rows } = await pool.query(
+        `SELECT r.name FROM users u JOIN roles r ON r.id = u.role_id
+         WHERE u.email = 'guest@example.com'`
+      );
+
+      expect(rows[0].name).toBe("khach");
     });
 
     it("Email trùng khác hoa/thường bị chặn", async () => {

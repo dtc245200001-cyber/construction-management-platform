@@ -1,8 +1,8 @@
 const { can, PERMISSIONS } = require("../utils/permissions");
 const { ROLES } = require("../utils/constants");
 
-describe("permissions matrix (phân quyền 6 vai trò)", () => {
-  test("đủ 6 role hợp lệ trong ma trận", () => {
+describe("permissions matrix (phân quyền 6 vai trò dự án + Khách)", () => {
+  test("đủ 6 role dự án + role Khách", () => {
     const six = [
       "ban_quan_ly",
       "chi_huy_truong",
@@ -11,7 +11,14 @@ describe("permissions matrix (phân quyền 6 vai trò)", () => {
       "chu_dau_tu",
       "ke_toan",
     ];
-    expect(Object.values(ROLES).sort()).toEqual(six.sort());
+    expect(six.every((r) => Object.values(ROLES).includes(r))).toBe(true);
+    expect(ROLES.KHACH).toBe("khach");
+  });
+
+  test("Khách không có bất kỳ quyền nào (default-deny)", () => {
+    for (const key of Object.keys(PERMISSIONS)) {
+      expect(can(ROLES.KHACH, key)).toBe(false);
+    }
   });
 
   test("unknown permission key luôn false", () => {
@@ -114,10 +121,11 @@ describe("permissions matrix (phân quyền 6 vai trò)", () => {
   });
 
   describe("S-40: phân quyền siêu dữ liệu ảnh và quyền riêng tư vị trí GPS", () => {
-    test("mọi thành viên dự án (cả 6 role) đều được xem photo.view_metadata", () => {
-      for (const role of Object.values(ROLES)) {
+    test("mọi thành viên dự án (6 role, trừ Khách) đều được xem photo.view_metadata", () => {
+      for (const role of Object.values(ROLES).filter((r) => r !== ROLES.KHACH)) {
         expect(can(role, "photo.view_metadata")).toBe(true);
       }
+      expect(can(ROLES.KHACH, "photo.view_metadata")).toBe(false);
     });
 
     test("chỉ chu_dau_tu và ban_quan_ly được xem toạ độ thô (photo.view_gps)", () => {

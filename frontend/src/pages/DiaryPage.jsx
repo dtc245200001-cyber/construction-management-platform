@@ -115,10 +115,12 @@ export default function DiaryPage({ user }) {
   // S-27: chốt/mở sổ nhật ký là quyền của Chỉ huy trưởng (đồng bộ backend
   // site_log.close_daily / site_log.correct_locked qua ma trận dùng chung).
   // Quyền lấy từ config/permissions (system_admin được bypass bên trong can()).
-  // Khi chưa biết vai trò (đang tải) thì không ẩn nút để tránh rớt test cũ và nhấp nháy.
-  const canLock = !projectRole ? Boolean(user) : Boolean(user) && can(projectRole, 'diary.lock');
-  const canUnlock = !projectRole ? Boolean(user) : Boolean(user) && can(projectRole, 'diary.unlock');
-  const canCreate = !projectRole ? Boolean(user) : Boolean(user) && can(projectRole, 'diary.create');
+  // Khi chưa biết vai trò (đang tải) thì không ẩn nút để tránh rớt test cũ và nhấp nháy,
+  // nhưng nếu tài khoản là Khách ('khach') thì chặn hoàn toàn.
+  const isKhach = user?.role === 'khach' || projectRole === 'khach';
+  const canLock = !isKhach && (!projectRole ? Boolean(user) : can(projectRole, 'diary.lock'));
+  const canUnlock = !isKhach && (!projectRole ? Boolean(user) : can(projectRole, 'diary.unlock'));
+  const canCreate = !isKhach && (!projectRole ? Boolean(user) : can(projectRole, 'diary.create'));
   const canResolveConflict = canCreate;
   const isPastDate = dateFilter && dateFilter < todayVN;
   useEffect(() => {
