@@ -96,6 +96,15 @@ export const MENU_CONFIG = [
     roles: [BAN_QUAN_LY, CHI_HUY_TRUONG, KY_SU_GIAM_SAT, CHU_DAU_TU, KE_TOAN],
   },
   {
+    // S-46 / T-119: Nhập dự toán theo hạng mục lá và phiên bản
+    key: "budget",
+    label: "Dự toán chi phí",
+    path: "/budget",
+    icon: Wallet,
+    group: "planning",
+    roles: [BAN_QUAN_LY, CHU_DAU_TU, KE_TOAN, CHI_HUY_TRUONG],
+  },
+  {
     key: "schedule",
     label: "Bảng đường găng (CPM)",
     path: "/schedule",
