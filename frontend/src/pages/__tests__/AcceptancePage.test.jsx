@@ -251,4 +251,84 @@ describe("AcceptancePage Component (S-36 / T-92)", () => {
       );
     });
   });
+
+  test("TC-UI-6: Lịch sử thao tác hiển thị trực quan thông tin đợt, trạng thái, người duyệt mà không hiển thị mã code thô", async () => {
+    const mockLogs = [
+      {
+        id: 1,
+        action: "CREATE_ACCEPTANCE_VOUCHER",
+        user_name: "Kỹ sư giám sát Plaza",
+        user_email: "kysugiamsat@cong-truong-360.vn",
+        created_at: "2026-10-17T07:59:20Z",
+        details: {
+          old_value: null,
+          new_value: {
+            status: "draft",
+            batch_name: "HAHAHAH",
+            item_count: 1,
+            has_negative_delta: false,
+          },
+        },
+      },
+      {
+        id: 2,
+        action: "APPROVE_ACCEPTANCE_VOUCHER",
+        user_name: "Ban quản lý Plaza",
+        user_email: "banquanly@cong-truong-360.vn",
+        created_at: "2026-10-17T08:01:19Z",
+        details: {
+          old_value: { status: "pending_review" },
+          new_value: { status: "approved", review_note: "Chất lượng đạt yêu cầu" },
+          batch_name: "HAHAHAH",
+        },
+      },
+    ];
+
+    api.get.mockImplementation((url) => {
+      if (url.includes("/history")) {
+        return Promise.resolve({ data: { logs: mockLogs } });
+      }
+      if (url.includes("/acceptance-vouchers")) {
+        return Promise.resolve({ data: { vouchers: mockVouchers } });
+      }
+      if (url === "/projects/1") {
+        return Promise.resolve({ data: { membership: "ban_quan_ly" } });
+      }
+      return Promise.reject(new Error("not found"));
+    });
+
+    render(<AcceptancePage user={{ id: 1, name: "Ban quản lý" }} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Nghiệm thu đợt 1 - Cọc móng")).toBeInTheDocument();
+    });
+
+    // Mở lịch sử thao tác của phiếu 1
+    const historyButtons = screen.getAllByTitle("Lịch sử thao tác trên phiếu");
+    fireEvent.click(historyButtons[0]);
+
+    // Kiểm tra tiêu đề modal
+    await waitFor(() => {
+      expect(screen.getByText(/Lịch sử thao tác — Phiếu #1/i)).toBeInTheDocument();
+    });
+
+    // Kiểm tra trực quan hóa sự kiện tạo phiếu: hiển thị Tên đợt, Quy mô, Trạng thái, không có raw JSON pre
+    expect(screen.getByText("Tên đợt:")).toBeInTheDocument();
+    expect(screen.getAllByText("HAHAHAH").length).toBe(2);
+    expect(screen.getByText("1 hạng mục")).toBeInTheDocument();
+    expect(screen.getByText("Hợp lệ (không âm)")).toBeInTheDocument();
+
+    // Kiểm tra trực quan hóa sự kiện duyệt phiếu: hiển thị Chuyển trạng thái, Chờ duyệt -> Đã duyệt
+    expect(screen.getByText("Chờ duyệt")).toBeInTheDocument();
+    expect(screen.getAllByText("Đã duyệt").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/Chất lượng đạt yêu cầu/)).toBeInTheDocument();
+
+    // JSON kỹ thuật mặc định bị ẩn
+    expect(screen.queryByText(/"has_negative_delta": false/)).not.toBeInTheDocument();
+
+    // Bấm xem chi tiết kỹ thuật
+    const toggleBtns = screen.getAllByText(/Xem chi tiết kỹ thuật \(JSON\)/i);
+    fireEvent.click(toggleBtns[0]);
+    expect(screen.getByText(/"has_negative_delta": false/)).toBeInTheDocument();
+  });
 });

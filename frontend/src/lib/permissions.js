@@ -26,6 +26,7 @@ export const PERMISSIONS = {
   "member.manage": [ROLES.BAN_QUAN_LY],
   "work_item.manage": [ROLES.BAN_QUAN_LY, ROLES.CHI_HUY_TRUONG],
   "acceptance.review_internal": [ROLES.BAN_QUAN_LY],
+  "acceptance.export_dossier": [ROLES.BAN_QUAN_LY],
 
   // ── Chỉ huy trưởng ─────────────────────────────────────────────────
   "schedule.manage": [ROLES.CHI_HUY_TRUONG],
@@ -84,6 +85,7 @@ export const PERMISSIONS = {
   // S-43: Đề nghị thanh toán (T-112 / T-113)
   "payment_request.create": [ROLES.BAN_QUAN_LY],
   "payment_request.view": [ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU, ROLES.KE_TOAN],
+  "payment_retention.manage": [ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU],
 
   // S-40 / T-106: Siêu dữ liệu ảnh hiện trường và quyền riêng tư vị trí
   "photo.view_metadata": ALL_MEMBERS,

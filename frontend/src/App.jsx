@@ -11,6 +11,8 @@ import PublicLayout from './layouts/PublicLayout';
 
 // Pages
 import LoginPage from './pages/LoginPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import HomePage from './pages/HomePage';
 import PublicProjectsPage from './pages/PublicProjectsPage';
 import PublicProjectDetailPage from './pages/PublicProjectDetailPage';
@@ -26,6 +28,7 @@ import InvitationAcceptPage from './pages/InvitationAcceptPage';
 import SchedulePage from './pages/SchedulePage';
 import GanttPage from './pages/GanttPage';
 import MilestoneWarningsPage from './pages/MilestoneWarningsPage';
+import ProgressDashboardPage from './pages/ProgressDashboardPage';
 import ProjectCalendarPage from './pages/ProjectCalendarPage';
 import DiaryPage from './pages/DiaryPage';
 import { startDiarySync } from './services/diarySync';
@@ -129,6 +132,8 @@ function App() {
         {/* ================= LOGIN ================= */}
         <Route element={<AuthLayout />}>
           <Route path="/login" element={<LoginPage setUser={setUser} />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
         </Route>
 
         {/* ================= HỆ THỐNG / HEALTH CHECK (T-128 & T-129) ================= */}
@@ -273,6 +278,11 @@ function App() {
           <Route
             path="/warnings"
             element={<MilestoneWarningsPage user={user} />}
+          />
+
+          <Route
+            path="/progress"
+            element={<ProgressDashboardPage user={user} />}
           />
 
           <Route

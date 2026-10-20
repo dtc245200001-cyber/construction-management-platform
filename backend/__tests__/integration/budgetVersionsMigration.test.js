@@ -116,7 +116,7 @@ describe("T-118: Migration lưu dự toán theo hạng mục lá và phiên bả
   describe("1. Kiểm tra tĩnh file migration T-118 (NFR & Tiêu chuẩn kiểu dữ liệu)", () => {
     const migrationFile = path.resolve(
       __dirname,
-      "../../migrations/1800100000000_create-budget-versions-and-items.js"
+      "../../migrations/1800300000000_create-budget-versions-and-items.js"
     );
 
     it("File migration T-118 tồn tại", () => {

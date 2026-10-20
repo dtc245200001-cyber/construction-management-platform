@@ -10,6 +10,10 @@ const crypto = require("crypto");
 const pool = require("../config/db");
 const logger = require("../utils/logger");
 const asyncHandler = require("../utils/asyncHandler");
+const { sendEmail } = require("../lib/mailer");
+const { normalizeResetEmail, validateResetPassword } = require("../utils/passwordResetValidators");
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const router = express.Router();
 
@@ -688,5 +692,338 @@ router.post(
     });
   })
 );
+
+// ============================================================
+// QUÊN MẬT KHẨU (FORGOT PASSWORD)
+// ============================================================
+
+router.post(
+  "/forgot-password",
+  asyncHandler(async (req, res) => {
+    const { email } = req.body;
+    const normalizedEmail = normalizeResetEmail(email);
+
+    // Thông báo trung lập — không tiết lộ email có tồn tại hay không
+    const neutralMessage =
+      "Nếu email này thuộc một tài khoản hợp lệ, hướng dẫn khôi phục sẽ được gửi đến email đó.";
+
+    if (!normalizedEmail) {
+      return res.status(200).json({ message: neutralMessage });
+    }
+
+    const userResult = await pool.query(
+      "SELECT id, name, email FROM users WHERE LOWER(email) = $1",
+      [normalizedEmail]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(200).json({ message: neutralMessage });
+    }
+
+    const user = userResult.rows[0];
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 60 phút
+
+    // Vô hiệu hóa các token cũ chưa sử dụng
+    await pool.query(
+      "UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND used_at IS NULL",
+      [user.id]
+    );
+
+    await pool.query(
+      `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+       VALUES ($1, $2, $3)`,
+      [user.id, tokenHash, expiresAt]
+    );
+
+    const frontendBase = (process.env.APP_BASE_URL || "http://localhost:5173").replace(/\/+$/, "");
+    const resetUrl = `${frontendBase}/reset-password?token=${rawToken}`;
+
+    try {
+      await sendEmail({
+        to: normalizedEmail,
+        subject: "Khôi phục mật khẩu - Nền tảng thi công",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <h2>Yêu cầu đặt lại mật khẩu</h2>
+            <p>Xin chào ${user.name || "bạn"},</p>
+            <p>Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản của bạn trên Nền tảng quản lý thi công.</p>
+            <p>Vui lòng bấm vào liên kết bên dưới để đặt mật khẩu mới (liên kết có hiệu lực trong vòng 60 phút):</p>
+            <p style="margin: 30px 0;">
+              <a href="${resetUrl}" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                Đặt lại mật khẩu
+              </a>
+            </p>
+            <p style="color: #64748b; font-size: 14px;">Nếu bạn không yêu cầu hành động này, bạn có thể yên tâm bỏ qua email này.</p>
+          </div>
+        `,
+        text: `Xin chào ${user.name || "bạn"},\n\nVui lòng truy cập liên kết sau để đặt lại mật khẩu của bạn: ${resetUrl}\n\nLiên kết này có hiệu lực trong 60 phút.`,
+        typeCode: "PASSWORD_RESET",
+      });
+    } catch (mailError) {
+      logger.error({ err: mailError }, "Không thể gửi email khôi phục mật khẩu");
+    }
+
+    return res.status(200).json({ message: neutralMessage });
+  })
+);
+
+// ============================================================
+// ĐẶT LẠI MẬT KHẨU (RESET PASSWORD)
+// ============================================================
+
+router.post(
+  "/reset-password",
+  asyncHandler(async (req, res) => {
+    const { token, password, confirmPassword } = req.body;
+
+    const validationError = validateResetPassword(password, confirmPassword);
+    if (validationError) {
+      return res.status(400).json({ message: validationError });
+    }
+
+    if (!token || typeof token !== "string") {
+      return res.status(400).json({
+        message: "Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.",
+      });
+    }
+
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+    const tokenResult = await pool.query(
+      `SELECT id, user_id, expires_at, used_at
+       FROM password_reset_tokens
+       WHERE token_hash = $1
+         AND used_at IS NULL
+         AND expires_at > CURRENT_TIMESTAMP
+       FOR UPDATE`,
+      [tokenHash]
+    );
+
+    if (tokenResult.rows.length === 0) {
+      return res.status(400).json({
+        message: "Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.",
+      });
+    }
+
+    const resetRow = tokenResult.rows[0];
+    const passwordHash = await argon2.hash(password);
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `UPDATE users
+         SET password_hash = $1, failed_login_attempts = 0, locked_until = NULL
+         WHERE id = $2`,
+        [passwordHash, resetRow.user_id]
+      );
+      await client.query(
+        "UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = $1",
+        [resetRow.id]
+      );
+      // Vô hiệu hóa các token còn lại của user
+      await client.query(
+        "UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND used_at IS NULL",
+        [resetRow.user_id]
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    return res.status(200).json({
+      message: "Đặt lại mật khẩu thành công. Bạn có thể đăng nhập bằng mật khẩu mới.",
+    });
+  })
+);
+
+// ============================================================
+// TRẠNG THÁI GOOGLE OAUTH
+// ============================================================
+
+function isGoogleOAuthConfigured() {
+  return Boolean(
+    process.env.GOOGLE_CLIENT_ID &&
+      process.env.GOOGLE_CLIENT_SECRET &&
+      process.env.GOOGLE_CALLBACK_URL
+  );
+}
+
+router.get("/google/status", (req, res) => {
+  return res.status(200).json({ configured: isGoogleOAuthConfigured() });
+});
+
+// ============================================================
+// KHỞI TẠO GOOGLE OAUTH
+// ============================================================
+
+router.get("/google", (req, res) => {
+  const frontendBase = (process.env.APP_BASE_URL || "http://localhost:5173").replace(/\/+$/, "");
+  if (!isGoogleOAuthConfigured()) {
+    return res.redirect(`${frontendBase}/login?oauth_error=google_not_configured`);
+  }
+
+  const state = crypto.randomBytes(16).toString("hex");
+  req.session.oauthState = state;
+
+  const params = new URLSearchParams({
+    client_id: process.env.GOOGLE_CLIENT_ID,
+    redirect_uri: process.env.GOOGLE_CALLBACK_URL,
+    response_type: "code",
+    scope: "openid email profile",
+    access_type: "online",
+    prompt: "select_account",
+    state,
+  });
+
+  return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+});
+
+// ============================================================
+// CALLBACK GOOGLE OAUTH
+// ============================================================
+
+router.get("/google/callback", asyncHandler(async (req, res) => {
+  const frontendBase = (process.env.APP_BASE_URL || "http://localhost:5173").replace(/\/+$/, "");
+  if (!isGoogleOAuthConfigured()) {
+    return res.redirect(`${frontendBase}/login?oauth_error=google_not_configured`);
+  }
+
+  const { code, state } = req.query;
+
+  if (!code || typeof code !== "string" || !state || state !== req.session.oauthState) {
+    delete req.session.oauthState;
+    return res.redirect(`${frontendBase}/login?oauth_error=google_failed`);
+  }
+
+  delete req.session.oauthState;
+
+  let tokenResponse;
+  try {
+    tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: process.env.GOOGLE_CALLBACK_URL,
+        grant_type: "authorization_code",
+      }).toString(),
+    });
+  } catch (error) {
+    logger.error({ err: error }, "Không thể đổi mã Google OAuth");
+    return res.redirect(`${frontendBase}/login?oauth_error=google_failed`);
+  }
+
+  if (!tokenResponse.ok) {
+    logger.warn({ status: tokenResponse.status }, "Google OAuth đổi mã thất bại");
+    return res.redirect(`${frontendBase}/login?oauth_error=google_failed`);
+  }
+
+  const tokenData = await tokenResponse.json();
+  const idToken = tokenData?.id_token;
+
+  if (!idToken || typeof idToken !== "string") {
+    return res.redirect(`${frontendBase}/login?oauth_error=google_failed`);
+  }
+
+  let profile;
+  try {
+    const profileResponse = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
+    );
+    if (!profileResponse.ok) {
+      return res.redirect(`${frontendBase}/login?oauth_error=google_failed`);
+    }
+    profile = await profileResponse.json();
+  } catch (error) {
+    logger.error({ err: error }, "Không thể xác minh Google ID token");
+    return res.redirect(`${frontendBase}/login?oauth_error=google_failed`);
+  }
+
+  const googleEmail = typeof profile?.email === "string" ? profile.email.trim().toLowerCase() : "";
+  const emailVerified = profile?.email_verified === true || profile?.email_verified === "true";
+
+  if (!googleEmail || !EMAIL_REGEX.test(googleEmail) || !emailVerified) {
+    return res.redirect(`${frontendBase}/login?oauth_error=google_failed`);
+  }
+
+  const audience = Array.isArray(profile?.aud) ? profile.aud : [profile?.aud];
+  if (!audience.includes(process.env.GOOGLE_CLIENT_ID)) {
+    logger.warn("Google ID token không đúng audience");
+    return res.redirect(`${frontendBase}/login?oauth_error=google_failed`);
+  }
+
+  const existing = await pool.query(
+    `SELECT id, name, email, role_id, is_system_admin, locked_until
+     FROM users WHERE LOWER(email) = $1`,
+    [googleEmail]
+  );
+
+  let user;
+  if (existing.rows.length > 0) {
+    user = existing.rows[0];
+    if (user.locked_until && new Date(user.locked_until) > new Date()) {
+      return res.redirect(`${frontendBase}/login?oauth_error=google_failed`);
+    }
+  } else {
+    if (process.env.ALLOW_PUBLIC_REGISTER !== "true") {
+      return res.redirect(`${frontendBase}/login?oauth_error=google_failed`);
+    }
+
+    const roleResult = await pool.query("SELECT id FROM roles WHERE name = 'doi_truong'");
+    if (roleResult.rows.length === 0) {
+      logger.error("Không tìm thấy vai trò mặc định cho Google OAuth");
+      return res.redirect(`${frontendBase}/login?oauth_error=google_failed`);
+    }
+
+    const googleName =
+      typeof profile?.name === "string" && profile.name.trim()
+        ? profile.name.trim().slice(0, 255)
+        : googleEmail;
+
+    // Tạo dummy password_hash để thỏa mãn ràng buộc NOT NULL của cột password_hash
+    const dummyPasswordHash = await argon2.hash(crypto.randomBytes(32).toString("hex"));
+
+    const inserted = await pool.query(
+      `INSERT INTO users (name, email, password_hash, role_id, is_verified)
+       VALUES ($1, $2, $3, $4, true)
+       RETURNING id, name, email, role_id, is_system_admin`,
+      [googleName, googleEmail, dummyPasswordHash, roleResult.rows[0].id]
+    );
+    user = inserted.rows[0];
+  }
+
+  let roleName = null;
+  try {
+    const roleResult = await pool.query("SELECT name FROM roles WHERE id = $1", [user.role_id]);
+    if (roleResult.rows.length > 0) roleName = roleResult.rows[0].name;
+  } catch (roleErr) {
+    logger.warn({ err: roleErr }, "Không thể lấy tên vai trò cho Google OAuth");
+  }
+
+  await new Promise((resolve, reject) => {
+    req.session.regenerate((err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+
+  req.session.user = {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: roleName,
+    is_system_admin: user.is_system_admin || false,
+  };
+
+  return res.redirect(`${frontendBase}/projects`);
+}));
 
 module.exports = router;

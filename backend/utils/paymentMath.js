@@ -139,9 +139,75 @@ function formatTwoDecimals(val) {
   return isNeg ? `-${res}` : res;
 }
 
+
+/**
+ * Multiply a currency amount by a percentage and round half-up to whole VND.
+ * Examples:
+ *   1001.00 * 5% = 50.05 -> 50.00
+ *   1010.00 * 5% = 50.50 -> 51.00
+ */
+function multiplyPercentAndRoundHalfUp0(amount, percent) {
+  const a = parseDecimal(amount);
+  const p = parseDecimal(percent);
+
+  if (a.raw < 0n || p.raw < 0n) {
+    throw new Error("Số tiền và tỷ lệ tạm giữ không được âm");
+  }
+
+  // amount * percent / 100.
+  const numerator = a.raw * p.raw;
+  const denominator =
+    100n * (10n ** BigInt(a.scale + p.scale));
+
+  const quotient = numerator / denominator;
+  const remainder = numerator % denominator;
+  const rounded = remainder * 2n >= denominator
+    ? quotient + 1n
+    : quotient;
+
+  return `${rounded.toString()}.00`;
+}
+
+function toCurrencyCents(value) {
+  const parsed = parseDecimal(value);
+  if (parsed.scale > 2) {
+    throw new Error(`Số tiền vượt quá 2 chữ số thập phân: "${value}"`);
+  }
+  return parsed.raw * (10n ** BigInt(2 - parsed.scale));
+}
+
+function fromCurrencyCents(value) {
+  const isNegative = value < 0n;
+  const abs = isNegative ? -value : value;
+  const result = `${(abs / 100n).toString()}.${(abs % 100n)
+    .toString()
+    .padStart(2, "0")}`;
+  return isNegative ? `-${result}` : result;
+}
+
+function subtractCurrency(left, right) {
+  return fromCurrencyCents(toCurrencyCents(left) - toCurrencyCents(right));
+}
+
+function compareCurrency(left, right) {
+  const a = toCurrencyCents(left);
+  const b = toCurrencyCents(right);
+  return a === b ? 0 : a > b ? 1 : -1;
+}
+
+function minCurrency(left, right) {
+  return compareCurrency(left, right) <= 0
+    ? formatTwoDecimals(left)
+    : formatTwoDecimals(right);
+}
+
 module.exports = {
   parseDecimal,
   multiplyAndRoundHalfUp0,
+  multiplyPercentAndRoundHalfUp0,
   addCurrency,
+  subtractCurrency,
+  compareCurrency,
+  minCurrency,
   formatTwoDecimals,
 };
