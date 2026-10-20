@@ -225,6 +225,8 @@ const paymentRequestRoutes = require("./routes/paymentRequestRoutes");
 app.use("/api/projects", paymentRequestRoutes);
 const actualCostRoutes = require("./routes/actualCostRoutes");
 app.use("/api/projects", actualCostRoutes);
+const budgetRoutes = require("./routes/budgetRoutes");
+app.use("/api/projects", budgetRoutes);
 
 // â”€â”€â”€ ERROR HANDLERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(notFoundHandler);

@@ -100,6 +100,34 @@ function errorHandler(err, req, res, next) {
         message: "Đơn vị tính không được rỗng hoặc chứa khoảng trắng thừa",
       });
     }
+
+    // T-118: Ánh xạ lỗi ràng buộc dự toán
+    if (err.constraint === "budget_items_leaf_only") {
+      return res.status(422).json({
+        message: err.message || "Chỉ được nhập dự toán cho hạng mục lá, không nhập trực tiếp ở hạng mục cha",
+      });
+    }
+    if (err.constraint === "budget_items_project_match") {
+      return res.status(422).json({
+        message: err.message || "Hạng mục không thuộc dự án của phiên bản dự toán",
+      });
+    }
+    if (err.constraint === "budget_items_amount_non_negative") {
+      return res.status(400).json({
+        message: "Số tiền dự toán không được âm",
+      });
+    }
+    if (err.constraint === "budget_versions_version_positive") {
+      return res.status(400).json({
+        message: "Số phiên bản dự toán phải lớn hơn hoặc bằng 1",
+      });
+    }
+  }
+
+  if (err.code === "23505" && err.constraint === "budget_versions_project_version_unique") {
+    return res.status(409).json({
+      message: "Phiên bản dự toán này đã tồn tại trong dự án",
+    });
   }
 
   if (err.code === "22003") {

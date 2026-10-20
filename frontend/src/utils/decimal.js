@@ -188,7 +188,8 @@ export function formatMoneyVND(str, { noDecimals = false } = {}) {
     return formatVND(str);
   }
 
-  const [intPartRaw, fracPartRaw = ""] = str.split(".");
+  const s = String(str);
+  const [intPartRaw, fracPartRaw = ""] = s.split(".");
   const intPart = intPartRaw === "" ? "0" : intPartRaw;
   const fracPart = (fracPartRaw + "00").slice(0, 2);
 

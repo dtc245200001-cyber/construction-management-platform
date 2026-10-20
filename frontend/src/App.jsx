@@ -49,6 +49,9 @@ import SystemStatusPage from './pages/SystemStatusPage';
 // S-43 / T-113: Đề nghị thanh toán
 import PaymentRequestsPage from './pages/PaymentRequestsPage';
 
+// S-46 / T-119: Dự toán chi phí
+import BudgetPage from './pages/BudgetPage';
+
 
 // S-33 / T-80 / T-82 Upload Queue
 import { UploadQueueProvider } from './context/UploadQueueContext';
@@ -250,6 +253,11 @@ function App() {
           <Route
             path="/contract-quantities"
             element={<ContractQuantityPage user={user} />}
+          />
+
+          <Route
+            path="/budget"
+            element={<BudgetPage user={user} />}
           />
 
           <Route

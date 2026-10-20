@@ -60,8 +60,9 @@ export const PERMISSIONS = {
   // S-39: Audit Portal cho Chủ đầu tư / Ban quản lý.
   "audit.view_project": [ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY],
 
-  // ── Kế toán ────────────────────────────────────────────────────────
-  "budget.view": [ROLES.KE_TOAN],
+  // ── Ngân sách & Kế toán (S-46 / T-119) ─────────────────────────────
+  "budget.view": [ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU, ROLES.KE_TOAN, ROLES.CHI_HUY_TRUONG],
+  "budget.manage": [ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU],
   "cost.record": [ROLES.KE_TOAN],
   "payment.reconcile": [ROLES.KE_TOAN],
   "payment.prepare_dossier": [ROLES.KE_TOAN],
