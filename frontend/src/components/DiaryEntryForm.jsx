@@ -77,9 +77,9 @@ export default function DiaryEntryForm({
   onClose,
   onSuccess,
 }) {
-  // Chỉ dùng vai trò TRONG DỰ ÁN (membership). Tài khoản Khách (user.role hệ
-  // thống) không được suy thành quyền ghi — kể cả khi chưa có membership.
-  const effectiveRole = projectRoleProp != null ? projectRoleProp : null;
+  // Ưu tiên vai trò trong dự án (membership). Nếu chưa truyền thì fallback về vai trò
+  // hệ thống của user (nếu là 'khach' thì tự động bị từ chối vì không nằm trong ALLOWED_ROLES).
+  const effectiveRole = projectRoleProp != null ? projectRoleProp : user?.role;
   const canWrite = ALLOWED_ROLES.includes(effectiveRole);
 
   const draftKey = `diary_draft_${projectId}`;
