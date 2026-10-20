@@ -37,6 +37,7 @@ const roleLabels = {
   chi_huy_truong: "Chỉ huy trưởng",
   doi_truong: "Đội trưởng thi công",
   ke_toan: "Kế toán",
+  khach: "Khách",
 };
 
 // Trạng thái hiển thị cho 1 lời mời: ưu tiên trạng thái đang poll (real-time,

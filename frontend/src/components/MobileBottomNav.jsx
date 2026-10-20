@@ -52,6 +52,10 @@ export default function MobileBottomNav({ role, onOpenMenu }) {
           { label: "Tiến độ", path: "/schedule", icon: TrendingUp },
           { label: "Nghiệm thu", path: "/acceptance", icon: CheckSquare },
         ];
+      case ROLES.KHACH:
+        return [
+          { label: "Dự án", path: "/projects", icon: Building2 },
+        ];
       default:
         return [
           { label: "Tổng quan", path: "/dashboard", icon: Home },

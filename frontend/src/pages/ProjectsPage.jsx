@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { defaultRouteForRole } from '../config/permissions';
+import { defaultRouteForRole, ROLE_LABELS } from '../config/permissions';
 import api from "../lib/api";
 import {
   Home,
@@ -175,7 +175,7 @@ export default function ProjectsPage({ user, setUser }) {
               </div>
               <div className="hidden sm:block text-left">
                 <p className="text-sm font-semibold text-white">{user?.name || 'Hương Lan'}</p>
-                <p className="text-xs text-white/60">{user?.role === 'ban_quan_ly' ? 'Ban quản lý' : user?.role === 'chi_huy_truong' ? 'Chỉ huy trưởng' : user?.role === 'doi_truong' ? 'Đội trưởng' : user?.role || 'Ban quản lý'}</p>
+                <p className="text-xs text-white/60">{ROLE_LABELS[user?.role] || "Khách"}</p>
               </div>
               <ChevronDown className="size-4 text-white/60" />
             </button>

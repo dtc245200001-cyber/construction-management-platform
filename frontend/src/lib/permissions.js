@@ -17,6 +17,7 @@ export const ROLES = {
   CHI_HUY_TRUONG: "chi_huy_truong",
   DOI_TRUONG: "doi_truong",
   KE_TOAN: "ke_toan",
+  KHACH: "khach",
 };
 
 const ALL_MEMBERS = Object.values(ROLES);

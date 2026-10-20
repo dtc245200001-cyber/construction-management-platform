@@ -70,9 +70,9 @@ function getWeekForOffset(weekOffset = 0) {
 export default function FieldPage({ user } = {}) {
   const currentProjectId = localStorage.getItem("currentProjectId");
 
-  // Vai trò TRONG DỰ ÁN HIỆN TẠI (membership) — fallback sang user?.role nếu có prop
+  // Vai trò TRONG DỰ ÁN HIỆN TẠI (membership) — chỉ dùng membership/cache,
+  // KHÔNG fallback sang user.role hệ thống (tài khoản mới là Khách).
   const [projectRole, setProjectRole] = useState(() => {
-    if (user?.role) return user.role;
     try {
       if (currentProjectId) {
         return localStorage.getItem(`project_role_${currentProjectId}`) || undefined;
@@ -84,11 +84,10 @@ export default function FieldPage({ user } = {}) {
   });
 
   const canViewAll = can(projectRole, "field.viewAll");
-  const canReport = can(projectRole, "field.report") || projectRole === ROLES.DOI_TRUONG || user?.role === "doi_truong";
+  const canReport = can(projectRole, "field.report") || projectRole === ROLES.DOI_TRUONG;
   const isTeamLeader =
     (isValidRole(projectRole) && !canViewAll) ||
-    projectRole === ROLES.DOI_TRUONG ||
-    user?.role === "doi_truong";
+    projectRole === ROLES.DOI_TRUONG;
 
   const [weekOffset, setWeekOffset] = useState(0);
   const [allTasksMode, setAllTasksMode] = useState(false);
@@ -140,16 +139,14 @@ export default function FieldPage({ user } = {}) {
       })
       .catch(() => {
         if (!cancelled) {
-          if (!user?.role) {
-            setProjectRole(null);
-          }
+          setProjectRole(null);
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [currentProjectId, user?.role]);
+  }, [currentProjectId]);
 
   // =========================================================
   // LOAD TASKS
@@ -160,7 +157,7 @@ export default function FieldPage({ user } = {}) {
       return;
     }
 
-    if (projectRole === undefined && !user?.role) {
+    if (projectRole === undefined) {
       return;
     }
 

@@ -116,9 +116,11 @@ export default function DiaryPage({ user }) {
   // site_log.close_daily / site_log.correct_locked qua ma trận dùng chung).
   // Quyền lấy từ config/permissions (system_admin được bypass bên trong can()).
   // Khi chưa biết vai trò (đang tải) thì không ẩn nút để tránh rớt test cũ và nhấp nháy.
-  const canLock = !projectRole ? Boolean(user) : Boolean(user) && can(projectRole, 'diary.lock');
-  const canUnlock = !projectRole ? Boolean(user) : Boolean(user) && can(projectRole, 'diary.unlock');
-  const canCreate = !projectRole ? Boolean(user) : Boolean(user) && can(projectRole, 'diary.create');
+  // Khi chưa biết vai trò trong dự án (đang tải hoặc không có membership như
+  // tài khoản Khách) thì KHÔNG cho tạo/khóa/mở — tránh đoán quyền sai.
+  const canLock = Boolean(projectRole) && Boolean(user) && can(projectRole, 'diary.lock');
+  const canUnlock = Boolean(projectRole) && Boolean(user) && can(projectRole, 'diary.unlock');
+  const canCreate = Boolean(projectRole) && Boolean(user) && can(projectRole, 'diary.create');
   const canResolveConflict = canCreate;
   const isPastDate = dateFilter && dateFilter < todayVN;
   useEffect(() => {

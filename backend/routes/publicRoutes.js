@@ -372,6 +372,15 @@ router.post(
             ]
           );
         }
+
+        // Đồng bộ vai trò hệ thống theo lời mời đầu tiên (chỉ khi đang là Khách)
+        if (invitation.project_role) {
+          await client.query(
+            `UPDATE users SET role_id = (SELECT id FROM roles WHERE name = $1)
+             WHERE id = $2 AND role_id = (SELECT id FROM roles WHERE name = 'khach')`,
+            [invitation.project_role, userId]
+          );
+        }
       }
 
       // Đánh dấu lời mời đã sử dụng

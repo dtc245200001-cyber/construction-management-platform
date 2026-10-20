@@ -36,13 +36,16 @@ export const ROLES = {
   DOI_TRUONG: "doi_truong",
   CHU_DAU_TU: "chu_dau_tu",
   KE_TOAN: "ke_toan",
+  KHACH: "khach",
 };
 
 // Membership backend trả cho quản trị hệ thống (middleware/projectAccess.js).
 export const SYSTEM_ADMIN_ROLE = "system_admin";
 
-const { BAN_QUAN_LY, CHI_HUY_TRUONG, KY_SU_GIAM_SAT, DOI_TRUONG, CHU_DAU_TU, KE_TOAN } = ROLES;
-const ALL_ROLES = Object.values(ROLES);
+const { BAN_QUAN_LY, CHI_HUY_TRUONG, KY_SU_GIAM_SAT, DOI_TRUONG, CHU_DAU_TU, KE_TOAN, KHACH } = ROLES;
+// ALL_ROLES: các vai trò DỰ ÁN (dùng cho menu/quyền trong dự án). Khách cố ý
+// không nằm trong danh sách này: chưa thuộc dự án nào nên không thấy menu dự án.
+const ALL_ROLES = Object.values(ROLES).filter((r) => r !== KHACH);
 
 export const ROLE_LABELS = {
   [BAN_QUAN_LY]: "Ban quản lý",
@@ -51,6 +54,7 @@ export const ROLE_LABELS = {
   [DOI_TRUONG]: "Đội trưởng",
   [CHU_DAU_TU]: "Chủ đầu tư",
   [KE_TOAN]: "Kế toán",
+  [KHACH]: "Khách",
   [SYSTEM_ADMIN_ROLE]: "Quản trị hệ thống",
 };
 

@@ -167,6 +167,7 @@ const PERMISSIONS = {
 };
 
 // Tên tiếng Việt hiển thị trong message 403.
+// "khach" cố ý không có mặt trong PERMISSIONS/ALL_MEMBERS: default-deny.
 const ROLE_LABELS = {
   [ROLES.CHU_DAU_TU]: "Chủ đầu tư",
   [ROLES.BAN_QUAN_LY]: "Ban quản lý",
@@ -174,6 +175,7 @@ const ROLE_LABELS = {
   [ROLES.CHI_HUY_TRUONG]: "Chỉ huy trưởng",
   [ROLES.DOI_TRUONG]: "Đội trưởng",
   [ROLES.KE_TOAN]: "Kế toán",
+  [ROLES.KHACH]: "Khách",
   system_admin: "Quản trị hệ thống",
 };
 
