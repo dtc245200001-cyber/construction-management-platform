@@ -202,7 +202,7 @@ export const MENU_CONFIG = [
     path: "/site-geofence",
     icon: MapPin,
     group: "manage",
-    roles: ALL_ROLES,
+    roles: [BAN_QUAN_LY, CHU_DAU_TU],
   },
   {
     key: "system-status",
