@@ -118,9 +118,9 @@ const PERMISSIONS = {
   // (Audit Portal — màn hình tổng quan tra cứu "ai làm gì, khi nào").
   "audit.view_project": [CHU_DAU_TU, BAN_QUAN_LY],
 
-  // ── Kế toán ────────────────────────────────────────────────────────
-  // TREO toàn bộ (module ngân sách / chi phí / thanh toán chưa có route).
-  "budget.view": [KE_TOAN],
+  // ── Ngân sách & Kế toán (S-46 / T-119) ─────────────────────────────
+  "budget.view": [BAN_QUAN_LY, CHU_DAU_TU, KE_TOAN, CHI_HUY_TRUONG],
+  "budget.manage": [BAN_QUAN_LY, CHU_DAU_TU],
   "cost.record": [KE_TOAN],
   "payment.reconcile": [KE_TOAN],
   "payment.prepare_dossier": [KE_TOAN],

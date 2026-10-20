@@ -241,6 +241,8 @@ const actualCostRoutes = require("./routes/actualCostRoutes");
 app.use("/api/projects", actualCostRoutes);
 const progressRoutes = require("./routes/progressRoutes");
 app.use("/api/projects", progressRoutes);
+const budgetRoutes = require("./routes/budgetRoutes");
+app.use("/api/projects", budgetRoutes);
 
 // â”€â”€â”€ ERROR HANDLERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(notFoundHandler);
