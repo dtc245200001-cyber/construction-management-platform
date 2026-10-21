@@ -187,7 +187,8 @@ export default function SiteGeofencePage() {
       if (Array.isArray(responseErrors) && responseErrors.length > 0) {
         setErrors(responseErrors);
       } else {
-        const msg = err?.response?.data?.message || "Lỗi khi lưu phạm vi công trường";
+        const msg = err?.response?.data?.error || err?.response?.data?.message || err?.message || "Lỗi khi lưu phạm vi công trường";
+        setErrors([msg]);
         toast.error(msg);
       }
     } finally {
