@@ -64,6 +64,8 @@ export const PERMISSIONS = {
   // ── Ngân sách & Kế toán (S-46 / T-119) ─────────────────────────────
   "budget.view": [ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU, ROLES.KE_TOAN, ROLES.CHI_HUY_TRUONG],
   "budget.manage": [ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU],
+  "budget.verify_overrun": [ROLES.KE_TOAN],
+  "budget.approve_overrun": [ROLES.CHU_DAU_TU],
   "cost.record": [ROLES.KE_TOAN],
   "payment.reconcile": [ROLES.KE_TOAN],
   "payment.prepare_dossier": [ROLES.KE_TOAN],

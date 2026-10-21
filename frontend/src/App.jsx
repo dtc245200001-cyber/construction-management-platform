@@ -68,7 +68,11 @@ function App() {
       return null;
     }
   });
-  const [checkingSession, setCheckingSession] = useState(true);
+  const [checkingSession, setCheckingSession] = useState(
+    () =>
+      typeof window === 'undefined' ||
+      window.location.pathname !== '/budget-preview'
+  );
 
   useEffect(() => {
     const checkSession = async () => {
@@ -138,6 +142,7 @@ function App() {
 
         {/* ================= HỆ THỐNG / HEALTH CHECK (T-128 & T-129) ================= */}
         <Route path="/system-status" element={<SystemStatusPage />} />
+        <Route path="/budget-preview" element={<BudgetPage demoMode={true} />} />
 
         <Route
           path="/invitations/:token/accept"

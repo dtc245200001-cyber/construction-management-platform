@@ -268,7 +268,36 @@ export function formatQuantityVN(str) {
  */
 export function formatInputDisplayVN(str) {
   if (str === null || str === undefined) return "";
-  return str.replace(".", ",");
+  return String(str).replace(".", ",");
+}
+
+/**
+ * Chuẩn hoá chuỗi số định dạng Việt Nam (có dấu chấm phân cách hàng nghìn, ví dụ "150.000.000" hoặc "150.000,50")
+ * về chuỗi số thuần để truyền vào normalizeDecimalInput.
+ *
+ * @param {string|number|null} input
+ * @returns {string}
+ */
+export function parseVietnameseNumber(input) {
+  if (input === null || input === undefined) return "";
+  const raw = String(input).trim();
+  if (raw === "") return "";
+
+  // Nếu có dấu phẩy thập phân (ví dụ "150.000.000,50") -> bỏ toàn bộ dấu chấm hàng nghìn, giữ dấu phẩy
+  if (raw.includes(",")) {
+    return raw.replace(/\./g, "");
+  }
+
+  // Nếu có nhiều dấu chấm hoặc dấu chấm theo cụm 3 chữ số hàng nghìn (ví dụ "150.000.000" hoặc "50.000")
+  const dotParts = raw.split(".");
+  if (
+    dotParts.length > 2 ||
+    (dotParts.length === 2 && dotParts[1].length === 3)
+  ) {
+    return raw.replace(/\./g, "");
+  }
+
+  return raw;
 }
 
 /**
