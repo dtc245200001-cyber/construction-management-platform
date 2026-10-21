@@ -3,11 +3,30 @@
 
 const db = require("../config/db");
 
-const ALERT_THRESHOLD = "0.80";
+const DEFAULT_ALERT_THRESHOLD = 0.8;
 
-async function getBudgetSummary(projectId) {
-    const { rows } = await db.query(
-        `
+/**
+ * T-122 & T-123 (S-48): Tổng hợp dự toán hiện hành và chi phí thực tế theo cây WBS.
+ * - Cộng dồn dự toán và thực chi từ lá lên cha.
+ * - Tính tỷ lệ sử dụng dự toán (utilization_percent = total_actual_cost / total_budget * 100).
+ * - Cảnh báo vượt ngưỡng: khi chi phí > 80% (hoặc ngưỡng cấu hình) và nghiệm thu < 80%.
+ * - Hiển thị trạng thái "đã hết cảnh báo" (RESOLVED) khi chi phí > 80% nhưng khối lượng nghiệm thu đã đạt >= 80%.
+ * - Tránh chia cho 0 khi chưa có dự toán.
+ */
+async function getBudgetSummary(projectId, options = {}) {
+  let threshold = DEFAULT_ALERT_THRESHOLD;
+  if (options && options.threshold !== undefined && options.threshold !== null) {
+    const parsed = parseFloat(options.threshold);
+    if (!Number.isNaN(parsed) && parsed > 0 && parsed <= 10) {
+      threshold = parsed > 1 ? parsed / 100 : parsed;
+    }
+  }
+
+  const alertThresholdDecimal = threshold.toString();
+  const alertThresholdPercent = Math.round(threshold * 100);
+
+  const { rows } = await db.query(
+    `
     WITH RECURSIVE
     latest_version AS (
       SELECT id, version_number
@@ -103,8 +122,6 @@ async function getBudgetSummary(projectId) {
         ON ib.id = tp.descendant_id
       GROUP BY tp.ancestor_id
     ),
-
-
     leaf_alerts AS (
       SELECT
         ib.id,
@@ -113,19 +130,32 @@ async function getBudgetSummary(projectId) {
           AND ib.budget_amount IS NOT NULL
           AND ib.budget_amount > 0
           AND ib.direct_actual_cost >
-              ib.budget_amount * ${ALERT_THRESHOLD}
+              ib.budget_amount * $2
           AND ib.contract_quantity IS NOT NULL
           AND ib.contract_quantity > 0
           AND COALESCE(ib.approved_quantity, 0) <
-              ib.contract_quantity * ${ALERT_THRESHOLD}
-        ) AS has_alert
+              ib.contract_quantity * $2
+        ) AS has_alert,
+        (
+          ib.has_budget_version
+          AND ib.budget_amount IS NOT NULL
+          AND ib.budget_amount > 0
+          AND ib.direct_actual_cost >
+              ib.budget_amount * $2
+          AND ib.contract_quantity IS NOT NULL
+          AND ib.contract_quantity > 0
+          AND COALESCE(ib.approved_quantity, 0) >=
+              ib.contract_quantity * $2
+        ) AS is_resolved
       FROM item_base ib
       WHERE ib.is_leaf
     ),
     alert_rollups AS (
       SELECT
         tp.ancestor_id AS id,
-        BOOL_OR(COALESCE(la.has_alert, false)) AS has_alert
+        BOOL_OR(COALESCE(la.has_alert, false)) AS has_alert,
+        COUNT(la.id) FILTER (WHERE la.has_alert)::int AS alert_count,
+        BOOL_OR(COALESCE(la.is_resolved, false)) AS has_resolved_descendant
       FROM tree_paths tp
       JOIN item_base ib
         ON ib.id = tp.descendant_id
@@ -139,9 +169,19 @@ async function getBudgetSummary(projectId) {
       ib.code,
       ib.name,
       ib.is_leaf,
-      ib.contract_quantity,
+      ib.contract_quantity::text AS contract_quantity,
       ib.approved_quantity::text AS approved_quantity,
-        r.has_budget,
+      CASE
+        WHEN ib.is_leaf AND ib.contract_quantity > 0
+        THEN ROUND(
+          COALESCE(ib.approved_quantity, 0) / ib.contract_quantity * 100,
+          2
+        )::text
+        ELSE NULL
+      END AS acceptance_percent,
+      ib.budget_amount::text AS budget_amount,
+      ib.direct_actual_cost::text AS direct_actual_cost,
+      r.has_budget,
       r.total_budget::text AS total_budget,
       r.total_actual_cost::text AS total_actual_cost,
       CASE
@@ -153,85 +193,56 @@ async function getBudgetSummary(projectId) {
         ELSE NULL
       END AS utilization_percent,
       COALESCE(ar.has_alert, false) AS has_alert,
+      COALESCE(ar.alert_count, 0) AS alert_count,
       CASE
         WHEN COALESCE(ar.has_alert, false)
         THEN 'ACTUAL_COST_OVER_80_AND_ACCEPTANCE_BELOW_80'
         ELSE NULL
-      END AS alert_code
+      END AS alert_code,
+      CASE
+        WHEN COALESCE(ar.has_alert, false) THEN 'WARNING'
+        WHEN ib.is_leaf AND COALESCE(la.is_resolved, false) THEN 'RESOLVED'
+        WHEN NOT ib.is_leaf AND COALESCE(ar.has_resolved_descendant, false) AND NOT COALESCE(ar.has_alert, false) THEN 'RESOLVED'
+        WHEN r.has_budget THEN 'NORMAL'
+        ELSE 'NO_BUDGET'
+      END AS alert_status,
+      CASE
+        WHEN COALESCE(ar.has_alert, false)
+        THEN 'Chi phí thực tế vượt ngưỡng dự toán trong khi khối lượng nghiệm thu chưa đạt tương ứng'
+        WHEN (ib.is_leaf AND COALESCE(la.is_resolved, false)) OR (NOT ib.is_leaf AND COALESCE(ar.has_resolved_descendant, false) AND NOT COALESCE(ar.has_alert, false))
+        THEN 'Đã hết cảnh báo (Khối lượng nghiệm thu đạt tiến độ tương ứng chi phí)'
+        WHEN r.has_budget
+        THEN 'Trong ngưỡng an toàn'
+        ELSE 'Chưa lập dự toán'
+      END AS alert_message
     FROM item_base ib
     JOIN rollups r ON r.id = ib.id
     LEFT JOIN alert_rollups ar ON ar.id = ib.id
+    LEFT JOIN leaf_alerts la ON la.id = ib.id
     ORDER BY ib.id
     `,
-        [projectId]
-    );
-    const versionResult = await db.query(
-        `
+    [projectId, alertThresholdDecimal]
+  );
+
+  const versionResult = await db.query(
+    `
     SELECT version_number
     FROM budget_versions
     WHERE project_id = $1
     ORDER BY version_number DESC
     LIMIT 1
     `,
-        [projectId]
-    );
+    [projectId]
+  );
 
-
-    // Khi dự án chưa có phiên bản dự toán, CTE latest_version rỗng.
-    // Trả về dữ liệu WBS nhưng không tạo cảnh báo giả.
-    if (versionResult.rows.length === 0) {
-        const result = await db.query(
-            `
-      SELECT
-        wi.id,
-        wi.parent_id,
-        wi.code,
-        wi.name,
-        NOT EXISTS (
-          SELECT 1 FROM work_items child
-          WHERE child.parent_id = wi.id
-        ) AS is_leaf,
-        wi.quantity::numeric AS contract_quantity,
-        NULL::text AS approved_quantity,
-        false AS has_budget,
-        '0.00' AS total_budget,
-        COALESCE((
-          SELECT SUM(ac.amount)
-          FROM actual_costs ac
-          WHERE ac.project_id = $1
-            AND ac.work_item_id = wi.id
-        ), 0)::text AS direct_actual_cost
-      FROM work_items wi
-      WHERE wi.project_id = $1
-      ORDER BY wi.id
-      `,
-            [projectId]
-        );
-
-        return {
-            project_id: projectId,
-            budget_version: null,
-            alert_threshold_percent: 80,
-            items: result.rows.map((item) => ({
-                ...item,
-                total_actual_cost: item.direct_actual_cost,
-                utilization_percent: null,
-                has_alert: false,
-                alert_code: null,
-            })),
-        };
-    }
-
-
-
-    return {
-        project_id: projectId,
-        budget_version: versionResult.rows[0]?.version_number ?? null,
-        alert_threshold_percent: 80,
-        items: rows,
-    };
+  return {
+    project_id: projectId,
+    budget_version: versionResult.rows[0]?.version_number ?? null,
+    alert_threshold_percent: alertThresholdPercent,
+    items: rows,
+  };
 }
 
 module.exports = {
-    getBudgetSummary,
+  getBudgetSummary,
 };
