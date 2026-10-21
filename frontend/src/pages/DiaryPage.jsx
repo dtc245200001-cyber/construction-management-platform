@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import api from '../lib/api';
 import { format, parseISO } from 'date-fns';
+import PageHeroBanner from '../components/PageHeroBanner';
 
 import { FileText, Search, Plus, Filter, X, Clock, User, Hash, Lock, Unlock, History, AlertCircle, CloudOff, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { can } from '../config/permissions';
@@ -121,7 +122,8 @@ export default function DiaryPage({ user }) {
   const canLock = !isKhach && (!projectRole ? Boolean(user) : can(projectRole, 'diary.lock'));
   const canUnlock = !isKhach && (!projectRole ? Boolean(user) : can(projectRole, 'diary.unlock'));
   const canCreate = !isKhach && (!projectRole ? Boolean(user) : can(projectRole, 'diary.create'));
-  const canResolveConflict = canCreate;
+  // BL-2 (S-32): Xử lý xung đột — Kỹ sư giám sát chọn bản giữ, Ban quản lý chỉ xem
+  const canResolveConflict = !isKhach && (!projectRole ? Boolean(user) : can(projectRole, 'diary.resolve_conflict'));
   const isPastDate = dateFilter && dateFilter < todayVN;
   useEffect(() => {
     if (location.state?.openForm) {
@@ -594,62 +596,59 @@ export default function DiaryPage({ user }) {
     <div className="flex-1 min-h-0 bg-[#F3F6FB] flex flex-col relative">
       <div className="flex-1 min-h-0 p-4 sm:p-6 max-w-[1200px] mx-auto w-full flex flex-col gap-6">
         
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
-          <div>
-            <h1 className="text-[20px] sm:text-[24px] font-bold text-[#0F1B3D] flex items-center gap-2">
-              <div className="size-9 sm:size-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center shrink-0">
-                <FileText className="size-5 sm:size-6" />
-              </div>
-              <span>Nhật ký thi công</span>
-            </h1>
-            <p className="text-gray-500 mt-1 text-xs sm:text-sm">Ghi nhận và theo dõi các hoạt động trên công trường</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            {dateFilter && (
-              lockInfo?.is_locked ? (
-                canUnlock && (
-                  <button 
-                    onClick={() => setShowUnlockModal(true)}
-                    disabled={actionLoading}
-                    className="min-h-[44px] flex-1 sm:flex-initial px-4 bg-orange-100 text-orange-700 hover:bg-orange-200 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 touch-target"
-                  >
-                    <Unlock className="size-4 sm:size-5" /> Mở khóa sổ
-                  </button>
-                )
-              ) : (
-                canLock && isPastDate && (
-                  <button 
-                    onClick={handleLock}
-                    disabled={actionLoading}
-                    className="min-h-[44px] flex-1 sm:flex-initial px-4 bg-gray-800 text-white hover:bg-gray-900 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 touch-target"
-                  >
-                    <Lock className="size-4 sm:size-5" /> Chốt sổ
-                  </button>
-                )
+        <PageHeroBanner
+          icon={<FileText className="size-6 sm:size-8" />}
+          title="Nhật ký thi công"
+          subtitle="Ghi nhận và theo dõi các hoạt động trên công trường"
+        >
+          {dateFilter && (
+            lockInfo?.is_locked ? (
+              canUnlock && (
+                <button 
+                  onClick={() => setShowUnlockModal(true)}
+                  disabled={actionLoading}
+                  className="min-h-[44px] flex-1 sm:flex-initial px-4 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 touch-target shadow-md cursor-pointer"
+                >
+                  <Unlock className="size-4 sm:size-5" /> Mở khóa sổ
+                </button>
               )
-            )}
-            
-            {dateFilter && (
-              <button 
-                onClick={() => { fetchLockHistory(); setShowHistory(true); }}
-                className="min-h-[44px] flex-1 sm:flex-initial px-3.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors shadow-xs touch-target text-sm"
-              >
-                <History className="size-4 sm:size-5 text-gray-500" /> Lịch sử chốt sổ
-              </button>
-            )}
+            ) : (
+              canLock && isPastDate && (
+                <button 
+                  onClick={handleLock}
+                  disabled={actionLoading}
+                  className="min-h-[44px] flex-1 sm:flex-initial px-4 bg-white/20 hover:bg-white/30 text-white border border-white/30 backdrop-blur-xs rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 touch-target cursor-pointer"
+                >
+                  <Lock className="size-4 sm:size-5" /> Chốt sổ
+                </button>
+              )
+            )
+          )}
+          
+          {dateFilter && (
+            <button 
+              onClick={() => { fetchLockHistory(); setShowHistory(true); }}
+              className="min-h-[44px] flex-1 sm:flex-initial px-3.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 backdrop-blur-xs rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors shadow-xs touch-target text-sm cursor-pointer"
+            >
+              <History className="size-4 sm:size-5 text-white/80" /> Lịch sử chốt sổ
+            </button>
+          )}
 
-            {canCreate && (
+          {canCreate && (
             <button 
               onClick={() => setShowForm(true)}
               disabled={lockInfo?.is_locked}
-              className={`min-h-[44px] w-full sm:w-auto px-5 text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm touch-target text-sm ${lockInfo?.is_locked ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+              className={`min-h-[44px] w-full sm:w-auto px-5 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-md touch-target text-sm cursor-pointer ${
+                lockInfo?.is_locked
+                  ? 'bg-white/20 text-white/50 border border-white/20 cursor-not-allowed'
+                  : 'bg-white hover:bg-white/90 text-[#1F63E0]'
+              }`}
               title={lockInfo?.is_locked ? 'Đã chốt sổ, không thể ghi thêm' : ''}
             >
               <Plus className="size-5" /> Ghi nhật ký
             </button>
-            )}
-          </div>
-        </div>
+          )}
+        </PageHeroBanner>
 
         {dateFilter && lockInfo?.is_locked && (
           <div className="bg-amber-50 border-2 border-amber-300 text-amber-900 px-4 py-3 rounded-2xl flex items-start sm:items-center gap-3 shrink-0 shadow-xs">

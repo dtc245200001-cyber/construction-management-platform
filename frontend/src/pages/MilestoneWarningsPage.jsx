@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useOutletContext } from "react-router-dom";
+import PageHeroBanner from "../components/PageHeroBanner";
 import api from "../lib/api";
 import { Bell, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, History, Flag } from "lucide-react";
 import { format, parseISO } from "date-fns";
@@ -70,17 +71,15 @@ export default function MilestoneWarningsPage() {
   return (
     <div className="flex-1 min-h-0 bg-[#F3F6FB] text-[#0F1B3D] flex flex-col overflow-y-auto">
       <div className="flex-1 min-h-0 flex flex-col p-3.5 sm:p-6 pb-24 lg:pb-6 gap-4 sm:gap-6 max-w-[1200px] mx-auto w-full">
-        
-        <div className="flex items-center justify-between shrink-0">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
-              <Bell className="size-5 sm:size-6 text-red-600 shrink-0" /> Cảnh báo tiến độ
-            </h1>
-            <p className="text-[#64748B] mt-1 text-xs sm:text-sm">
-              Theo dõi và xử lý các hạng mục vượt mốc bàn giao bắt buộc.
-            </p>
-          </div>
-        </div>
+        <PageHeroBanner
+          icon={<Bell className="size-6 sm:size-8" />}
+          title="Cảnh báo tiến độ"
+          subtitle={
+            currentProject
+              ? `Dự án: ${currentProject.name} · Theo dõi và xử lý các hạng mục vượt mốc bàn giao bắt buộc`
+              : "Theo dõi và xử lý các hạng mục vượt mốc bàn giao bắt buộc."
+          }
+        />
 
         {/* Tabs */}
         <div className="flex items-center gap-4 border-b border-[#E6EBF3] shrink-0 overflow-x-auto no-scrollbar">

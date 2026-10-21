@@ -654,6 +654,46 @@ router.get("/me", (req, res) => {
   });
 });
 
+/**
+ * @swagger
+ * /api/auth/me/permissions:
+ *   get:
+ *     summary: Lấy quyền toàn cục và trạng thái admin của user hiện tại
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Trả về trạng thái quyền
+ *       401:
+ *         description: Chưa đăng nhập
+ */
+const { checkUserProjectCreatePermission } = require("../middleware/projectCreationGuard");
+
+router.get(
+  "/me/permissions",
+  asyncHandler(async (req, res) => {
+    if (!req.session || !req.session.user) {
+      return res.status(401).json({
+        message: "Chưa đăng nhập",
+      });
+    }
+
+    const userId = req.session.user.id;
+    const isSystemAdmin = Boolean(req.session.user.is_system_admin);
+    const canCreateProject = await checkUserProjectCreatePermission(userId, isSystemAdmin);
+
+    return res.status(200).json({
+      user_id: userId,
+      is_system_admin: isSystemAdmin,
+      global_role: req.session.user.role || "khach",
+      permissions: {
+        "project.create": canCreateProject,
+      },
+      can_create_project: canCreateProject,
+    });
+  })
+);
+
+
 // ============================================================
 // ĐĂNG XUẤT
 // ============================================================

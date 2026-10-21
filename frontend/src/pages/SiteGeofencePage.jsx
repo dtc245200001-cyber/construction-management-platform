@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import PageHeroBanner from "../components/PageHeroBanner";
 import api from "../lib/api";
 import { usePermission } from "../hooks/usePermission";
 import {
@@ -227,30 +228,22 @@ export default function SiteGeofencePage() {
   return (
     <div className="space-y-6 p-4 md:p-6 max-w-5xl mx-auto">
       {/* ── HEADER ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b pb-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <MapPin className="h-7 w-7 text-blue-600" />
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              Phạm vi công trường (Geofence)
-            </h1>
-          </div>
-          <p className="text-sm text-slate-500 mt-1">
-            Thiết lập toạ độ tâm và bán kính công trường để phát hiện ảnh hiện trường chụp ngoài phạm vi quy định.
-          </p>
-        </div>
-
+      <PageHeroBanner
+        icon={<MapPin className="size-6 sm:size-8" />}
+        title="Phạm vi công trường (Geofence)"
+        subtitle="Thiết lập toạ độ tâm và bán kính công trường để phát hiện ảnh hiện trường chụp ngoài phạm vi quy định."
+      >
         <Button
           variant="outline"
           size="sm"
           onClick={fetchConfig}
           disabled={loading || submitting}
-          className="flex items-center gap-1.5 self-start sm:self-auto"
+          className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-xs transition-colors"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           Tải lại
         </Button>
-      </div>
+      </PageHeroBanner>
 
       {!canManage && (
         <div

@@ -69,9 +69,13 @@ function errorHandler(err, req, res, next) {
       acceptanceMessage.includes("Contract quantity cannot be lower than approved quantity");
 
     if (isAcceptanceValidation) {
+      let friendlyMessage = acceptanceMessage;
+      if (acceptanceMessage.includes("Contract quantity cannot be lower than approved quantity")) {
+        friendlyMessage = "Không thể xóa hoặc giảm khối lượng hợp đồng vì hạng mục này đã có trong biên bản nghiệm thu.";
+      }
       return res.status(422).json({
         code: "ACCEPTANCE_CONTRACT_VALIDATION_FAILED",
-        message: acceptanceMessage,
+        message: friendlyMessage,
       });
     }
 

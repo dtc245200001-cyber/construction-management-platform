@@ -694,7 +694,7 @@ router.post(
   "/:projectId/diary-conflicts/:conflictId/resolve",
   requireAuth,
   checkProjectAccess,
-  requirePermission("site_log.create"),
+  requirePermission("diary.resolve_conflict"),
   asyncHandler(async (req, res) => {
     const projectId = parsePositiveInt(req.params.projectId);
     const conflictId = parsePositiveInt(req.params.conflictId);

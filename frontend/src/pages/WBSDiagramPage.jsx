@@ -11,10 +11,11 @@ import {
   useNodesState,
   useEdgesState,
 } from "reactflow";
-import { ArrowLeft, ChevronRight, ChevronDown, FolderOpen, FileText, Maximize2 } from "lucide-react";
+import { ArrowLeft, ChevronRight, ChevronDown, FolderOpen, FileText, Maximize2, Network } from "lucide-react";
 import "reactflow/dist/style.css";
 
 import api from "../lib/api";
+import PageHeroBanner from "../components/PageHeroBanner";
 import TaskForm from "../components/TaskForm";
 import CategoryModal, { saveCategory } from "../components/CategoryModal";
 import { buildTree, rollupCategoryDates, flattenTasks } from "../utils/buildTree";
@@ -264,52 +265,55 @@ function WBSDiagramInner() {
 
   return (
     <div className="flex h-[calc(100vh-120px)] min-h-[500px] flex-col p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
+      {/* Hero Banner màu xanh đồng bộ */}
+      <PageHeroBanner
+        icon={<Network className="size-6 sm:size-8" />}
+        title="Sơ đồ WBS"
+        subtitle={
+          currentProject
+            ? `Dự án: ${currentProject.name} · Bấm mũi tên để thu gọn/mở rộng nhánh · Bấm vào node để sửa`
+            : "Bấm mũi tên để thu gọn/mở rộng nhánh · Bấm vào node để sửa"
+        }
+        className="mb-3 shrink-0"
+      >
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => navigate("/wbs")}
-            className="flex items-center gap-1 text-[13px] font-medium text-[#1F63E0] hover:underline cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 backdrop-blur-xs text-xs font-semibold transition-all cursor-pointer shadow-xs"
           >
-            <ArrowLeft className="size-4" /> Quay lại bảng WBS
+            <ArrowLeft className="size-3.5" />
+            <span>Quay lại bảng WBS</span>
           </button>
-          <h1 className="text-[18px] font-bold text-[#0F1B3D]">Sơ đồ WBS</h1>
-          <span className="text-[12px] text-[#64748B] hidden sm:inline">
-            Bấm mũi tên để thu gọn/mở rộng nhánh · Bấm vào node để sửa
-          </span>
-        </div>
-
-        {/* Cụm công cụ điều khiển sơ đồ trực quan */}
-        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => rfInstance?.fitView?.({ padding: 0.15, duration: 300 })}
             title="Thu phóng vừa màn hình (Fit View)"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-[12px] font-semibold text-[#1E293B] hover:bg-slate-50 hover:border-[#94A3B8] shadow-2xs transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 backdrop-blur-xs text-xs font-semibold transition-all cursor-pointer shadow-xs"
           >
-            <Maximize2 className="size-3.5 text-[#2563EB]" />
-            Vừa màn hình
+            <Maximize2 className="size-3.5 text-white" />
+            <span>Vừa màn hình</span>
           </button>
           <button
             type="button"
             onClick={expandAll}
             title="Mở rộng tất cả các nhánh"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-[12px] font-medium text-[#1E293B] hover:bg-slate-50 hover:border-[#94A3B8] shadow-2xs transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 backdrop-blur-xs text-xs font-medium transition-all cursor-pointer shadow-xs"
           >
-            <FolderOpen className="size-3.5 text-[#2563EB]" />
-            Mở rộng tất cả
+            <FolderOpen className="size-3.5 text-white" />
+            <span>Mở rộng tất cả</span>
           </button>
           <button
             type="button"
             onClick={collapseAll}
             title="Thu gọn tất cả về hạng mục gốc"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-[12px] font-medium text-[#1E293B] hover:bg-slate-50 hover:border-[#94A3B8] shadow-2xs transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 backdrop-blur-xs text-xs font-medium transition-all cursor-pointer shadow-xs"
           >
-            <ChevronRight className="size-3.5 text-[#64748B]" />
-            Thu gọn tất cả
+            <ChevronRight className="size-3.5 text-white" />
+            <span>Thu gọn</span>
           </button>
         </div>
-      </div>
+      </PageHeroBanner>
 
       <div className="min-h-0 flex-1 rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] shadow-2xs">
         {loading ? (
@@ -363,7 +367,10 @@ function WBSDiagramInner() {
       />
 
       {showTaskForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-xs">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/60 p-3 sm:p-4 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={closeTaskForm}
+        >
           <TaskForm
             projectId={projectId}
             workItem={null}

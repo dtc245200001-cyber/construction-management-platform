@@ -5,6 +5,8 @@ const pool = require("../config/db");
 const logger = require("../utils/logger");
 const asyncHandler = require("../utils/asyncHandler");
 const { PERMISSIONS, ROLE_LABELS, can: canPermission } = require("../utils/permissions");
+const { financialSerializerMiddleware } = require("../utils/financialSerializer");
+const { logAudit, getClientIp } = require("../utils/auditLogger");
 
 // Middleware xác thực thành viên thuộc dự án
 const checkProjectAccess = asyncHandler(async (req, res, next) => {
@@ -29,17 +31,29 @@ const checkProjectAccess = asyncHandler(async (req, res, next) => {
       return next();
     }
 
+    const clientIp = getClientIp(req);
+
     logger.warn({
       userId,
       projectId,
       method: req.method,
       path: req.path,
       reason: "NOT_MEMBER",
-      ip: req.ip,
+      ip: clientIp,
     }, "Truy cập bị từ chối: user không phải thành viên dự án");
+
+    logAudit({
+      userId,
+      action: "ACCESS_DENIED_NOT_MEMBER",
+      entity: "projects",
+      projectId: parsedProjectId,
+      details: { method: req.method, path: req.originalUrl || req.path, reason: "NOT_MEMBER" },
+      ipAddress: clientIp,
+    });
 
     return res.status(403).json({ error: "Bạn không có quyền truy cập dự án này" });
   }
+
 
   req.projectRole = String(result.rows[0].role);
   return next();
@@ -53,6 +67,8 @@ const allow = (roles = []) => {
       return next();
     }
 
+    const clientIp = getClientIp(req);
+
     if (!roles || roles.length === 0) {
       logger.warn({
         userId: req.user && req.user.id,
@@ -60,8 +76,17 @@ const allow = (roles = []) => {
         method: req.method,
         path: req.path,
         reason: "ROLE_NOT_ALLOWED",
-        ip: req.ip,
+        ip: clientIp,
       }, "Truy cập bị từ chối: route chưa khai báo role (default deny)");
+
+      logAudit({
+        userId: req.user && req.user.id,
+        action: "ACCESS_DENIED_ROLE_NOT_ALLOWED",
+        entity: "projects",
+        projectId: req.params.projectId,
+        details: { method: req.method, path: req.originalUrl || req.path, reason: "ROLE_NOT_CONFIGURED" },
+        ipAddress: clientIp,
+      });
 
       return res.status(403).json({ error: "Không có quyền thực hiện hành động này" });
     }
@@ -78,8 +103,17 @@ const allow = (roles = []) => {
         method: req.method,
         path: req.path,
         reason: "ROLE_NOT_ALLOWED",
-        ip: req.ip,
+        ip: clientIp,
       }, "Truy cập bị từ chối: vai trò không đủ quyền");
+
+      logAudit({
+        userId: req.user && req.user.id,
+        action: "ACCESS_DENIED_ROLE_NOT_ALLOWED",
+        entity: "projects",
+        projectId: req.params.projectId,
+        details: { method: req.method, path: req.originalUrl || req.path, currentRole, allowedRoles: normalizedAllowedRoles },
+        ipAddress: clientIp,
+      });
 
       return res.status(403).json({ error: "Vai trò của bạn không đủ quyền hạn" });
     }
@@ -112,6 +146,7 @@ const requirePermission = (permissionKey) => {
     }
 
     const roleLabel = ROLE_LABELS[currentRole] || currentRole || "chưa xác định";
+    const clientIp = getClientIp(req);
 
     logger.warn({
       userId: req.user && req.user.id,
@@ -122,8 +157,17 @@ const requirePermission = (permissionKey) => {
       method: req.method,
       path: req.path,
       reason: "PERMISSION_DENIED",
-      ip: req.ip,
+      ip: clientIp,
     }, "Truy cập bị từ chối: vai trò không đủ quyền");
+
+    logAudit({
+      userId: req.user && req.user.id,
+      action: "ACCESS_DENIED_PERMISSION_REQUIRED",
+      entity: "projects",
+      projectId: req.params.projectId,
+      details: { method: req.method, path: req.originalUrl || req.path, currentRole, permissionKey },
+      ipAddress: clientIp,
+    });
 
     return res.status(403).json({
       error: `Vai trò ${roleLabel} không có quyền ${permissionKey}`,
@@ -138,6 +182,8 @@ const requirePermission = (permissionKey) => {
 // Trình trợ giúp tạo Router dự án mặc định từ chối
 const createProjectRouter = () => {
   const router = express.Router({ mergeParams: true });
+  // OV-1: Tầng Serializer bảo vệ - tự động loại bỏ các trường tiền tệ nhạy cảm đối với Đội trưởng
+  router.use(financialSerializerMiddleware());
   
   const methods = ['get', 'post', 'put', 'patch', 'delete'];
   methods.forEach(method => {
@@ -156,14 +202,25 @@ const createProjectRouter = () => {
             return next();
           }
 
+          const clientIp = getClientIp(req);
+
           logger.warn({
             userId: req.user && req.user.id,
             projectId: req.params.projectId,
             method: req.method,
             path: req.path,
             reason: "DEFAULT_DENY",
-            ip: req.ip,
+            ip: clientIp,
           }, "Truy cập bị từ chối: route không sử dụng wrapper allow()");
+
+          logAudit({
+            userId: req.user && req.user.id,
+            action: "ACCESS_DENIED_DEFAULT_DENY",
+            entity: "projects",
+            projectId: req.params.projectId,
+            details: { method: req.method, path: req.originalUrl || req.path, reason: "DEFAULT_DENY" },
+            ipAddress: clientIp,
+          });
           
           if (process.env.NODE_ENV !== 'production') {
             throw new Error(`Route chưa khai báo quyền truy cập: ${method.toUpperCase()} ${path}`);
@@ -177,6 +234,7 @@ const createProjectRouter = () => {
       }
       
       return original(path, ...handlers);
+
     };
   });
   

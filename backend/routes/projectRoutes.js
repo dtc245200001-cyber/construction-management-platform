@@ -9,6 +9,7 @@ const emailTemplates = require('../lib/emailTemplates');
 const { getScheduleResults, getPlannedFinish } = require("../services/scheduleQuery");
 const { calculateAndSaveSchedule, runScheduleJobAsync } = require("../services/scheduleCalculation");
 const { markProjectScheduleDirty } = require("../services/scheduleRecalculation");
+const { can, PERMISSIONS } = require("../utils/permissions");
 
 const router = createProjectRouter();
 
@@ -46,6 +47,7 @@ router.get(
   }
 );
 const requireSystemAdmin = require("../middleware/systemAdmin");
+const { requireProjectCreatePermission } = require("../middleware/projectCreationGuard");
 const { createAuditMiddleware } = require("../utils/auditLogger");
 
 // Hàm hỗ trợ loại bỏ dấu tiếng Việt (có thể tách ra utils sau)
@@ -69,7 +71,7 @@ function removeAccents(str) {
  */
 router.post(
   "/",
-  requireSystemAdmin,
+  requireProjectCreatePermission,
   createAuditMiddleware('CREATE_PROJECT', 'projects'),
   async (req, res, next) => {
     const { 
@@ -82,6 +84,63 @@ router.post(
     }
     if (!code) {
       return res.status(400).json({ message: "Mã dự án là bắt buộc" });
+    }
+
+    let assignedBqlUserId = null;
+
+    if (req.isSystemAdminCreator) {
+      // System Admin tạo dự án: BẮT BUỘC chỉ định ít nhất một Ban quản lý (thiếu -> 422).
+      const pmIdentifier = req.body.pm_email || req.body.ban_quan_ly_email || req.body.pm_user_id || req.body.ban_quan_ly_id;
+      if (!pmIdentifier) {
+        return res.status(422).json({
+          error: "System Admin bắt buộc chỉ định ít nhất một Ban quản lý cho dự án",
+          message: "System Admin bắt buộc chỉ định ít nhất một Ban quản lý cho dự án",
+        });
+      }
+
+      // Người được chỉ định phải tồn tại, đang hoạt động, đã xác thực, không phải khach.
+      const isId = Number.isInteger(Number(pmIdentifier)) && String(pmIdentifier).trim().match(/^\d+$/);
+      const userCheck = await db.query(
+        `SELECT id, email, role, is_verified, locked_until
+         FROM users
+         WHERE ${isId ? "id = $1" : "LOWER(email) = LOWER($1)"}`,
+        [isId ? Number(pmIdentifier) : String(pmIdentifier).trim()]
+      );
+
+      if (userCheck.rows.length === 0) {
+        return res.status(422).json({
+          error: "Người dùng được chỉ định làm Ban quản lý không tồn tại",
+          message: "Người dùng được chỉ định làm Ban quản lý không tồn tại",
+        });
+      }
+
+      const pmUser = userCheck.rows[0];
+
+      if (!pmUser.is_verified) {
+        return res.status(422).json({
+          error: "Tài khoản Ban quản lý được chỉ định chưa được xác thực",
+          message: "Tài khoản Ban quản lý được chỉ định chưa được xác thực",
+        });
+      }
+
+      if (pmUser.locked_until && new Date(pmUser.locked_until) > new Date()) {
+        return res.status(422).json({
+          error: "Tài khoản Ban quản lý được chỉ định đang bị tạm khóa",
+          message: "Tài khoản Ban quản lý được chỉ định đang bị tạm khóa",
+        });
+      }
+
+      if (pmUser.role === "khach") {
+        return res.status(422).json({
+          error: "Tài khoản có vai trò khách không được chỉ định làm Ban quản lý",
+          message: "Tài khoản có vai trò khách không được chỉ định làm Ban quản lý",
+        });
+      }
+
+      assignedBqlUserId = pmUser.id;
+    } else {
+      // Ban quản lý tạo dự án: người tạo chính là Ban quản lý
+      assignedBqlUserId = req.session.user.id;
     }
 
     const normalized_search_text = removeAccents(`${name} ${province || ''} ${project_type || ''}`).toLowerCase();
@@ -127,7 +186,7 @@ router.post(
       await client.query(
         `INSERT INTO project_members (project_id, user_id, role) 
          VALUES ($1, $2, $3)`,
-        [newProject.id, req.session.user.id, ROLES.BAN_QUAN_LY]
+        [newProject.id, assignedBqlUserId, ROLES.BAN_QUAN_LY]
       );
 
       await client.query("COMMIT");
@@ -144,6 +203,7 @@ router.post(
     }
   }
 );
+
 
 // DELETE /api/projects/:projectId - Xóa dự án
 /**
@@ -780,6 +840,23 @@ router.delete(
 
       try {
         await client.query("BEGIN");
+
+        // F-05: Chặn xóa BQL cuối cùng — kiểm tra trong transaction để tránh race condition
+        if (member.rows[0].role === ROLES.BAN_QUAN_LY) {
+          const bqlCount = await client.query(
+            `SELECT COUNT(*) FROM project_members
+             WHERE project_id = $1 AND role = $2`,
+            [projectId, ROLES.BAN_QUAN_LY]
+          );
+          if (parseInt(bqlCount.rows[0].count, 10) <= 1) {
+            await client.query("ROLLBACK");
+            client.release();
+            return res.status(400).json({
+              message:
+                "Không thể xóa Ban quản lý cuối cùng. Dự án phải có ít nhất một Ban quản lý.",
+            });
+          }
+        }
 
         await client.query(
           `DELETE FROM project_members
@@ -1644,6 +1721,29 @@ router.put(
     } finally {
       client.release();
     }
+  }
+);
+
+// GET /api/projects/:projectId/me/permissions - Lấy ma trận quyền của người dùng hiện tại trong dự án
+router.get(
+  "/:projectId/me/permissions",
+  requireAuth,
+  checkProjectAccess,
+  allow(Object.values(ROLES)),
+  (req, res) => {
+    const isSysAdmin = Boolean(req.user?.is_system_admin);
+    const role = req.projectRole;
+    const permissions = {};
+
+    for (const key of Object.keys(PERMISSIONS)) {
+      permissions[key] = isSysAdmin || can(role, key);
+    }
+
+    return res.json({
+      role,
+      is_system_admin: isSysAdmin,
+      permissions,
+    });
   }
 );
 

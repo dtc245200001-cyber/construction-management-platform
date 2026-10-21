@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useOutletContext } from "react-router-dom";
 import api from "../lib/api";
 import { mapScheduleToGantt, generateTimelineTicks } from "../utils/ganttUtils";
-import { AlertTriangle, RefreshCw, CalendarRange, Edit3, X } from "lucide-react";
+import { AlertTriangle, RefreshCw, CalendarRange, Edit3, X, Activity, Eye, EyeOff, GripHorizontal } from "lucide-react";
 import { differenceInCalendarDays, parseISO, format } from "date-fns";
 import TaskProgressModal from "../components/TaskProgressModal";
 import { usePermission } from "../hooks/usePermission";
@@ -47,6 +47,12 @@ export default function GanttPage() {
 
   // T-33: thanh đang được hover / focus / click
   const [activeBar, setActiveBar] = useState(null);
+  const [isPinned, setIsPinned] = useState(false);
+  const [isGhost, setIsGhost] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const isDraggingRef = React.useRef(false);
+  const dragStartRef = React.useRef({ x: 0, y: 0 });
+
   // T-35: công việc được chọn để cập nhật tiến độ thực tế
   const [selectedTaskForProgress, setSelectedTaskForProgress] = useState(null);
   const scrollContainerRef = React.useRef(null);
@@ -66,12 +72,72 @@ export default function GanttPage() {
     }
   };
 
+  const getTooltipPosition = (bar, maxSvgWidth) => {
+    if (!bar) return { left: 10, top: 80, placement: "top" };
+    const width = 310;
+    const height = 155;
+    // Căn theo điểm bắt đầu thanh hoặc giữa thanh
+    let left = bar.x + Math.max(0, Math.min(bar.width / 2 - width / 2, 40));
+    left = Math.max(10, Math.min(left, Math.max(10, (maxSvgWidth || 800) - width - 10)));
+
+    // Không gian phía trên (80px header + bar.y)
+    const spaceAbove = 80 + bar.y;
+    let top = 0;
+    let placement = "top";
+
+    if (spaceAbove >= height + 12) {
+      // Đặt nổi phía TRÊN thanh công việc: KHÔNG BAO GIỜ che thanh hiện tại và các dòng công việc bên dưới!
+      top = 80 + bar.y - height - 10;
+      placement = "top";
+    } else {
+      // Nếu là hàng sát mép trên cùng (hàng 1 hoặc 2), đặt phía DƯỚI thanh công việc
+      top = 80 + bar.y + ROW_HEIGHT + 10;
+      placement = "bottom";
+    }
+
+    return { left, top, placement };
+  };
+
+  const handleMouseDownDrag = (e) => {
+    if (!isPinned) return;
+    isDraggingRef.current = true;
+    dragStartRef.current = {
+      startX: e.clientX - dragOffset.x,
+      startY: e.clientY - dragOffset.y,
+    };
+    const handleMouseMove = (moveEvent) => {
+      if (!isDraggingRef.current) return;
+      setDragOffset({
+        x: moveEvent.clientX - dragStartRef.current.startX,
+        y: moveEvent.clientY - dragStartRef.current.startY,
+      });
+    };
+    const handleMouseUp = () => {
+      isDraggingRef.current = false;
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        setActiveBar(null);
+        setIsPinned(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   const fetchSeqRef = React.useRef(0);
   React.useEffect(() => {
     setTasks([]); setDependencies([]); setSummary(null); setScheduleSummary(null);
     setCalendar(null); setHolidays([]); setError(null); setIsFromCache(false);
     setCachedAt(null); setCacheMiss(false); setSelectedTaskForProgress(null);
-    setActiveBar(null); fetchSeqRef.current += 1;
+    setActiveBar(null); setIsPinned(false); setIsGhost(false); setDragOffset({ x: 0, y: 0 }); fetchSeqRef.current += 1;
   }, [currentProjectId]);
 
   const fetchData = async () => {
@@ -533,8 +599,12 @@ export default function GanttPage() {
                         }`}
                       style={{ height: ROW_HEIGHT }}
                       title={bar.name}
-                      onMouseEnter={() => setActiveBar(bar)}
-                      onMouseLeave={() => setActiveBar(null)}
+                      onMouseEnter={() => {
+                        if (!isPinned) setActiveBar(bar);
+                      }}
+                      onMouseLeave={() => {
+                        if (!isPinned) setActiveBar(null);
+                      }}
                     >
                       <div className="w-5 shrink-0 flex items-center justify-center">
                         {bar.is_critical && bar.was_critical_baseline === false ? (
@@ -612,7 +682,10 @@ export default function GanttPage() {
                   width={svgWidth}
                   height={ganttBars.length * ROW_HEIGHT}
                   className="block bg-slate-50"
-                  onClick={() => setActiveBar(null)}
+                  onClick={() => {
+                    setActiveBar(null);
+                    setIsPinned(false);
+                  }}
                 >
                   <defs>
                     <pattern id="hatch-pattern" width="8" height="8" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
@@ -698,8 +771,22 @@ export default function GanttPage() {
                           onClick={(e) => {
                             e.stopPropagation();
                             setActiveBar(bar);
+                            setIsPinned(true);
+                            setDragOffset({ x: 0, y: 0 });
+                            setIsGhost(false);
                           }}
-                          onMouseEnter={() => setActiveBar(bar)}
+                          onMouseEnter={() => {
+                            if (!isPinned) {
+                              setActiveBar(bar);
+                              setDragOffset({ x: 0, y: 0 });
+                              setIsGhost(false);
+                            }
+                          }}
+                          onMouseLeave={() => {
+                            if (!isPinned) {
+                              setActiveBar(null);
+                            }
+                          }}
                           onDoubleClick={(e) => {
                             e.stopPropagation();
                             if (!canUpdateProgress || isReadOnly) return;
@@ -707,7 +794,15 @@ export default function GanttPage() {
                           }}
                           onTouchStart={(e) => {
                             e.stopPropagation();
-                            setActiveBar(activeBar?.id === bar.id ? null : bar);
+                            if (activeBar?.id === bar.id && isPinned) {
+                              setActiveBar(null);
+                              setIsPinned(false);
+                            } else {
+                              setActiveBar(bar);
+                              setIsPinned(true);
+                              setDragOffset({ x: 0, y: 0 });
+                              setIsGhost(false);
+                            }
                           }}
                         />
 
@@ -868,100 +963,146 @@ export default function GanttPage() {
                   })}
                 </svg>
 
-                {/* T-33 + T-35: Tooltip chi tiết gọn nhẹ nằm TRÊN thanh công việc */}
+                {/* T-33 + T-35: Floating Popover thông minh tại thanh công việc (không che khuất sơ đồ) */}
                 {activeBar && (
                   <>
-                    <button
-                      type="button"
-                      aria-label="Đóng chi tiết công việc"
-                      onClick={() => setActiveBar(null)}
-                      className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm sm:hidden"
-                    />
-                    <div
-                      role="tooltip"
-                      aria-label="Chi tiết công việc"
-                      className="pointer-events-auto absolute z-50 w-[280px] rounded-lg border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur-sm max-sm:fixed max-sm:left-1/2 max-sm:top-1/2 max-sm:z-[61] max-sm:w-[calc(100vw-2rem)] max-sm:max-w-[340px] max-sm:-translate-x-1/2 max-sm:-translate-y-1/2 sm:left-[var(--tooltip-left)] sm:top-[var(--tooltip-top)]"
-                      style={{
-                        "--tooltip-left": `${Math.max(10, activeBar.x - 20)}px`,
-                        "--tooltip-top": `${Math.max(0, 80 + activeBar.y - 120)}px`,
-                      }}
-                    >
+                    {/* Backdrop trên màn hình nhỏ di động (chạm ra ngoài để đóng) */}
+                    {isPinned && (
                       <button
                         type="button"
-                        aria-label="Đóng"
-                        onClick={() => setActiveBar(null)}
-                        className="absolute right-1 top-1 flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 sm:hidden"
-                      >
-                        <X className="size-4" />
-                      </button>
-                    <div className="flex flex-col gap-1.5">
-                      {/* Dòng 1: Tên và Label */}
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="font-bold text-slate-800 text-[13px] leading-tight">
-                          {activeBar.is_critical && activeBar.was_critical_baseline === false ? (
-                            <span className="text-orange-600 mr-1">(!)</span>
-                          ) : activeBar.is_critical ? (
-                            <span className="text-red-600 mr-1">(!)</span>
-                          ) : null}
-                          {activeBar.name}
-                        </div>
-                        {activeBar.is_critical ? (
-                          <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${activeBar.was_critical_baseline === false ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'}`}>
-                            {activeBar.was_critical_baseline === false ? 'Găng (mới)' : 'Găng'}
-                          </span>
-                        ) : null}
-                      </div>
-
-                      {/* Dòng 2: Thông số lưới */}
-                      <div className="grid grid-cols-2 gap-x-2 gap-y-1 mt-1 text-[11px]">
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">Bắt đầu (ES):</span>
-                          <span className="font-semibold text-slate-700">{formatDate(activeBar.early_start)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">Kết thúc (EF):</span>
-                          <span className="font-semibold text-slate-700">{formatDate(activeBar.early_finish)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">Muộn nhất bắt đầu (LS):</span>
-                          <span className="font-semibold text-slate-700">{formatDate(activeBar.late_start)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">Muộn nhất kết thúc (LF):</span>
-                          <span className="font-semibold text-slate-700">{formatDate(activeBar.late_finish)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">Dự phòng (Float):</span>
-                          <span className={`font-semibold ${activeBar.total_float === 0 ? 'text-red-600' : 'text-slate-700'}`}>
-                            {activeBar.total_float != null ? `${activeBar.total_float} ngày` : '--'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">Thực tế:</span>
-                          <span className="font-semibold text-blue-600">{activeBar.percent_complete ?? 0}%</span>
-                        </div>
-                      </div>
-
-                      {/* Dòng 3: Nút cập nhật (nhỏ gọn) */}
-                      {canUpdateProgress && (
-<button
-                        type="button"
-                        disabled={isReadOnly}
-                        title={isReadOnly ? offlineMutationMessage : "Cập nhật tiến độ"}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (isReadOnly) return;
-                          setSelectedTaskForProgress(activeBar);
+                        aria-label="Đóng chi tiết công việc"
+                        onClick={() => {
                           setActiveBar(null);
+                          setIsPinned(false);
                         }}
-                        className="mt-1.5 w-full min-h-11 py-2.5 text-xs font-semibold rounded bg-slate-100 text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5 border border-blue-100"
-                      >
-                        <Edit3 className="size-3" />
-                        Cập nhật tiến độ
-                      </button>
-)}
-                      </div>
-                    </div>
+                        className="fixed inset-0 z-[60] bg-black/30 backdrop-blur-xs sm:hidden"
+                      />
+                    )}
+
+                    {(() => {
+                      const pos = getTooltipPosition(activeBar, svgWidth);
+                      return (
+                        <div
+                          role="tooltip"
+                          aria-label="Chi tiết công việc"
+                          style={{
+                            left: `${pos.left + dragOffset.x}px`,
+                            top: `${pos.top + dragOffset.y}px`,
+                          }}
+                          className={`absolute z-50 w-[310px] rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-xl backdrop-blur-md transition-[opacity,transform] duration-150 ${
+                            !isPinned ? "pointer-events-none select-none opacity-95" : "pointer-events-auto"
+                          } ${isGhost ? "opacity-20 hover:opacity-100" : ""} max-sm:fixed max-sm:left-1/2 max-sm:top-1/2 max-sm:z-[61] max-sm:w-[calc(100vw-2rem)] max-sm:max-w-[340px] max-sm:-translate-x-1/2 max-sm:-translate-y-1/2`}
+                        >
+                          {/* Thanh tiêu đề: Drag handle, Tên công việc, Badge, Nút thao tác */}
+                          <div
+                            onMouseDown={handleMouseDownDrag}
+                            className={`flex items-start justify-between gap-1.5 pb-2 border-b border-slate-100 ${
+                              isPinned ? "cursor-move" : "cursor-default"
+                            }`}
+                            title={isPinned ? "Bấm giữ để kéo di chuyển bảng chi tiết" : ""}
+                          >
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                              {isPinned && (
+                                <GripHorizontal className="size-3.5 text-slate-400 shrink-0 select-none" />
+                              )}
+                              <span className="font-bold text-slate-800 text-[13px] leading-tight truncate" title={activeBar.name}>
+                                {activeBar.is_critical && (
+                                  <span className={activeBar.was_critical_baseline === false ? "text-orange-600 mr-1" : "text-red-600 mr-1"}>
+                                    (!)
+                                  </span>
+                                )}
+                                {activeBar.name}
+                              </span>
+                              {activeBar.is_critical && (
+                                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                                  activeBar.was_critical_baseline === false ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'
+                                }`}>
+                                  {activeBar.was_critical_baseline === false ? 'Găng (mới)' : 'Găng'}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Các nút tiện ích khi đã ghim */}
+                            {isPinned && (
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => setIsGhost(!isGhost)}
+                                  className={`size-6 rounded-md flex items-center justify-center transition-colors cursor-pointer ${
+                                    isGhost ? "bg-blue-100 text-blue-600" : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                                  }`}
+                                  title={isGhost ? "Hiện rõ bảng chi tiết" : "Làm mờ để nhìn xuyên các công việc bên dưới"}
+                                >
+                                  {isGhost ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-label="Đóng"
+                                  onClick={() => {
+                                    setActiveBar(null);
+                                    setIsPinned(false);
+                                  }}
+                                  className="size-6 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors cursor-pointer"
+                                  title="Đóng (Esc)"
+                                >
+                                  <X className="size-3.5" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Thông số lưới CPM */}
+                          <div className="grid grid-cols-2 gap-x-2.5 gap-y-1 my-2 text-[11px]">
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-500">Bắt đầu (ES):</span>
+                              <span className="font-semibold text-slate-700">{formatDate(activeBar.early_start)}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-500">Kết thúc (EF):</span>
+                              <span className="font-semibold text-slate-700">{formatDate(activeBar.early_finish)}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-500">Muộn nhất bắt đầu (LS):</span>
+                              <span className="font-semibold text-slate-700">{formatDate(activeBar.late_start)}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-500">Muộn nhất kết thúc (LF):</span>
+                              <span className="font-semibold text-slate-700">{formatDate(activeBar.late_finish)}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-500">Dự phòng (Float):</span>
+                              <span className={`font-semibold ${activeBar.total_float === 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                                {activeBar.total_float != null ? `${activeBar.total_float} ngày` : '--'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-500">Thực tế:</span>
+                              <span className="font-semibold text-blue-600">{activeBar.percent_complete ?? 0}%</span>
+                            </div>
+                          </div>
+
+                          {/* Nút cập nhật tiến độ */}
+                          {canUpdateProgress && (
+                            <button
+                              type="button"
+                              disabled={isReadOnly}
+                              title={isReadOnly ? offlineMutationMessage : "Cập nhật tiến độ"}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (isReadOnly) return;
+                                setSelectedTaskForProgress(activeBar);
+                                setActiveBar(null);
+                                setIsPinned(false);
+                              }}
+                              className="w-full h-8 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
+                            >
+                              <Edit3 className="size-3" />
+                              <span>Cập nhật tiến độ</span>
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </>
                 )}
               </div>

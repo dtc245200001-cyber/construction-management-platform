@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../lib/api";
+import { actionLabel, entityLabel } from "../lib/auditLabels";
 import { Home, Shield, Lock, Unlock, KeyRound, Search, ChevronRight, Activity } from "lucide-react";
+import ForbiddenPage from "./ForbiddenPage";
 
 export default function AdminPage({ user }) {
   const navigate = useNavigate();
@@ -11,11 +13,13 @@ export default function AdminPage({ user }) {
   const [logs, setLogs] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  // Lỗi riêng từng tab — không để lỗi tab này tràn sang tab khác.
+  const [usersError, setUsersError] = useState(null);
+  const [logsError, setLogsError] = useState(null);
+  const [projectsError, setProjectsError] = useState(null);
 
   useEffect(() => {
     if (!user || !user.is_system_admin) {
-      navigate('/projects', { replace: true });
       return;
     }
     if (activeTab === 'users') {
@@ -27,13 +31,18 @@ export default function AdminPage({ user }) {
     }
   }, [user, navigate, activeTab]);
 
+  if (!user || !user.is_system_admin) {
+    return <ForbiddenPage homePath="/projects" />;
+  }
+
   const fetchUsers = async () => {
     try {
       setLoading(true);
+      setUsersError(null);
       const res = await api.get('/admin/users');
       setUsers(res.data.users || []);
     } catch (err) {
-      setError(err.response?.data?.message || "Lỗi khi lấy danh sách người dùng");
+      setUsersError("Không tải được danh sách người dùng. Vui lòng thử lại.");
     } finally {
       setLoading(false);
     }
@@ -42,10 +51,11 @@ export default function AdminPage({ user }) {
   const fetchLogs = async () => {
     try {
       setLoading(true);
+      setLogsError(null);
       const res = await api.get('/admin/audit-logs');
       setLogs(res.data.logs || []);
     } catch (err) {
-      setError(err.response?.data?.message || "Lỗi khi lấy nhật ký hệ thống");
+      setLogsError("Không tải được nhật ký hệ thống. Vui lòng thử lại.");
     } finally {
       setLoading(false);
     }
@@ -54,10 +64,12 @@ export default function AdminPage({ user }) {
   const fetchProjects = async () => {
     try {
       setLoading(true);
+      setProjectsError(null);
       const res = await api.get('/admin/projects');
       setProjects(res.data.projects || []);
     } catch (err) {
-      setError(err.response?.data?.message || "Lỗi khi lấy danh sách dự án");
+      // Không nuốt lỗi thành "rỗng": giữ projects cũ, hiện banner lỗi + nút thử lại.
+      setProjectsError("Không tải được danh sách dự án. Vui lòng thử lại.");
     } finally {
       setLoading(false);
     }
@@ -198,7 +210,19 @@ export default function AdminPage({ user }) {
           </button>
         </div>
 
-        {error && <div className="mb-6 p-4 bg-site-critical/10 text-site-critical rounded-xl">{error}</div>}
+        {activeTab === 'users' && usersError && <div className="mb-6 p-4 bg-site-critical/10 text-site-critical rounded-xl">{usersError}</div>}
+        {activeTab === 'logs' && logsError && <div className="mb-6 p-4 bg-site-critical/10 text-site-critical rounded-xl">{logsError}</div>}
+        {activeTab === 'projects' && projectsError && (
+          <div className="mb-6 p-4 bg-site-critical/10 text-site-critical rounded-xl flex items-center justify-between gap-4">
+            <span>{projectsError}</span>
+            <button
+              onClick={fetchProjects}
+              className="shrink-0 px-3 py-1.5 bg-site-critical text-white text-sm font-medium rounded-lg hover:opacity-90 transition-opacity"
+            >
+              Thử lại
+            </button>
+          </div>
+        )}
 
         <div className="bg-site-surface rounded-2xl border border-site-border shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
@@ -349,7 +373,12 @@ export default function AdminPage({ user }) {
                           {new Date(log.created_at).toLocaleString('en-GB')}
                         </td>
                         <td className="px-6 py-4">
-                          <span className="font-semibold text-site-primary bg-site-primary/10 px-2 py-0.5 rounded text-xs">{log.action}</span>
+                          <span
+                            className="font-semibold text-site-primary bg-site-primary/10 px-2 py-0.5 rounded text-xs"
+                            title={log.action}
+                          >
+                            {actionLabel(log.action)}
+                          </span>
                         </td>
                         <td className="px-6 py-4 text-site-dark font-medium">
                           {log.user_email || 'System / Khách'}
@@ -358,7 +387,7 @@ export default function AdminPage({ user }) {
                           {log.ip_address}
                         </td>
                         <td className="px-6 py-4 text-site-baseline">
-                          {log.entity ? `${log.entity} (#${log.entity_id || 'N/A'})` : '-'}
+                          {entityLabel(log.entity, log.entity_id)}
                         </td>
                       </tr>
                     ))
