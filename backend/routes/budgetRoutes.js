@@ -100,4 +100,29 @@ router.post(
   })
 );
 
+
+const budgetSummaryService = require("../services/budgetSummaryService");
+
+// T-122 / T-123: Tổng hợp ngân sách, thực chi và cảnh báo.
+router.get(
+  "/:projectId/budgets/summary",
+  requireAuth,
+  checkProjectAccess,
+  requirePermission("budget.view"),
+  asyncHandler(async (req, res) => {
+    const projectId = parsePositiveInt(req.params.projectId);
+
+    if (!projectId) {
+      return res.status(400).json({
+        message: "projectId không hợp lệ",
+      });
+    }
+
+    res.setHeader("Cache-Control", "no-store");
+
+    const result = await budgetSummaryService.getBudgetSummary(projectId);
+    return res.status(200).json(result);
+  })
+);
+
 module.exports = router;
