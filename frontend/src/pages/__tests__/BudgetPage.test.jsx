@@ -167,4 +167,107 @@ describe("T-119: Giao diện nhập dự toán và cộng tổng theo cây (Budg
 
     expect(screen.getByLabelText(/Số tiền dự toán \(VND\)/i)).toBeInTheDocument();
   });
+
+  test("T-122/T-123: Chuyển sang Tab 2 hiển thị bảng tổng hợp thực chi & cảnh báo vượt ngưỡng", async () => {
+    const mockSummaryResponse = {
+      project_id: 1,
+      budget_version: 1,
+      alert_threshold_percent: 80,
+      items: [
+        {
+          id: 1,
+          parent_id: null,
+          code: "HM-01",
+          name: "Phần ngầm & Móng",
+          is_leaf: false,
+          contract_quantity: null,
+          approved_quantity: null,
+          acceptance_percent: null,
+          budget_amount: null,
+          direct_actual_cost: "0.00",
+          has_budget: true,
+          total_budget: "150000000.00",
+          total_actual_cost: "135000000.00",
+          utilization_percent: "90.00",
+          has_alert: true,
+          alert_count: 1,
+          alert_code: "ACTUAL_COST_OVER_80_AND_ACCEPTANCE_BELOW_80",
+          alert_status: "WARNING",
+          alert_message: "Chi phí thực tế vượt ngưỡng dự toán",
+        },
+        {
+          id: 2,
+          parent_id: 1,
+          code: "HM-01.01",
+          name: "Đào đất móng",
+          is_leaf: true,
+          contract_quantity: "100.00",
+          approved_quantity: "50.00",
+          acceptance_percent: "50.00",
+          budget_amount: "50000000.00",
+          direct_actual_cost: "45000000.00",
+          has_budget: true,
+          total_budget: "50000000.00",
+          total_actual_cost: "45000000.00",
+          utilization_percent: "90.00",
+          has_alert: true,
+          alert_count: 1,
+          alert_code: "ACTUAL_COST_OVER_80_AND_ACCEPTANCE_BELOW_80",
+          alert_status: "WARNING",
+          alert_message: "Chi phí vượt 80% và nghiệm thu < 80%",
+        },
+        {
+          id: 3,
+          parent_id: 1,
+          code: "HM-01.02",
+          name: "Bê tông lót móng",
+          is_leaf: true,
+          contract_quantity: "100.00",
+          approved_quantity: "90.00",
+          acceptance_percent: "90.00",
+          budget_amount: "100000000.00",
+          direct_actual_cost: "90000000.00",
+          has_budget: true,
+          total_budget: "100000000.00",
+          total_actual_cost: "90000000.00",
+          utilization_percent: "90.00",
+          has_alert: false,
+          alert_count: 0,
+          alert_code: null,
+          alert_status: "RESOLVED",
+          alert_message: "Đã hết cảnh báo",
+        },
+      ],
+    };
+
+    api.get.mockImplementation((url) => {
+      if (url.includes("/budgets/summary")) {
+        return Promise.resolve({ data: mockSummaryResponse });
+      }
+      if (url.includes("/budgets/tree")) {
+        return Promise.resolve({ data: mockTreeResponse });
+      }
+      if (url.includes("/budgets")) {
+        return Promise.resolve({ data: mockVersionsResponse });
+      }
+      return Promise.reject(new Error("Not found"));
+    });
+
+    renderWithRouter(<BudgetPage user={{ id: 1, name: "Admin" }} />);
+
+    // Nhấp vào tab Tổng hợp Thực chi & Cảnh báo
+    const summaryTabBtn = screen.getByRole("button", { name: /Tổng hợp Thực chi & Cảnh báo/i });
+    fireEvent.click(summaryTabBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Bảng tổng hợp dự toán, chi phí thực tế & cảnh báo vượt ngưỡng/i)).toBeInTheDocument();
+    });
+
+    // Kiểm tra các cột và số liệu tổng hợp
+    expect(screen.getByText("Ngưỡng cảnh báo:")).toBeInTheDocument();
+    expect(screen.getAllByText(/Cảnh báo vượt ngưỡng/i).length).toBeGreaterThan(0);
+    expect(screen.getByText("Đã hết cảnh báo")).toBeInTheDocument();
+    expect(screen.getByText("NT: 50.00%")).toBeInTheDocument();
+    expect(screen.getByText("NT: 90.00%")).toBeInTheDocument();
+  });
 });

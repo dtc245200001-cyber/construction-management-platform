@@ -120,7 +120,15 @@ router.get(
 
     res.setHeader("Cache-Control", "no-store");
 
-    const result = await budgetSummaryService.getBudgetSummary(projectId);
+    let threshold;
+    if (req.query.threshold !== undefined) {
+      const parsed = parseFloat(req.query.threshold);
+      if (!Number.isNaN(parsed) && parsed > 0 && parsed <= 100) {
+        threshold = parsed > 1 ? parsed / 100 : parsed;
+      }
+    }
+
+    const result = await budgetSummaryService.getBudgetSummary(projectId, { threshold });
     return res.status(200).json(result);
   })
 );
