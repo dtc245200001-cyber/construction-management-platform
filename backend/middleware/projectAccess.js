@@ -7,6 +7,7 @@ const asyncHandler = require("../utils/asyncHandler");
 const { PERMISSIONS, ROLE_LABELS, can: canPermission } = require("../utils/permissions");
 const { financialSerializerMiddleware } = require("../utils/financialSerializer");
 const { logAudit, getClientIp } = require("../utils/auditLogger");
+const resolveClientIp = (req) => (typeof getClientIp === "function" ? getClientIp(req) : req?.ip || null);
 
 // Middleware xác thực thành viên thuộc dự án
 const checkProjectAccess = asyncHandler(async (req, res, next) => {
@@ -31,7 +32,7 @@ const checkProjectAccess = asyncHandler(async (req, res, next) => {
       return next();
     }
 
-    const clientIp = getClientIp(req);
+    const clientIp = resolveClientIp(req);
 
     logger.warn({
       userId,
@@ -67,7 +68,7 @@ const allow = (roles = []) => {
       return next();
     }
 
-    const clientIp = getClientIp(req);
+    const clientIp = resolveClientIp(req);
 
     if (!roles || roles.length === 0) {
       logger.warn({
@@ -146,7 +147,7 @@ const requirePermission = (permissionKey) => {
     }
 
     const roleLabel = ROLE_LABELS[currentRole] || currentRole || "chưa xác định";
-    const clientIp = getClientIp(req);
+    const clientIp = resolveClientIp(req);
 
     logger.warn({
       userId: req.user && req.user.id,
@@ -202,7 +203,7 @@ const createProjectRouter = () => {
             return next();
           }
 
-          const clientIp = getClientIp(req);
+          const clientIp = resolveClientIp(req);
 
           logger.warn({
             userId: req.user && req.user.id,

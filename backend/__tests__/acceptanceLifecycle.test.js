@@ -28,6 +28,7 @@ jest.mock("../utils/logger", () => ({
 const mockLogAudit = jest.fn().mockResolvedValue();
 jest.mock("../utils/auditLogger", () => ({
   logAudit: (...args) => mockLogAudit(...args),
+  getClientIp: jest.fn(() => "127.0.0.1"),
   createAuditMiddleware: jest.fn(() => (req, res, next) => next()),
 }));
 
