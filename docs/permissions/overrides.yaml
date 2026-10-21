@@ -1,0 +1,173 @@
+# Ghi đè (overrides) -- những điểm ma trận và backlog/NFR mâu thuẫn
+# Khi áp dụng: overrides.yaml > matrix.yaml
+# Ngày cập nhật: 2026-10-21
+
+# ============================================================
+# NHÓM BL: Giữ theo Backlog (ghi đè ô ma trận xlsx)
+# ============================================================
+
+backlog_overrides:
+
+  - id: BL-1
+    story: S-24
+    feature: "Khóa sổ và Mở khóa nhật ký thi công"
+    matrix_value:
+      ban_quan_ly: "Khoá / Mở khoá"
+    applied_value:
+      ky_su_giam_sat: "Khóa sổ cuối ngày"
+      ban_quan_ly: "Mở khóa điều chỉnh (kèm lý do)"
+    permission_keys:
+      lock: "site_log.close_daily"
+      unlock: "site_log.correct_locked"
+    allowed_roles:
+      lock: ["ky_su_giam_sat"]
+      unlock: ["ban_quan_ly"]
+    server_constraints:
+      - "Bắt buộc nhập lý do mở khóa (reason), kiểm tra và trả HTTP 400 tại server nếu thiếu hoặc rỗng"
+      - "Ghi nhận UNLOCK_DIARY vào audit_logs ngay sau khi commit transaction mở khóa"
+    reason: "Khóa sổ cuối ngày là trách nhiệm của KSGS tại hiện trường. Ban quản lý là cấp thẩm quyền mở khóa để điều chỉnh."
+    date: "2026-10-21"
+    status: confirmed
+
+  - id: BL-2
+    story: S-32
+    feature: "Xử lý xung đột phiên bản nhật ký"
+    matrix_value:
+      ban_quan_ly: "Xử lý xung đột"
+      ky_su_giam_sat: "Xem / báo xung đột"
+    applied_value:
+      ky_su_giam_sat: "Chọn bản giữ (Resolve)"
+      ban_quan_ly: "Xem xung đột"
+    permission_key: "diary.resolve_conflict"
+    allowed_roles: ["ky_su_giam_sat"]
+    reason: >
+      BL-2: Kỹ sư giám sát trực tiếp phụ trách ghi/kiểm nhật ký công trường nên có thẩm quyền
+      chọn bản giữ khi có xung đột phiên bản (T-78). Ban quản lý chỉ xem danh sách xung đột (không chọn).
+      System Admin giữ theo ma trận. Tách key riêng, không dùng lại key của S-24.
+    date: "2026-10-21"
+    status: confirmed
+
+  - id: BL-3
+    story: S-19
+    feature: "Đặt mốc tiến độ bắt buộc"
+    matrix_value:
+      chu_dau_tu: "Đặt mốc"
+      ban_quan_ly: "Xem / theo dõi"
+    backlog_intent: "S-19 story của CĐT. T-43: 'chỉ chủ đầu tư và ban quản lý đặt được mốc'"
+    applied_value:
+      ban_quan_ly: "Đặt mốc bắt buộc"
+      chu_dau_tu: "Đặt mốc bắt buộc"
+    permission_key: "milestone.manage"
+    allowed_roles: ["ban_quan_ly", "chu_dau_tu"]
+    reason: >
+      T-43 quy định cả Chủ đầu tư và Ban quản lý đặt được mốc bắt buộc.
+      Các vai trò khác chỉ xem và nhận cảnh báo mốc. System Admin giữ theo ma trận (Toàn quyền).
+    date: "2026-10-21"
+    status: confirmed
+
+  - id: BL-4
+    story: S-47
+    feature: "Ghi chi phí thực tế gắn với hạng mục"
+    matrix_value:
+      ban_quan_ly: "Tạo / Sửa"
+      ke_toan: "Nhập chi phí (đề xuất)"
+    applied_value:
+      ban_quan_ly: "Ghi chi phí thực tế"
+    permission_key: "cost.record"
+    allowed_roles: ["ban_quan_ly"]
+    reason: >
+      BL-4: Theo Backlog S-47, Ban quản lý dự án là người ghi các khoản chi thực tế để so với dự toán.
+      Kế toán chỉ xem/đối chiếu (cost.view, finance.report). System Admin giữ theo ma trận.
+    date: "2026-10-21"
+    status: confirmed
+
+# ============================================================
+# NHÓM OV: Ghi đè an toàn (Safety Overrides)
+# ============================================================
+
+safety_overrides:
+
+  - id: OV-1
+    name: "Đội trưởng và bảo mật thông tin tài chính"
+    stories: ["S-43", "S-44", "S-45", "S-46", "S-47", "S-48", "S-49", "S-50"]
+    rule: >
+      1. Khóa toàn bộ permission key tài chính đối với Đội trưởng: cost.record, budget.manage,
+         budget.view, payment_request.create, payment_request.view, payment.approve,
+         payment_retention.manage, finance.report, acceptance.export_dossier.
+      2. Tầng Serializer: Loại bỏ hoàn toàn các trường tiền (unit_price, total_price,
+         contract_value, contract_total, budget, actual_cost, cost, retention_amount, retention_rate)
+         khỏi response trả về cho Đội trưởng ở mọi endpoint nghiệp vụ.
+    blocked_permission_keys:
+      - "cost.record"
+      - "budget.view"
+      - "budget.manage"
+      - "payment_request.view"
+      - "payment_request.create"
+      - "payment.approve"
+      - "finance.report"
+      - "payment_retention.manage"
+      - "acceptance.export_dossier"
+    stripped_financial_fields:
+      - "unit_price"
+      - "total_price"
+      - "contract_value"
+      - "contract_total"
+      - "budget"
+      - "actual_cost"
+      - "cost"
+      - "retention_amount"
+      - "retention_rate"
+    source: "NFR bảo mật tài chính, S-46 AC, S-47 AC"
+    date: "2026-10-21"
+    status: confirmed
+
+  - id: OV-2
+    name: "Đội trưởng chỉ xem dữ liệu trong phạm vi ĐỘI MÌNH (Team Scoping)"
+    stories: ["S-15", "S-17", "S-25", "S-26"]
+    rule: >
+      Đội trưởng chỉ thấy công việc, khối lượng báo cáo, vướng mắc của ĐỘI MÌNH (phạm vi team)
+      ở mọi ô 'Xem' về tiến độ/công việc. Máy chủ ép cứng team_id theo đội hiện tại của Đội trưởng.
+      Khi chuyển sang đội khác trong CSDL, lập tức mất quyền truy cập dữ liệu của đội cũ.
+      (Việc Đội trưởng không sửa WBS thuộc về thẩm quyền work_item.manage).
+    scope_enforcement:
+      handler: "findUserTeam(projectId, req.user.id)"
+      team_isolation: true
+    source: "S-26 AC, T-59 specification"
+    date: "2026-10-21"
+    status: confirmed
+
+  - id: OV-3
+    name: "Nhật ký thao tác dự án: Chỉ loại Đội trưởng"
+    stories: ["S-39"]
+    rule: >
+      Chỉ loại Đội trưởng khỏi quyền xem Audit Portal.
+      Chỉ huy trưởng, Kỹ sư giám sát, Kế toán, Chủ đầu tư, Ban quản lý đều có quyền audit.view_project.
+      System Admin chỉ xem/lọc/xuất; KHÔNG có bất kỳ API nào để sửa hoặc xoá nhật ký thao tác (append-only).
+    permission_key: "audit.view_project"
+    allowed_roles:
+      - "ban_quan_ly"
+      - "chu_dau_tu"
+      - "chi_huy_truong"
+      - "ky_su_giam_sat"
+      - "ke_toan"
+    denied_roles:
+      - "doi_truong"
+    source: "S-39 ma trận + AC"
+    date: "2026-10-21"
+    status: confirmed
+
+# ============================================================
+# OQ-02: Duyệt nghiệm thu chính thức
+# ============================================================
+
+resolved_questions:
+
+  - id: OQ-02
+    question: "acceptance.approve_official -- CDT hay BQL?"
+    resolution: "GIỮ BAN QUẢN LÝ"
+    reasoning: >
+      S-38 là story của BQL. Ma trận: BQL='Duyệt / Trả lại', CĐT='Xem'.
+      CĐT duyệt thanh toán ở S-44 (payment.approve), không duyệt nghiệm thu kỹ thuật.
+    date_resolved: "2026-10-21"
+    permission_key: "acceptance.approve_official"
+    allowed_roles: ["ban_quan_ly"]

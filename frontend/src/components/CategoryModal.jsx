@@ -60,23 +60,30 @@ export default function CategoryModal({
 
         {/* NFR T-12: Chỉ hiển thị chọn loại nếu là hạng mục LÁ (không có work_item con). Nếu đã có hạng mục con, ẩn hẳn tab Công việc */}
         {config.mode === "add_child" && canAddTask && (
-          <div className="flex p-1 bg-slate-100 rounded-xl mt-4">
-            <button
-              type="button"
-              onClick={onSwitchToTask}
-              className="flex-1 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 text-[#64748B] hover:text-[#0F1B3D] hover:bg-white"
-            >
-              <FileText className="size-3.5" /> Công việc thi công
-            </button>
-            <button
-              type="button"
-              onClick={() => onPatch({ entryType: "category", error: "" })}
-              className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                config.entryType === "category" ? "bg-white text-[#1F63E0] shadow-sm" : "text-[#64748B] hover:text-[#0F1B3D]"
-              }`}
-            >
-              <FolderOpen className="size-3.5" /> Hạng mục con
-            </button>
+          <div className="mt-4">
+            <div className="flex p-1 bg-slate-100 rounded-xl">
+              <button
+                type="button"
+                onClick={onSwitchToTask}
+                className="flex-1 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 text-[#64748B] hover:text-[#0F1B3D] hover:bg-white"
+              >
+                <FileText className="size-3.5 text-emerald-600" /> Công việc thi công
+              </button>
+              <button
+                type="button"
+                onClick={() => onPatch({ entryType: "category", error: "" })}
+                className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  config.entryType === "category" ? "bg-white text-[#1F63E0] shadow-sm" : "text-[#64748B] hover:text-[#0F1B3D]"
+                }`}
+              >
+                <FolderOpen className="size-3.5" /> Hạng mục con
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1.5 px-1">
+              {config.entryType === "category"
+                ? "📁 Hạng mục: Nhóm/phân mục cấp dưới (không có ngày độc lập mà tự cộng dồn)"
+                : "📄 Công việc: Đầu việc thi công cụ thể có số ngày, ngày bắt đầu và phân công"}
+            </p>
           </div>
         )}
 

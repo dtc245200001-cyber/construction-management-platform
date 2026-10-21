@@ -1,12 +1,14 @@
 "use strict";
 
 const express = require("express");
-const router = express.Router();
 const db = require("../config/db");
 const requireAuth = require("../middleware/auth");
-const { checkProjectAccess, requirePermission } = require("../middleware/projectAccess");
+const { checkProjectAccess, requirePermission, createProjectRouter } = require("../middleware/projectAccess");
 const asyncHandler = require("../utils/asyncHandler");
 const { evaluateGeofence } = require("../utils/geo");
+
+// F-02 fix: dùng createProjectRouter() thay express.Router() để Default-Deny (T-07) hoạt động
+const router = createProjectRouter();
 
 /**
  * Hàm kiểm tra tính hợp lệ của số toạ độ và số chữ số thập phân

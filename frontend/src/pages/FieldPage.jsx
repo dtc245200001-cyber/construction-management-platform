@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import TaskLogModal from "../components/TaskLogModal";
+import PageHeroBanner from "../components/PageHeroBanner";
 
 function formatDate(value) {
   if (!value) return "Chưa có";
@@ -446,34 +447,29 @@ export default function FieldPage({ user } = {}) {
   return (
     <div className="mx-auto w-full max-w-5xl p-4 md:p-8">
       {/* HEADER */}
-      <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-slate-900 md:text-2xl">
-            <HardHat className="size-6 text-blue-600" />
-            Việc của đội trong tuần
-          </h1>
-
-          <p className="mt-1 text-sm text-slate-500">
-            {team
+      <div className="mb-5">
+        <PageHeroBanner
+          icon={<HardHat className="size-6 sm:size-8" />}
+          title="Việc của đội trong tuần"
+          subtitle={
+            team
               ? `Đội: ${team.name}`
               : viewAllTeams
                 ? "Xem việc của tất cả đội (chỉ đọc)"
-                : "Việc được giao và báo cáo khối lượng"}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
+                : "Việc được giao và báo cáo khối lượng"
+          }
+        >
           {/* Toggle "Theo đội / Tất cả đội" cho Chỉ huy trưởng & Ban quản lý */}
           {canViewAll && (
-            <div className="flex min-h-12 items-center rounded-xl border border-slate-300 bg-white p-1 text-sm shadow-xs">
+            <div className="flex min-h-11 items-center rounded-xl border border-white/20 bg-white/10 p-1 text-sm shadow-xs backdrop-blur-xs">
               <button
                 type="button"
                 onClick={() => {
                   setViewAllTeams(false);
                   setNotice(null);
                 }}
-                className={`min-h-11 rounded-lg px-3 font-semibold transition-colors cursor-pointer ${
-                  !viewAllTeams ? "bg-blue-600 text-white" : "text-slate-600 hover:text-slate-900"
+                className={`min-h-9 rounded-lg px-3 font-semibold transition-colors cursor-pointer ${
+                  !viewAllTeams ? "bg-white text-[#1F63E0] shadow-xs" : "text-white/80 hover:text-white"
                 }`}
               >
                 Theo đội
@@ -485,8 +481,8 @@ export default function FieldPage({ user } = {}) {
                   setViewAllTeams(true);
                   setNotice(null);
                 }}
-                className={`min-h-11 rounded-lg px-3 font-semibold transition-colors cursor-pointer ${
-                  viewAllTeams ? "bg-blue-600 text-white" : "text-slate-600 hover:text-slate-900"
+                className={`min-h-9 rounded-lg px-3 font-semibold transition-colors cursor-pointer ${
+                  viewAllTeams ? "bg-white text-[#1F63E0] shadow-xs" : "text-white/80 hover:text-white"
                 }`}
               >
                 Tất cả đội
@@ -502,7 +498,7 @@ export default function FieldPage({ user } = {}) {
                 setSelectedTeamId(e.target.value);
                 setNotice(null);
               }}
-              className="min-h-12 min-w-[180px] rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium outline-none focus:border-blue-500"
+              className="min-h-11 min-w-[170px] rounded-xl border border-white/20 bg-white text-slate-800 px-3 text-sm font-medium outline-none shadow-sm focus:border-white focus:ring-2 focus:ring-white/30"
             >
               <option value="">-- Chọn đội --</option>
               {teams.map((item) => (
@@ -517,12 +513,12 @@ export default function FieldPage({ user } = {}) {
           <button
             type="button"
             onClick={loadTasks}
-            className="min-h-12 min-w-12 rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 shadow-sm hover:bg-slate-50 cursor-pointer active:scale-95 transition-all"
+            className="min-h-11 min-w-11 rounded-xl border border-white/20 bg-white/10 p-2.5 text-white hover:bg-white/20 cursor-pointer active:scale-95 transition-all flex items-center justify-center backdrop-blur-xs"
             aria-label="Tải lại"
           >
             <RefreshCw className="mx-auto size-4" />
           </button>
-        </div>
+        </PageHeroBanner>
       </div>
 
       {/* WEEK NAVIGATION BAR */}

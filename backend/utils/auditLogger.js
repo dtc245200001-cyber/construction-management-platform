@@ -1,6 +1,43 @@
 const db = require('../config/db');
 
 /**
+ * Get client IP address correctly from headers or connection
+ */
+function getClientIp(req) {
+  if (!req) return null;
+  const forwarded = req.headers && req.headers['x-forwarded-for'];
+  if (forwarded) {
+    return String(forwarded).split(',')[0].trim();
+  }
+  return req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress || null;
+}
+
+/**
+ * Sanitize sensitive fields (passwords, tokens, secrets) from audit details
+ */
+function sanitizeAuditDetails(data) {
+  if (!data || typeof data !== 'object') return data;
+  if (Array.isArray(data)) return data.map(sanitizeAuditDetails);
+
+  const SENSITIVE_KEYS = [
+    'password', 'password_hash', 'token', 'token_hash', 'secret',
+    'authorization', 'cookie', 'accesstoken', 'refreshtoken', 'newpassword', 'oldpassword'
+  ];
+
+  const sanitized = {};
+  for (const [key, val] of Object.entries(data)) {
+    if (SENSITIVE_KEYS.some((k) => key.toLowerCase().includes(k))) {
+      sanitized[key] = '[REDACTED]';
+    } else if (val && typeof val === 'object') {
+      sanitized[key] = sanitizeAuditDetails(val);
+    } else {
+      sanitized[key] = val;
+    }
+  }
+  return sanitized;
+}
+
+/**
  * Log an action to the audit_logs table
  * @param {Object} options
  * @param {number} options.userId - ID of the user performing the action
@@ -13,10 +50,11 @@ const db = require('../config/db');
  */
 async function logAudit({ userId, action, entity = null, entityId = null, projectId = null, details = null, ipAddress = null }) {
   try {
+    const cleanDetails = details ? sanitizeAuditDetails(details) : null;
     await db.query(
       `INSERT INTO audit_logs (user_id, action, entity, entity_id, project_id, details, ip_address)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [userId, action, entity, entityId, projectId, details, ipAddress]
+      [userId, action, entity, entityId, projectId, cleanDetails, ipAddress]
     );
   } catch (error) {
     // We do not throw the error here so that audit logging failure doesn't break the main flow
@@ -44,16 +82,16 @@ function createAuditMiddleware(actionName, entityName = null) {
         entityId = responseBody.project.id;
       }
       
+      const userId = req.session && req.session.user ? req.session.user.id : null;
+      const ipAddress = getClientIp(req);
+
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        const userId = req.session && req.session.user ? req.session.user.id : null;
-        const ipAddress = req.ip || req.connection.remoteAddress;
-        
         logAudit({
           userId,
           action: actionName,
           entity: entityName,
           entityId,
-          details: { requestBody: req.body },
+          details: { requestBody: sanitizeAuditDetails(req.body) },
           ipAddress
         });
       }
@@ -67,5 +105,8 @@ function createAuditMiddleware(actionName, entityName = null) {
 
 module.exports = {
   logAudit,
-  createAuditMiddleware
+  createAuditMiddleware,
+  getClientIp,
+  sanitizeAuditDetails
 };
+

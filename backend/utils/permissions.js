@@ -39,8 +39,8 @@ const PERMISSIONS = {
   // cả CHU_DAU_TU thao tác, nên giữ cả hai để không đổi hành vi đang chạy thật.
   // Điều chỉnh: bỏ CHU_DAU_TU (không quản lý thành viên, chỉ giám sát).
   "member.manage": [BAN_QUAN_LY],
-  // Điều chỉnh: bổ sung CHI_HUY_TRUONG (tạo/sửa/xóa Hạng mục WBS).
-  "work_item.manage": [BAN_QUAN_LY, CHI_HUY_TRUONG],
+  // S-04, S-05 (F-06): Chỉ Ban quản lý được Tạo/Sửa cây WBS. Chỉ huy trưởng chỉ Xem.
+  "work_item.manage": [BAN_QUAN_LY],
   // S-43 / T-112: Lập và xem đề nghị thanh toán từ phiếu nghiệm thu đã duyệt
   "payment_request.create": [BAN_QUAN_LY],
   "payment_request.view": [BAN_QUAN_LY, CHU_DAU_TU, KE_TOAN],
@@ -75,6 +75,8 @@ const PERMISSIONS = {
   "site_log.correct_locked": [BAN_QUAN_LY],
   // TREO: tải ảnh thực tế công trường làm bằng chứng.
   "site_log.upload_photo": [KY_SU_GIAM_SAT],
+  // BL-2 (S-32): Xử lý xung đột phiên bản nhật ký — Kỹ sư giám sát chọn bản giữ
+  "diary.resolve_conflict": [KY_SU_GIAM_SAT],
   // TREO: đối chiếu khối lượng đội báo cáo với thực tế.
   "quantity.verify": [KY_SU_GIAM_SAT],
   // TREO: được TẠO / bổ sung hồ sơ nghiệm thu nhưng KHÔNG có quyền duyệt
@@ -110,18 +112,25 @@ const PERMISSIONS = {
   // được giao cho Tư vấn giám sát đại diện Chủ đầu tư, hệ thống phải phân quyền
   // đúng NGƯỜI cụ thể được uỷ quyền chứ không gán cứng theo role chu_dau_tu.
   // S-38: Ban quản lý duyệt hoặc trả lại phiếu nghiệm thu kèm lý do
+  // OQ-02 CHỐT 2026-10-21: giữ BQL. CDT chỉ "Xem" (acceptance.access). CDT duyệt thanh toán ở S-44.
   "acceptance.approve_official": [BAN_QUAN_LY],
   "acceptance.return_official": [BAN_QUAN_LY],
   // TREO: duyệt hoặc trả lại đề nghị thanh toán.
   "payment.approve": [CHU_DAU_TU],
-  // S-39: Chủ đầu tư / Ban quản lý xem toàn bộ nhật ký thao tác của dự án
-  // (Audit Portal — màn hình tổng quan tra cứu "ai làm gì, khi nào").
-  "audit.view_project": [CHU_DAU_TU, BAN_QUAN_LY],
+  // S-39: Nhật ký thao tác dự án — Chỉ loại Đội trưởng (OV-3).
+  // CHT, KSGS, Kế toán, CĐT, BQL đều được xem; System Admin chỉ xem/lọc/xuất, không sửa/xoá.
+  "audit.view_project": [
+    CHU_DAU_TU,
+    BAN_QUAN_LY,
+    CHI_HUY_TRUONG,
+    KY_SU_GIAM_SAT,
+    KE_TOAN,
+  ],
 
   // ── Ngân sách & Kế toán (S-46 / T-119) ─────────────────────────────
   "budget.view": [BAN_QUAN_LY, CHU_DAU_TU, KE_TOAN, CHI_HUY_TRUONG],
   "budget.manage": [BAN_QUAN_LY, CHU_DAU_TU],
-  "cost.record": [KE_TOAN],
+  "cost.record": [BAN_QUAN_LY], // BL-4 (S-47): BQL ghi chi phí thực tế (+ system_admin). Kế toán chỉ xem.
   "payment.reconcile": [KE_TOAN],
   "payment.prepare_dossier": [KE_TOAN],
   "finance.report": [KE_TOAN],

@@ -1,0 +1,263 @@
+# Anh xa Story -> Permission Key(s)
+# Nguon su that duy nhat cho: "story nao kiem tra quyen nao"
+# Ngay tao: 2026-10-21
+#
+# Quy tac:
+#  - Moi story chi duoc anh xa sang WRITE/ACTION permission key ma no truc tiep cap quyen
+#  - Neu mot key duoc anh xa tu nhieu story, cac o "cung role" KHONG DUOC MAU THUAN
+#    (neu mau thuan: script bao loi va dung - xem pha3_gap_v3.py)
+#  - "Xem" thuan tuy khong nen chia se key voi hanh dong ghi
+#  - Neu chua co endpoint: ghi endpoint_status: not_implemented
+
+mappings:
+
+  - story: S-04
+    feature: "Tao du an va cay co cau cong viec"
+    permission_key: work_item.manage
+    allowed_roles: [ban_quan_ly]
+    denied_roles: [chi_huy_truong, ky_su_giam_sat, doi_truong, chu_dau_tu, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-05
+    feature: "Khai bao cong viec co thoi luong"
+    permission_key: work_item.manage
+    allowed_roles: [ban_quan_ly]
+    denied_roles: [chi_huy_truong, ky_su_giam_sat, doi_truong, chu_dau_tu, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-06
+    feature: "Khai quan he phu thuoc"
+    permission_key: dependency.manage
+    allowed_roles: [ban_quan_ly]
+    denied_roles: [chi_huy_truong, ky_su_giam_sat, doi_truong, chu_dau_tu, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-12
+    feature: "Lich lam viec va ngay nghi"
+    permission_key: calendar.manage
+    allowed_roles: [ban_quan_ly, chu_dau_tu, chi_huy_truong]
+    denied_roles: [ky_su_giam_sat, doi_truong, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-13
+    feature: "Chot baseline tien do"
+    permission_key: baseline.manage
+    allowed_roles: [ban_quan_ly]
+    denied_roles: [chi_huy_truong, ky_su_giam_sat, doi_truong, chu_dau_tu, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-15
+    feature: "Phan cong cong viec cho doi"
+    permission_key: task.assign
+    allowed_roles: [chi_huy_truong]
+    denied_roles: [ban_quan_ly, ky_su_giam_sat, doi_truong, chu_dau_tu, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-17
+    feature: "Bao cao khoi luong thi cong"
+    permission_key: quantity.report
+    allowed_roles: [doi_truong]
+    denied_roles: [ban_quan_ly, chi_huy_truong, ky_su_giam_sat, chu_dau_tu, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-18
+    feature: "Kiem tra khoi luong do doi bao"
+    permission_key: quantity.verify
+    allowed_roles: [ky_su_giam_sat]
+    denied_roles: [ban_quan_ly, chi_huy_truong, doi_truong, chu_dau_tu, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-19
+    feature: "Dat moc bat buoc tren tien do"
+    permission_key: milestone.manage
+    allowed_roles: [ban_quan_ly, chu_dau_tu]
+    denied_roles: [chi_huy_truong, ky_su_giam_sat, doi_truong, ke_toan]
+    override: BL-3
+    override_note: "T-43: ca CDT va BQL dat duoc moc. Code hien tai dung, lech 1 o matrix."
+    endpoint_status: implemented
+
+  - story: S-21
+    feature: "Quan ly thanh vien du an"
+    permission_key: member.manage
+    allowed_roles: [ban_quan_ly]
+    denied_roles: [chi_huy_truong, ky_su_giam_sat, doi_truong, chu_dau_tu, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-22
+    feature: "Moi thanh vien vao du an"
+    permission_key: invitation.manage
+    allowed_roles: [ban_quan_ly, chu_dau_tu, chi_huy_truong]
+    denied_roles: [ky_su_giam_sat, doi_truong, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-24
+    feature: "Khoa / Mo khoa nhat ky thi cong"
+    permission_key: site_log.correct_locked
+    allowed_roles: [ban_quan_ly]
+    denied_roles: [chi_huy_truong, ky_su_giam_sat, doi_truong, chu_dau_tu, ke_toan]
+    override: BL-1
+    endpoint_status: implemented
+
+  - story: S-25
+    feature: "Tao nhat ky thi cong"
+    permission_key: site_log.create
+    allowed_roles: [ky_su_giam_sat, chi_huy_truong, ban_quan_ly]
+    denied_roles: [doi_truong, chu_dau_tu, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-25b
+    feature: "Ghi muc dau ngay (nhan luc, thiet bi, thoi tiet)"
+    permission_key: site_log.create_daily
+    allowed_roles: [ky_su_giam_sat, chi_huy_truong, ban_quan_ly]
+    denied_roles: [doi_truong, chu_dau_tu, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-26
+    feature: "Chot so nhat ky cuoi ngay"
+    permission_key: site_log.close_daily
+    allowed_roles: [ky_su_giam_sat]
+    denied_roles: [ban_quan_ly, chi_huy_truong, doi_truong, chu_dau_tu, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-32
+    feature: "Xu ly xung dot nhat ky"
+    permission_key: diary.resolve_conflict
+    allowed_roles: [ky_su_giam_sat]
+    denied_roles: [ban_quan_ly, chi_huy_truong, doi_truong, chu_dau_tu, ke_toan]
+    override: BL-2
+    override_note: "BL-2: KSGS chon ban giu khi co xung dot nhat ky. BQL chi xem xung dot."
+    endpoint_status: implemented
+
+  - story: S-35
+    feature: "Tao ho so nghiem thu hang muc"
+    permission_key: acceptance.create_dossier
+    allowed_roles: [ky_su_giam_sat]
+    denied_roles: [ban_quan_ly, chi_huy_truong, doi_truong, chu_dau_tu, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-35b
+    feature: "Cap nhat ho so nghiem thu"
+    permission_key: acceptance.update_dossier
+    allowed_roles: [ky_su_giam_sat]
+    denied_roles: [ban_quan_ly, chi_huy_truong, doi_truong, chu_dau_tu, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-38
+    feature: "Duyet hoac tra lai phieu nghiem thu"
+    permission_key: acceptance.approve_official
+    allowed_roles: [ban_quan_ly]
+    denied_roles: [chi_huy_truong, ky_su_giam_sat, doi_truong, chu_dau_tu, ke_toan]
+    override: OQ-02
+    override_note: "S-38 story cua BQL. CDT chi Xem. OQ-02 da chot 2026-10-21."
+    endpoint_status: implemented
+
+  - story: S-38b
+    feature: "Tra lai phieu nghiem thu kem ly do"
+    permission_key: acceptance.return_official
+    allowed_roles: [ban_quan_ly]
+    denied_roles: [chi_huy_truong, ky_su_giam_sat, doi_truong, chu_dau_tu, ke_toan]
+    override: OQ-02
+    endpoint_status: implemented
+
+  - story: S-39
+    feature: "Xem nhat ky thao tac du an (audit portal)"
+    permission_key: audit.view_project
+    allowed_roles: [ban_quan_ly, chu_dau_tu, chi_huy_truong, ky_su_giam_sat, ke_toan]
+    denied_roles: [doi_truong]
+    override: OV-3
+    override_note: >
+      OV-3 / S-39: Chi loai Doi truong. CHT, KSGS, Ke toan, CDT, BQL deu co quyen
+      xem nhat ky thao tac theo ma tran. System Admin chi xem/loc/xuat, khong sua/xoa.
+    endpoint_status: implemented
+
+  - story: S-40
+    feature: "Sieu du lieu anh hien truong va quyen rieng tu vi tri"
+    permission_key: photo.view_gps
+    allowed_roles: [ban_quan_ly, chu_dau_tu]
+    denied_roles: [chi_huy_truong, ky_su_giam_sat, doi_truong, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-41
+    feature: "Cau hinh pham vi cong truong (geofence)"
+    permission_key: site_geofence.manage
+    allowed_roles: [ban_quan_ly, chu_dau_tu]
+    denied_roles: [chi_huy_truong, ky_su_giam_sat, doi_truong, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-43
+    feature: "Lap de nghi thanh toan tu phieu nghiem thu"
+    permission_key: payment_request.create
+    allowed_roles: [ban_quan_ly]
+    denied_roles: [chi_huy_truong, ky_su_giam_sat, doi_truong, chu_dau_tu, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-44
+    feature: "Duyet de nghi thanh toan (Chu dau tu)"
+    permission_key: payment.approve
+    allowed_roles: [chu_dau_tu]
+    denied_roles: [ban_quan_ly, chi_huy_truong, ky_su_giam_sat, doi_truong, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-45
+    feature: "Cau hinh phan tam giu theo hop dong"
+    permission_key: payment_retention.manage
+    allowed_roles: [ban_quan_ly, chu_dau_tu]
+    denied_roles: [chi_huy_truong, ky_su_giam_sat, doi_truong, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-46
+    feature: "Nhap du toan theo hang muc la"
+    permission_key: budget.manage
+    allowed_roles: [ban_quan_ly, chu_dau_tu]
+    denied_roles: [chi_huy_truong, ky_su_giam_sat, doi_truong, ke_toan]
+    endpoint_status: implemented
+
+  - story: S-47
+    feature: "Ghi nhan chi phi thuc te gan voi hang muc"
+    permission_key: cost.record
+    allowed_roles: [ban_quan_ly]
+    denied_roles: [chi_huy_truong, ky_su_giam_sat, doi_truong, chu_dau_tu, ke_toan]
+    override: BL-4
+    override_note: "BL-4: Chi BQL ghi chi phi thuc te theo Backlog S-47. Ke toan chi xem."
+    endpoint_status: implemented
+
+  - story: S-50
+    feature: "Xuat ho so nghiem thu ra PDF"
+    permission_key: acceptance.export_dossier
+    allowed_roles: [ban_quan_ly]
+    denied_roles: [chi_huy_truong, ky_su_giam_sat, doi_truong, chu_dau_tu, ke_toan]
+    endpoint_status: implemented
+
+  # ── CHUA CO ENDPOINT ────────────────────────────────────────────────────────
+
+  - story: S-51
+    feature: "Giam sat suc khoe he thong va canh bao khi staging ngung"
+    permission_key: system.health.view
+    allowed_roles: [system_admin]
+    denied_roles: [ban_quan_ly, chi_huy_truong, ky_su_giam_sat, doi_truong, chu_dau_tu, ke_toan]
+    endpoint_status: not_implemented
+    note: >
+      S-51 la tinh nang DevOps/han tang, KHONG dung chung key voi audit.view_project (S-39).
+      Da tach ra de tranh mau thuan: CDT co audit.view_project (S-39) nhung khong co
+      system.health.view (S-51). BQL o S-51 chi 'Xem' nen cung khong can quyen ghi.
+      Khi co endpoint thi tao key moi, System Admin quan tri, BQL co the xem neu PO quyet dinh.
+
+  - story: S-48
+    feature: "Bang so du toan voi thuc chi, canh bao hang muc vuot ngan sach"
+    permission_key: finance.report
+    allowed_roles: [ke_toan]
+    denied_roles: [ban_quan_ly, chi_huy_truong, ky_su_giam_sat, doi_truong, chu_dau_tu]
+    endpoint_status: not_implemented
+    note: >
+      Ma tran: BQL 'Xem/doi chieu', CDT 'Xem', CHT/KSGS/KT 'Xem'. Nhung hien chi KT trong code.
+      Day la read-only endpoint chua co. Chi them role vao finance.report khi co endpoint tuong ung.
+
+  - story: S-49
+    feature: "Trang tong hop tien do cho chu dau tu"
+    permission_key: progress.view
+    allowed_roles: [chu_dau_tu]
+    denied_roles: [ban_quan_ly, chi_huy_truong, ky_su_giam_sat, doi_truong, ke_toan]
+    endpoint_status: implemented
+    note: >
+      Ma tran: BQL 'Xem/doi chieu', CHT/KSGS/DT/KT 'Xem'. Nhung endpoint hien chi dung cho CDT.
+      Khi mo rong them role thi cap nhat ca day va permissions.js.

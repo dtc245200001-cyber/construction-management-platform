@@ -28,7 +28,7 @@ export default function ProjectsPage({ user, setUser }) {
 
   // Modal Create
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createData, setCreateData] = useState({ name: '', code: '', location: '', start_date: '', sprint_length_weeks: 1 });
+  const [createData, setCreateData] = useState({ name: '', code: '', location: '', start_date: '', sprint_length_weeks: 1, pm_email: '' });
   const [createError, setCreateError] = useState('');
 
   // Modal Edit
@@ -36,13 +36,18 @@ export default function ProjectsPage({ user, setUser }) {
   const [editError, setEditError] = useState('');
 
   const isSystemAdmin = user?.is_system_admin === true;
+  const [canCreateProject, setCanCreateProject] = useState(false);
 
   const fetchProjects = async () => {
     try {
       setLoading(true);
       setError(null);
-      const res = await api.get('/projects');
+      const [res, permRes] = await Promise.all([
+        api.get('/projects'),
+        api.get('/auth/me/permissions').catch(() => ({ data: {} })),
+      ]);
       setProjects(res.data.projects || []);
+      setCanCreateProject(Boolean(permRes.data?.permissions?.['project.create'] ?? permRes.data?.can_create_project));
     } catch (err) {
       // 401 = cookie session không được trình duyệt gửi lên (thường do
       // chặn cookie bên thứ ba trên mobile/in-app browser) -> về login
@@ -60,6 +65,7 @@ export default function ProjectsPage({ user, setUser }) {
   useEffect(() => {
     fetchProjects();
   }, []);
+
 
   const handleLogout = async () => {
     try {
@@ -340,7 +346,7 @@ export default function ProjectsPage({ user, setUser }) {
               );
             })}
 
-            {isSystemAdmin && (
+            {canCreateProject && (
               <button 
                 onClick={() => setShowCreateModal(true)}
                 className="bg-site-bg rounded-2xl border-2 border-dashed border-site-border hover:border-site-primary/50 hover:bg-site-primary/5 transition-colors p-5 flex flex-col items-center justify-center min-h-[240px] gap-3 group outline-none focus-visible:ring-2 focus-visible:ring-site-primary"
@@ -355,7 +361,7 @@ export default function ProjectsPage({ user, setUser }) {
               </button>
             )}
 
-            {projects.length === 0 && !isSystemAdmin && (
+            {projects.length === 0 && !canCreateProject && (
               <div className="col-span-full text-center py-12">
                 <p className="text-site-baseline">Bạn chưa tham gia dự án nào, hãy liên hệ Quản trị viên để được mời.</p>
               </div>
@@ -374,6 +380,20 @@ export default function ProjectsPage({ user, setUser }) {
             </div>
             <div className="p-6 space-y-4">
               {createError && <div className="p-3 bg-site-critical/10 text-site-critical rounded-lg text-sm">{createError}</div>}
+              {isSystemAdmin && (
+                <div>
+                  <label className="block text-sm font-medium mb-1.5">Email Ban quản lý dự án (PM) *</label>
+                  <input
+                    required
+                    type="email"
+                    value={createData.pm_email || ''}
+                    onChange={e => setCreateData({...createData, pm_email: e.target.value})}
+                    className="w-full rounded-lg border border-site-border px-3 py-2 text-sm outline-none focus:border-site-primary"
+                    placeholder="VD: pm@example.com"
+                  />
+                  <p className="text-xs text-site-baseline mt-1">System Admin bắt buộc chỉ định người làm Ban quản lý để dự án không bị mồ côi.</p>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium mb-1.5">Tên dự án *</label>
                 <input required type="text" value={createData.name} onChange={e => setCreateData({...createData, name: e.target.value})} className="w-full rounded-lg border border-site-border px-3 py-2 text-sm outline-none focus:border-site-primary" placeholder="Tên dự án" />
@@ -404,6 +424,7 @@ export default function ProjectsPage({ user, setUser }) {
           </form>
         </div>
       )}
+
 
       {/* Modal Edit */}
       {editProjectData && (
