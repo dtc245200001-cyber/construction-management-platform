@@ -324,42 +324,44 @@ describe("T-118: Migration lưu dự toán theo hạng mục lá và phiên bả
   });
 
   describe("5. Khả năng chạy Migration Up/Down/Re-Up sạch sẽ", () => {
-    it("Migration down và up 1 bước hoạt động chính xác không lỗi", async () => {
-      // 1. Chạy down 1 migration (chính là migration tạo budget_versions & budget_items)
+    it("Migration down và up 2 bước (1800400000000 và 1800300000000) hoạt động chính xác không lỗi", async () => {
+      // 1. Chạy down 2 migration (gồm 1800400000000 giải trình vượt mức và 1800300000000 budget_versions & budget_items)
       await runner({
         databaseUrl: dbUrl,
         dir: path.resolve(__dirname, "../../migrations"),
         direction: "down",
         migrationsTable: "pgmigrations",
-        count: 1,
+        count: 2,
         checkOrder: false,
         log: () => {},
       });
 
-      // Kiểm tra bảng budget_items và budget_versions không còn tồn tại
+      // Kiểm tra bảng budget_items, budget_versions và budget_overrun_justifications không còn tồn tại
       const tablesAfterDown = await pool.query(`
         SELECT table_name FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name IN ('budget_versions', 'budget_items')
+        WHERE table_schema = 'public'
+          AND table_name IN ('budget_versions', 'budget_items', 'budget_overrun_justifications')
       `);
       expect(tablesAfterDown.rows).toHaveLength(0);
 
-      // 2. Chạy up lại 1 migration
+      // 2. Chạy up lại toàn bộ migration
       await runner({
         databaseUrl: dbUrl,
         dir: path.resolve(__dirname, "../../migrations"),
         direction: "up",
         migrationsTable: "pgmigrations",
-        count: 1,
+        count: Infinity,
         checkOrder: false,
         log: () => {},
       });
 
-      // Kiểm tra bảng đã được tạo lại sạch sẽ
+      // Kiểm tra cả 3 bảng đã được tạo lại sạch sẽ
       const tablesAfterReUp = await pool.query(`
         SELECT table_name FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name IN ('budget_versions', 'budget_items')
+        WHERE table_schema = 'public'
+          AND table_name IN ('budget_versions', 'budget_items', 'budget_overrun_justifications')
       `);
-      expect(tablesAfterReUp.rows).toHaveLength(2);
+      expect(tablesAfterReUp.rows).toHaveLength(3);
     });
   });
 });

@@ -121,6 +121,8 @@ const PERMISSIONS = {
   // ── Ngân sách & Kế toán (S-46 / T-119) ─────────────────────────────
   "budget.view": [BAN_QUAN_LY, CHU_DAU_TU, KE_TOAN, CHI_HUY_TRUONG],
   "budget.manage": [BAN_QUAN_LY, CHU_DAU_TU],
+  "budget.verify_overrun": [KE_TOAN],
+  "budget.approve_overrun": [CHU_DAU_TU],
   "cost.record": [KE_TOAN],
   "payment.reconcile": [KE_TOAN],
   "payment.prepare_dossier": [KE_TOAN],

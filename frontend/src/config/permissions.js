@@ -248,6 +248,12 @@ export const PERMISSIONS = {
   "payment_request.create": [BAN_QUAN_LY],
   "payment_request.view": [BAN_QUAN_LY, CHU_DAU_TU, KE_TOAN],
   "payment_retention.manage": [BAN_QUAN_LY, CHU_DAU_TU],
+
+  // S-46 / T-119: Dự toán chi phí
+  "budget.view": [BAN_QUAN_LY, CHU_DAU_TU, KE_TOAN, CHI_HUY_TRUONG],
+  "budget.manage": [BAN_QUAN_LY, CHU_DAU_TU],
+  "budget.verify_overrun": [KE_TOAN],
+  "budget.approve_overrun": [CHU_DAU_TU],
 };
 
 function isKnownRole(role) {
