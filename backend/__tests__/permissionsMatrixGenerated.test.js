@@ -30,10 +30,10 @@ for (const line of storyMapContent.split(/\r?\n/)) {
     } else if (s.startsWith("override:")) {
       current.override = s.replace("override:", "").trim();
     } else if (s.startsWith("allowed_roles:")) {
-      const raw = s.replace("allowed_roles:", "").trim().replace(/[\[\]]/g, "");
+      const raw = s.replace("allowed_roles:", "").trim().replaceAll("[", "").replaceAll("]", "");
       current.allowed_roles = raw.split(",").map((r) => r.trim()).filter(Boolean);
     } else if (s.startsWith("denied_roles:")) {
-      const raw = s.replace("denied_roles:", "").trim().replace(/[\[\]]/g, "");
+      const raw = s.replace("denied_roles:", "").trim().replaceAll("[", "").replaceAll("]", "");
       current.denied_roles = raw.split(",").map((r) => r.trim()).filter(Boolean);
     }
   }

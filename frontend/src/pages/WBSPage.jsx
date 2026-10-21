@@ -1681,7 +1681,9 @@ const visibleItems = useMemo(() => {
         closeTaskForm();
         try {
           await api.post(`/projects/${projectId}/schedule/recalculate`);
-        } catch (_) {}
+        } catch (_) {
+          // Bỏ qua nếu recalculate thất bại
+        }
         await fetchWBS();
       }}
     />
