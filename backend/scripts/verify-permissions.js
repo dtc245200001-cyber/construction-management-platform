@@ -62,10 +62,10 @@ function runVerification() {
       if (s.startsWith("permission_key:")) {
         current.permission_key = s.replace("permission_key:", "").trim();
       } else if (s.startsWith("allowed_roles:")) {
-        const raw = s.replace("allowed_roles:", "").trim().replace(/[\[\]]/g, "");
+        const raw = s.replace("allowed_roles:", "").trim().replaceAll("[", "").replaceAll("]", "");
         current.allowed_roles = raw.split(",").map((r) => r.trim()).filter(Boolean);
       } else if (s.startsWith("denied_roles:")) {
-        const raw = s.replace("denied_roles:", "").trim().replace(/[\[\]]/g, "");
+        const raw = s.replace("denied_roles:", "").trim().replaceAll("[", "").replaceAll("]", "");
         current.denied_roles = raw.split(",").map((r) => r.trim()).filter(Boolean);
       }
     }
