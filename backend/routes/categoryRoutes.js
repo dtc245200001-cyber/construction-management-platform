@@ -159,6 +159,8 @@ router.get(
             t.work_item_id,
             t.name,
             t.duration_days,
+            t.scheduling_mode,
+            t.manual_start_date,
             t.actual_start_date,
             t.actual_end_date,
             t.percent_complete,
@@ -190,6 +192,23 @@ router.get(
     const taskNodes = taskRows.map((t) => {
       const isDone = Boolean(t.actual_end_date || t.percent_complete === 100);
       const isDoing = Boolean(t.actual_start_date || (t.percent_complete && t.percent_complete > 0));
+
+      let startDate = t.early_start || null;
+      let endDate = t.early_finish || null;
+
+      // Fallback: nếu CPM chưa chạy nhưng công việc có ngày bắt đầu thủ công
+      if (!startDate && t.manual_start_date) {
+        const dStr = typeof t.manual_start_date === "string"
+          ? t.manual_start_date.substring(0, 10)
+          : new Date(t.manual_start_date).toISOString().substring(0, 10);
+        startDate = dStr;
+        if (!endDate && t.duration_days) {
+          const d = new Date(dStr);
+          d.setDate(d.getDate() + Math.max(0, Number(t.duration_days) - 1));
+          endDate = d.toISOString().substring(0, 10);
+        }
+      }
+
       return {
         id: `task-${t.id}`,
         task_id: t.id,
@@ -197,11 +216,13 @@ router.get(
         parent_id: t.work_item_id,
         type: "task",
         duration_days: t.duration_days,
+        scheduling_mode: t.scheduling_mode || "auto",
+        manual_start_date: t.manual_start_date ? String(t.manual_start_date).substring(0, 10) : null,
         actual_start_date: t.actual_start_date || null,
         actual_end_date: t.actual_end_date || null,
         percent_complete: t.percent_complete ?? 0,
-        start_date: t.early_start || null,
-        end_date: t.early_finish || null,
+        start_date: startDate,
+        end_date: endDate,
         status: isDone ? "Hoàn thành" : (isDoing ? "Đang thực hiện" : "Chưa bắt đầu"),
         progress: t.percent_complete ?? 0,
         is_critical: t.is_critical || false,
@@ -752,10 +773,30 @@ router.delete(
             message: "Hạng mục đã có nhật ký, không thể xóa",
           });
         }
+        if (err.constraint === "budget_items_work_item_id_fkey") {
+          return res.status(409).json({
+            message: `Không thể xóa hạng mục "${itemName}" vì đã được lập dự toán ngân sách.`,
+          });
+        }
+        if (err.constraint === "acceptance_voucher_items_work_item_id_fkey") {
+          return res.status(409).json({
+            message: `Không thể xóa hạng mục "${itemName}" vì đã có trong biên bản nghiệm thu.`,
+          });
+        }
+        if (err.constraint === "actual_costs_work_item_id_fkey") {
+          return res.status(409).json({
+            message: `Không thể xóa hạng mục "${itemName}" vì đã có chi phí thực tế phát sinh.`,
+          });
+        }
+        if (err.constraint === "payment_request_lines_work_item_id_fkey") {
+          return res.status(409).json({
+            message: `Không thể xóa hạng mục "${itemName}" vì đã có trong đợt đề nghị thanh toán.`,
+          });
+        }
         return res.status(409).json({
           message:
             `Không thể xóa hạng mục "${itemName}" ` +
-            "vì đang chứa các hạng mục con.",
+            "vì đang chứa các hạng mục con hoặc dữ liệu liên kết.",
         });
       }
 

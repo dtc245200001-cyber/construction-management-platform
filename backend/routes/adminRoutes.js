@@ -139,14 +139,13 @@ router.get('/projects', async (req, res, next) => {
   const client = await db.connect();
   try {
     const result = await client.query(
-      `SELECT p.id, p.name, p.code, p.status, p.created_at, 
+      `SELECT p.id, p.name, p.code, p.status, p.created_at,
               (SELECT COUNT(*) FROM project_members m WHERE m.project_id = p.id) as member_count,
               (
-                SELECT u.email 
-                FROM project_members pm 
-                JOIN users u ON pm.user_id = u.id 
-                JOIN roles r ON pm.role_id = r.id
-                WHERE pm.project_id = p.id AND r.name = 'ban_quan_ly' 
+                SELECT u.email
+                FROM project_members pm
+                JOIN users u ON pm.user_id = u.id
+                WHERE pm.project_id = p.id AND pm.role = 'ban_quan_ly'
                 LIMIT 1
               ) as pm_email
        FROM projects p
@@ -174,7 +173,7 @@ router.get('/projects', async (req, res, next) => {
 router.post('/projects', createAuditMiddleware('CREATE_PROJECT', 'projects'), async (req, res, next) => {
   const { name, code, pm_email } = req.body;
   if (!name || !code || !pm_email) {
-    return res.status(400).json({ message: "Tên dự án, mã dự án và email PM là bắt buộc" });
+    return res.status(422).json({ message: "Tên dự án, mã dự án và email PM là bắt buộc", error: "System Admin bắt buộc chỉ định ít nhất một Ban quản lý cho dự án" });
   }
 
   const client = await db.connect();
@@ -187,35 +186,40 @@ router.post('/projects', createAuditMiddleware('CREATE_PROJECT', 'projects'), as
       return res.status(400).json({ message: "Mã dự án đã tồn tại" });
     }
 
+    const userCheck = await client.query("SELECT id, email, role, is_verified, locked_until FROM users WHERE LOWER(email) = LOWER($1)", [pm_email]);
+
+    if (userCheck.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(422).json({ message: "Người dùng được chỉ định làm Ban quản lý không tồn tại", error: "Người dùng được chỉ định làm Ban quản lý không tồn tại" });
+    }
+
+    const pmUser = userCheck.rows[0];
+
+    if (!pmUser.is_verified) {
+      await client.query("ROLLBACK");
+      return res.status(422).json({ message: "Tài khoản Ban quản lý được chỉ định chưa được xác thực", error: "Tài khoản Ban quản lý được chỉ định chưa được xác thực" });
+    }
+
+    if (pmUser.locked_until && new Date(pmUser.locked_until) > new Date()) {
+      await client.query("ROLLBACK");
+      return res.status(422).json({ message: "Tài khoản Ban quản lý được chỉ định đang bị tạm khóa", error: "Tài khoản Ban quản lý được chỉ định đang bị tạm khóa" });
+    }
+
+    if (pmUser.role === 'khach') {
+      await client.query("ROLLBACK");
+      return res.status(422).json({ message: "Tài khoản có vai trò khách không được chỉ định làm Ban quản lý", error: "Tài khoản có vai trò khách không được chỉ định làm Ban quản lý" });
+    }
+
     const projResult = await client.query(
       "INSERT INTO projects (name, code) VALUES ($1, $2) RETURNING id",
       [name, code]
     );
     const projectId = projResult.rows[0].id;
 
-    const pmResult = await client.query("SELECT id FROM roles WHERE name = 'ban_quan_ly'");
-    const pmRoleId = pmResult.rows[0].id;
-
-    const userCheck = await client.query("SELECT id FROM users WHERE LOWER(email) = LOWER($1)", [pm_email]);
-    
-    if (userCheck.rows.length > 0) {
-      await client.query(
-        "INSERT INTO project_members (project_id, user_id, role_id) VALUES ($1, $2, $3)",
-        [projectId, userCheck.rows[0].id, pmRoleId]
-      );
-    } else {
-      const token = crypto.randomBytes(32).toString('hex');
-      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 7);
-
-      const invRes = await client.query(
-        "INSERT INTO invitations (email, project_id, project_role, token_hash, expires_at) VALUES ($1, $2, $3, $4, $5) RETURNING id",
-        [pm_email, projectId, 'ban_quan_ly', tokenHash, expiresAt]
-      );
-      await createEmailLog(client, invRes.rows[0].id, pm_email);
-      // Need to process later
-    }
+    await client.query(
+      "INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, 'ban_quan_ly')",
+      [projectId, pmUser.id]
+    );
 
     await client.query("COMMIT");
     res.status(201).json({ message: "Đã tạo dự án và cấp quyền PM", projectId });
@@ -226,6 +230,7 @@ router.post('/projects', createAuditMiddleware('CREATE_PROJECT', 'projects'), as
     client.release();
   }
 });
+
 
 // POST /api/admin/projects/:projectId/assign-pm - Fail-safe PM assignment
 /**
@@ -252,19 +257,16 @@ router.post('/projects/:projectId/assign-pm', createAuditMiddleware('ASSIGN_PM_F
   const client = await db.connect();
   try {
     await client.query("BEGIN");
-    
-    const pmResult = await client.query("SELECT id FROM roles WHERE name = 'ban_quan_ly'");
-    const pmRoleId = pmResult.rows[0].id;
 
     const userCheck = await client.query("SELECT id FROM users WHERE LOWER(email) = LOWER($1)", [pm_email]);
     if (userCheck.rows.length > 0) {
       const userId = userCheck.rows[0].id;
-      
+
       const memberCheck = await client.query("SELECT id FROM project_members WHERE project_id = $1 AND user_id = $2", [projectId, userId]);
       if (memberCheck.rows.length > 0) {
-        await client.query("UPDATE project_members SET role_id = $1 WHERE project_id = $2 AND user_id = $3", [pmRoleId, projectId, userId]);
+        await client.query("UPDATE project_members SET role = 'ban_quan_ly' WHERE project_id = $1 AND user_id = $2", [projectId, userId]);
       } else {
-        await client.query("INSERT INTO project_members (project_id, user_id, role_id) VALUES ($1, $2, $3)", [projectId, userId, pmRoleId]);
+        await client.query("INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, 'ban_quan_ly')", [projectId, userId]);
       }
     } else {
       const token = crypto.randomBytes(32).toString('hex');

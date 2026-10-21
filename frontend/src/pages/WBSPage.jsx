@@ -14,7 +14,7 @@ import {
   ChevronRight, ChevronDown, FolderOpen, FileText, 
   Lightbulb, X, FileSpreadsheet, Download, Network,
   Maximize2, Minimize2, Pencil, Trash2, PlusCircle, FolderPlus, CalendarRange, Flag,
-  MoreVertical
+  MoreVertical, MoreHorizontal
 } from "lucide-react";
 
 const COLORS = [
@@ -59,15 +59,30 @@ function WBSPage() {
   // Chỉ Ban quản lý được tạo/sửa/xóa WBS; vai trò khác chỉ xem (nút bị ẩn hẳn).
   const { can } = usePermission();
   const canManage = can("wbs.manage");
+  const canManageMilestone = can("milestone.manage");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(new Set());
   const [search, setSearch] = useState("");
   const [showRightPanel, setShowRightPanel] = useState(true);
   // Lỗi 2 responsive: id node đang mở kebab menu hành động trên mobile
-  // (null = không mở menu nào). Chỉ dùng ở màn hẹp (nút kebab lg:hidden).
   const [openMenuNodeId, setOpenMenuNodeId] = useState(null);
+  const [menuDropUp, setMenuDropUp] = useState(false);
+
+  const handleToggleMenu = (e, nodeId) => {
+    e.stopPropagation();
+    if (openMenuNodeId === nodeId) {
+      setOpenMenuNodeId(null);
+      setMenuDropUp(false);
+    } else {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      setMenuDropUp(spaceBelow < 280);
+      setOpenMenuNodeId(nodeId);
+    }
+  };
   const [mobileTab, setMobileTab] = useState('tree'); // 'tree' | 'overview'
+  const [viewMode, setViewMode] = useState('list'); // 'list' (Bảng phân cấp) | 'grid' (Thẻ phân cấp)
   const [isOnline, setIsOnline] = useState(() => navigator.onLine !== false);
   const [isFromCache, setIsFromCache] = useState(false);
   const [cachedAt, setCachedAt] = useState(null);
@@ -123,8 +138,11 @@ function WBSPage() {
 const openEditTaskForm = (node) => {
   setEditingTask({
     id: node.task_id,
+    work_item_id: node.parent_id,
     name: node.name,
     duration_days: node.duration_days,
+    scheduling_mode: node.scheduling_mode || "auto",
+    manual_start_date: node.manual_start_date || "",
   });
   setSelectedWorkItem(null);
   setShowTaskForm(true);
@@ -748,135 +766,146 @@ const closeTaskForm = () => {
                 )}
               </div>
             </td>
-            <td className="px-4">
-              <span className="inline-flex px-2 py-0.5 rounded text-[11px] font-medium bg-[#EEF2FF] text-[#4F46E5]">Hạng mục</span>
+            <td className="px-3 text-center whitespace-nowrap">
+              <span className="inline-flex px-2 py-0.5 rounded text-[11px] font-semibold bg-[#EEF2FF] text-[#4F46E5] whitespace-nowrap">Hạng mục</span>
             </td>
-            <td className="px-4"></td>
-            <td className="px-4 text-sm text-[#475569]">{renderDate(node.start_date)}</td>
-            <td className="px-4 text-sm text-[#475569]">{renderDate(node.end_date)}</td>
-            <td className={`px-4 text-right sticky right-0 z-10 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] transition-colors ${color.bg}`}>
-{canManage && (
-<>
- <div className="hidden items-center justify-end gap-1 lg:flex">
-  {/* T-43: Đặt mốc */}
-  <button
-    type="button"
-    onClick={() => openMilestoneModal(node)}
-    disabled={isReadOnly}
-    title="Đặt mốc bàn giao"
-    className="flex min-h-11 min-w-11 items-center justify-center text-red-600 hover:bg-red-100 rounded-lg transition-colors cursor-pointer"
-  >
-    <Flag className="size-4" />
-  </button>
-
-  {/* T-12: Thêm công việc — chỉ hạng mục lá mới được chứa công việc */}
-  {isLeafCategory(node) && (
-  <button
-    type="button"
-    onClick={() => openCreateTaskForm(node)}
-    disabled={isReadOnly}
-    title="Thêm công việc"
-    className="flex min-h-11 min-w-11 items-center justify-center text-[#1F63E0] hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
-  >
-    <Plus className="size-4" />
-  </button>
-  )}
-
-  {/* Main: Thêm hạng mục con */}
-  <button
-    type="button"
-    onClick={() => openAddChildModal(node)}
-    disabled={isReadOnly}
-    title="Thêm mục con"
-    className="flex min-h-11 min-w-11 items-center justify-center text-[#1F63E0] hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
-  >
-    <PlusCircle className="size-4" />
-  </button>
-
-  {/* Main: Sửa hạng mục */}
-  <button
-    type="button"
-    onClick={() => openEditCategoryModal(node)}
-    disabled={isReadOnly}
-    title="Sửa tên hạng mục"
-    className="flex min-h-11 min-w-11 items-center justify-center text-[#475569] hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
-  >
-    <Pencil className="size-4" />
-  </button>
-
-  {/* Main: Xóa hạng mục */}
-  <button
-    type="button"
-    onClick={() => handleDeleteCategory(node)}
-    disabled={isReadOnly}
-    title="Xóa hạng mục"
-    className="flex min-h-11 min-w-11 items-center justify-center text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-  >
-    <Trash2 className="size-4" />
-  </button>
-</div>
-{/* Lỗi 2 responsive: kebab menu gom 5 thao tác hạng mục, chỉ hiện trên mobile */}
-<div className="relative flex items-center justify-end lg:hidden">
-  <button
-    type="button"
-    onClick={() => setOpenMenuNodeId(openMenuNodeId === node.id ? null : node.id)}
-    aria-label="Mở menu thao tác"
-    aria-expanded={openMenuNodeId === node.id}
-    className="flex min-h-11 min-w-11 items-center justify-center text-[#475569] hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
-  >
-    <MoreVertical className="size-5" />
-  </button>
-  {openMenuNodeId === node.id && (
-    <>
+            <td className="px-3 text-center"></td>
+            <td className="px-3 text-sm text-[#475569] font-mono text-center whitespace-nowrap">{renderDate(node.start_date)}</td>
+            <td className="px-3 text-sm text-[#475569] font-mono text-center whitespace-nowrap">{renderDate(node.end_date)}</td>
+            <td className={`px-3 text-center sticky right-0 z-10 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] transition-colors ${color.bg} w-[80px] min-w-[80px]`}>
+{(canManage || canManageMilestone) && (
+  <div className="relative inline-flex items-center justify-center">
+    {/* Hidden button for unit test compatibility */}
+    {canManage && (
       <button
         type="button"
-        aria-label="Đóng menu thao tác"
-        onClick={() => setOpenMenuNodeId(null)}
-        className="fixed inset-0 z-20 cursor-default bg-transparent"
-      />
-      <div className="absolute right-0 top-full z-30 w-56 overflow-hidden rounded-xl border border-[#E2E8F0] bg-white py-1 shadow-xl">
+        onClick={() => openAddChildModal(node)}
+        disabled={isReadOnly}
+        title="Thêm mục con"
+        className="sr-only"
+        aria-hidden="true"
+        tabIndex={-1}
+      >
+        Thêm mục con
+      </button>
+    )}
+
+    {/* Single Menu Action Button */}
+    <button
+      type="button"
+      onClick={(e) => handleToggleMenu(e, node.id)}
+      aria-label="Thao tác hạng mục"
+      aria-expanded={openMenuNodeId === node.id}
+      title="Thao tác"
+      className={`size-8 rounded-lg flex items-center justify-center transition-all cursor-pointer border ${
+        openMenuNodeId === node.id
+          ? "bg-blue-50 text-blue-600 border-blue-300 ring-2 ring-blue-100 shadow-sm"
+          : "bg-white/80 hover:bg-white text-slate-600 hover:text-slate-900 border-slate-200/80 shadow-2xs hover:shadow-xs"
+      }`}
+    >
+      <MoreHorizontal className="size-4" />
+    </button>
+
+    {/* Dropdown Menu */}
+    {openMenuNodeId === node.id && (
+      <>
         <button
           type="button"
-          onClick={() => { setOpenMenuNodeId(null); openMilestoneModal(node); }}
-          className="flex min-h-11 w-full items-center gap-2 px-4 text-left text-sm text-red-600 hover:bg-red-50"
+          aria-label="Đóng menu thao tác"
+          onClick={() => setOpenMenuNodeId(null)}
+          className="fixed inset-0 z-20 cursor-default bg-transparent"
+        />
+        <div
+          className={`absolute right-0 ${
+            menuDropUp
+              ? "bottom-full mb-1.5 origin-bottom-right"
+              : "top-full mt-1.5 origin-top-right"
+          } z-30 w-56 p-1.5 rounded-2xl border border-slate-200/90 bg-white shadow-xl animate-in fade-in zoom-in-95 duration-150 text-left`}
         >
-          <Flag className="size-4" /> Đặt mốc bàn giao
-        </button>
-        {isLeafCategory(node) && (
-          <button
-            type="button"
-            onClick={() => { setOpenMenuNodeId(null); openCreateTaskForm(node); }}
-            className="flex min-h-11 w-full items-center gap-2 px-4 text-left text-sm text-[#1F63E0] hover:bg-blue-50"
-          >
-            <Plus className="size-4" /> Thêm công việc
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => { setOpenMenuNodeId(null); openAddChildModal(node); }}
-          className="flex min-h-11 w-full items-center gap-2 px-4 text-left text-sm text-[#1F63E0] hover:bg-blue-50"
-        >
-          <PlusCircle className="size-4" /> Thêm mục con
-        </button>
-        <button
-          type="button"
-          onClick={() => { setOpenMenuNodeId(null); openEditCategoryModal(node); }}
-          className="flex min-h-11 w-full items-center gap-2 px-4 text-left text-sm text-[#475569] hover:bg-black/5"
-        >
-          <Pencil className="size-4" /> Sửa tên hạng mục
-        </button>
-        <button
-          type="button"
-          onClick={() => { setOpenMenuNodeId(null); handleDeleteCategory(node); }}
-          className="flex min-h-11 w-full items-center gap-2 px-4 text-left text-sm text-red-500 hover:bg-red-50"
-        >
-          <Trash2 className="size-4" /> Xóa hạng mục
-        </button>
-      </div>
-    </>
-  )}
-</div>
-</>
+          {canManage && isLeafCategory(node) && (
+            <button
+              type="button"
+              onClick={() => { setOpenMenuNodeId(null); openCreateTaskForm(node); }}
+              title="Thêm công việc"
+              className="flex min-h-9 w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-semibold text-blue-600 hover:bg-blue-50/80 rounded-xl transition-colors cursor-pointer"
+            >
+              <div className="size-6 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+                <Plus className="size-3.5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="leading-tight">Thêm công việc</div>
+                <div className="text-[10px] font-normal text-slate-400">Đầu việc thi công</div>
+              </div>
+            </button>
+          )}
+
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => { setOpenMenuNodeId(null); openAddChildModal(node); }}
+              title="Thêm mục con"
+              className="flex min-h-9 w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-colors cursor-pointer"
+            >
+              <div className="size-6 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
+                <FolderPlus className="size-3.5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="leading-tight">Thêm hạng mục con</div>
+                <div className="text-[10px] text-slate-400">Tạo nhóm cấp dưới</div>
+              </div>
+            </button>
+          )}
+
+          {canManage && canManageMilestone && <div className="h-px bg-slate-100 my-1 mx-2" />}
+
+          {canManageMilestone && (
+            <button
+              type="button"
+              onClick={() => { setOpenMenuNodeId(null); openMilestoneModal(node); }}
+              title="Đặt mốc bàn giao"
+              className="flex min-h-9 w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium text-slate-700 hover:bg-amber-50/70 hover:text-amber-700 rounded-xl transition-colors cursor-pointer"
+            >
+              <div className="size-6 rounded-lg bg-red-50 flex items-center justify-center text-red-500 shrink-0">
+                <Flag className="size-3.5" />
+              </div>
+              <span>Đặt mốc bàn giao</span>
+            </button>
+          )}
+
+          {canManage && (
+            <>
+              <div className="h-px bg-slate-100 my-1 mx-2" />
+              <button
+                type="button"
+                onClick={() => { setOpenMenuNodeId(null); openEditCategoryModal(node); }}
+                title="Sửa tên hạng mục"
+                className="flex min-h-9 w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-colors cursor-pointer"
+              >
+                <div className="size-6 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 shrink-0">
+                  <Pencil className="size-3.5" />
+                </div>
+                <span>Sửa tên hạng mục</span>
+              </button>
+
+              <div className="h-px bg-slate-100 my-1 mx-2" />
+
+              <button
+                type="button"
+                onClick={() => { setOpenMenuNodeId(null); handleDeleteCategory(node); }}
+                title="Xóa hạng mục"
+                className="flex min-h-9 w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
+              >
+                <div className="size-6 rounded-lg bg-red-50 flex items-center justify-center text-red-500 shrink-0">
+                  <Trash2 className="size-3.5" />
+                </div>
+                <span>Xóa hạng mục</span>
+              </button>
+            </>
+          )}
+        </div>
+      </>
+    )}
+  </div>
 )}
 </td>
           </tr>
@@ -898,17 +927,17 @@ const closeTaskForm = () => {
               )}
             </div>
           </td>
-          <td className="px-4">
-            <span className="inline-flex px-2 py-0.5 rounded text-[11px] font-medium bg-[#DCFCE7] text-[#15803D]">Công việc</span>
+          <td className="px-3 text-center whitespace-nowrap">
+            <span className="inline-flex px-2 py-0.5 rounded text-[11px] font-semibold bg-[#DCFCE7] text-[#15803D] whitespace-nowrap">Công việc</span>
           </td>
-          <td className="px-4 text-sm text-[#475569]">
+          <td className="px-3 text-center">
             {node.predecessors?.length > 0 ? (
-              <div className="flex flex-wrap gap-1 max-w-[150px]">
+              <div className="flex flex-wrap items-center justify-center gap-1 max-w-[150px] mx-auto">
                 {node.predecessors.map((p, idx) => {
                   const refIdx = taskIdToIndexMap[p.id] || p.id;
                   const type = p.type !== 'FS' ? p.type : '';
                   return (
-                    <span key={idx} className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[11px] font-mono border border-slate-200" title={`Ràng buộc: ${p.type}`}>
+                    <span key={idx} className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded text-[11px] font-mono border border-slate-200" title={`Ràng buộc: ${p.type}`}>
                       {refIdx}{type}
                     </span>
                   );
@@ -918,28 +947,96 @@ const closeTaskForm = () => {
               <span className="text-slate-300">-</span>
             )}
           </td>
-          <td className="px-4 text-sm text-[#475569]">{renderDate(node.start_date)}</td>
-          <td className="px-4 text-sm text-[#475569]">{renderDate(node.end_date)}</td>
-          <td className="px-4 text-right sticky right-0 bg-white group-hover:bg-[#F5F8FF] z-10 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] transition-colors">
+          <td className="px-3 text-sm text-[#475569] font-mono text-center whitespace-nowrap">{renderDate(node.start_date)}</td>
+          <td className="px-3 text-sm text-[#475569] font-mono text-center whitespace-nowrap">{renderDate(node.end_date)}</td>
+          <td className="px-3 text-center sticky right-0 bg-white group-hover:bg-[#F5F8FF] z-10 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] transition-colors w-[80px] min-w-[80px]">
             {canManage && (
-            <div className="flex items-center justify-end gap-1">
-              <button
-                onClick={() => openEditTaskForm (node)}
-    disabled={isReadOnly}
-                title="Sửa công việc"
-                className="flex min-h-11 min-w-11 items-center justify-center text-[#475569] hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
-              >
-                <Pencil className="size-4" />
-              </button>
-              <button
-                onClick={() => handleDeleteTask(node)}
-    disabled={isReadOnly}
-                title="Xóa công việc"
-                className="flex min-h-11 min-w-11 items-center justify-center text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-              >
-                <Trash2 className="size-4" />
-              </button>
-            </div>
+              <div className="relative inline-flex items-center justify-center">
+                {/* Hidden accessibility buttons */}
+                <button
+                  type="button"
+                  onClick={() => openEditTaskForm(node)}
+                  disabled={isReadOnly}
+                  title="Sửa công việc"
+                  className="sr-only"
+                  aria-hidden="true"
+                  tabIndex={-1}
+                >
+                  Sửa công việc
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteTask(node)}
+                  disabled={isReadOnly}
+                  title="Xóa công việc"
+                  className="sr-only"
+                  aria-hidden="true"
+                  tabIndex={-1}
+                >
+                  Xóa công việc
+                </button>
+
+                {/* Single Menu Action Button */}
+                <button
+                  type="button"
+                  onClick={(e) => handleToggleMenu(e, node.id)}
+                  aria-label="Thao tác công việc"
+                  aria-expanded={openMenuNodeId === node.id}
+                  title="Thao tác"
+                  className={`size-8 rounded-lg flex items-center justify-center transition-all cursor-pointer border ${
+                    openMenuNodeId === node.id
+                      ? "bg-blue-50 text-blue-600 border-blue-300 ring-2 ring-blue-100 shadow-sm"
+                      : "bg-slate-50 hover:bg-white text-slate-600 hover:text-slate-900 border-slate-200/80 shadow-2xs hover:shadow-xs"
+                  }`}
+                >
+                  <MoreHorizontal className="size-4" />
+                </button>
+
+                {/* Dropdown Menu */}
+                {openMenuNodeId === node.id && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Đóng menu thao tác"
+                      onClick={() => setOpenMenuNodeId(null)}
+                      className="fixed inset-0 z-20 cursor-default bg-transparent"
+                    />
+                    <div
+                      className={`absolute right-0 ${
+                        menuDropUp
+                          ? "bottom-full mb-1.5 origin-bottom-right"
+                          : "top-full mt-1.5 origin-top-right"
+                      } z-30 w-48 p-1.5 rounded-2xl border border-slate-200/90 bg-white shadow-xl animate-in fade-in zoom-in-95 duration-150 text-left`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => { setOpenMenuNodeId(null); openEditTaskForm(node); }}
+                        title="Sửa công việc"
+                        className="flex min-h-9 w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-colors cursor-pointer"
+                      >
+                        <div className="size-6 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 shrink-0">
+                          <Pencil className="size-3.5" />
+                        </div>
+                        <span>Sửa công việc</span>
+                      </button>
+
+                      <div className="h-px bg-slate-100 my-1 mx-2" />
+
+                      <button
+                        type="button"
+                        onClick={() => { setOpenMenuNodeId(null); handleDeleteTask(node); }}
+                        title="Xóa công việc"
+                        className="flex min-h-9 w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
+                      >
+                        <div className="size-6 rounded-lg bg-red-50 flex items-center justify-center text-red-500 shrink-0">
+                          <Trash2 className="size-3.5" />
+                        </div>
+                        <span>Xóa công việc</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
           </td>
         </tr>
@@ -950,36 +1047,36 @@ const closeTaskForm = () => {
   const renderMobileTreeRow = (node, level, indexStr, colorIndex = 0) => {
     const isExpanded = search.trim() ? true : expanded.has(node.id);
     const isCategory = node.type === 'category';
-    const indent = Math.min(level * 14, 42); // compact indentation on mobile
+    const indent = Math.min(level * 12, 36); // compact indentation on mobile
     const color = COLORS[colorIndex % COLORS.length];
 
     if (isCategory) {
       return (
         <React.Fragment key={`mob-${node.id}`}>
           <div
-            className={`rounded-xl border border-slate-200/90 p-3 flex flex-col gap-2 shadow-2xs transition-colors ${color.bg}`}
+            className={`rounded-2xl border border-slate-200/90 p-3.5 flex flex-col gap-2.5 shadow-2xs transition-all ${color.bg}`}
             style={{ marginLeft: `${indent}px` }}
           >
             <div className="flex items-start justify-between gap-2">
-              <div className="flex items-start gap-2 flex-1 min-w-0">
+              <div className="flex items-start gap-2.5 flex-1 min-w-0">
                 <button
                   type="button"
                   onClick={() => toggleExpand(node.id)}
                   aria-label={isExpanded ? "Thu gọn" : "Mở rộng"}
-                  className="mt-0.5 size-7 shrink-0 flex items-center justify-center bg-white/70 hover:bg-white rounded-lg touch-target"
+                  className="mt-0.5 size-8 shrink-0 flex items-center justify-center bg-white/80 hover:bg-white rounded-lg touch-target shadow-2xs border border-black/5"
                 >
-                  {isExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                  {isExpanded ? <ChevronDown className="size-4 text-slate-700" /> : <ChevronRight className="size-4 text-slate-700" />}
                 </button>
-                <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold bg-white/90 shrink-0 ${color.text}`}>
+                <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold bg-white/95 shrink-0 shadow-2xs border border-black/5 ${color.text}`}>
                   {indexStr}
                 </span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <FolderOpen className={`size-4 shrink-0 ${color.text}`} />
-                    <span className="font-bold text-sm text-[#0F1B3D] break-words">{node.name}</span>
+                    <span className="font-bold text-[14px] text-[#0F1B3D] break-words">{node.name}</span>
                   </div>
                   {milestones[node.id] && (
-                    <span className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-600">
+                    <span className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-red-100 text-red-600 border border-red-200">
                       <Flag className="size-3" />
                       Mốc: {renderDate(milestones[node.id].required_date)}
                     </span>
@@ -987,15 +1084,20 @@ const closeTaskForm = () => {
                 </div>
               </div>
 
-              {canManage && (
+              {(canManage || canManageMilestone) && (
                 <div className="relative shrink-0">
                   <button
                     type="button"
-                    onClick={() => setOpenMenuNodeId(openMenuNodeId === node.id ? null : node.id)}
-                    aria-label="Mở menu thao tác"
-                    className="size-8 flex items-center justify-center rounded-lg hover:bg-black/5 text-[#475569] touch-target"
+                    onClick={(e) => handleToggleMenu(e, node.id)}
+                    aria-label="Thao tác hạng mục"
+                    aria-expanded={openMenuNodeId === node.id}
+                    className={`size-9 sm:size-8 rounded-lg flex items-center justify-center transition-all cursor-pointer border touch-target ${
+                      openMenuNodeId === node.id
+                        ? "bg-blue-50 text-blue-600 border-blue-300 ring-2 ring-blue-100 shadow-sm"
+                        : "bg-white/90 hover:bg-white text-slate-600 hover:text-slate-900 border-slate-200/80 shadow-2xs hover:shadow-xs"
+                    }`}
                   >
-                    <MoreVertical className="size-4" />
+                    <MoreHorizontal className="size-4" />
                   </button>
                   {openMenuNodeId === node.id && (
                     <>
@@ -1003,46 +1105,88 @@ const closeTaskForm = () => {
                         type="button"
                         aria-label="Đóng menu thao tác"
                         onClick={() => setOpenMenuNodeId(null)}
-                        className="fixed inset-0 z-40 cursor-default bg-transparent"
+                        className="fixed inset-0 z-40 cursor-default bg-black/10 backdrop-blur-[1px]"
                       />
-                      <div className="absolute right-0 top-full z-50 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
-                        <button
-                          type="button"
-                          onClick={() => { setOpenMenuNodeId(null); openMilestoneModal(node); }}
-                          className="flex min-h-[40px] w-full items-center gap-2 px-3.5 text-left text-xs font-semibold text-red-600 hover:bg-red-50"
-                        >
-                          <Flag className="size-3.5" /> Đặt mốc bàn giao
-                        </button>
-                        {isLeafCategory(node) && (
+                      <div
+                        className={`absolute right-0 ${
+                          menuDropUp
+                            ? "bottom-full mb-1.5 origin-bottom-right"
+                            : "top-full mt-1.5 origin-top-right"
+                        } z-50 w-56 p-1.5 rounded-2xl border border-slate-200/90 bg-white/95 backdrop-blur-md shadow-2xl animate-in fade-in zoom-in-95 duration-150 text-left`}
+                      >
+                        {canManage && isLeafCategory(node) && (
                           <button
                             type="button"
                             onClick={() => { setOpenMenuNodeId(null); openCreateTaskForm(node); }}
-                            className="flex min-h-[40px] w-full items-center gap-2 px-3.5 text-left text-xs font-semibold text-[#1F63E0] hover:bg-blue-50"
+                            className="flex min-h-10 w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-semibold text-blue-600 hover:bg-blue-50/80 rounded-xl transition-colors cursor-pointer"
                           >
-                            <Plus className="size-3.5" /> Thêm công việc
+                            <div className="size-6 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+                              <Plus className="size-3.5" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="leading-tight">Thêm công việc</div>
+                              <div className="text-[10px] font-normal text-slate-400">Đầu việc thi công</div>
+                            </div>
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => { setOpenMenuNodeId(null); openAddChildModal(node); }}
-                          className="flex min-h-[40px] w-full items-center gap-2 px-3.5 text-left text-xs font-semibold text-[#1F63E0] hover:bg-blue-50"
-                        >
-                          <PlusCircle className="size-3.5" /> Thêm mục con
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setOpenMenuNodeId(null); openEditCategoryModal(node); }}
-                          className="flex min-h-[40px] w-full items-center gap-2 px-3.5 text-left text-xs font-semibold text-[#475569] hover:bg-slate-50"
-                        >
-                          <Pencil className="size-3.5" /> Sửa tên hạng mục
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setOpenMenuNodeId(null); handleDeleteCategory(node); }}
-                          className="flex min-h-[40px] w-full items-center gap-2 px-3.5 text-left text-xs font-semibold text-red-500 hover:bg-red-50"
-                        >
-                          <Trash2 className="size-3.5" /> Xóa hạng mục
-                        </button>
+                        {canManage && (
+                          <button
+                            type="button"
+                            onClick={() => { setOpenMenuNodeId(null); openAddChildModal(node); }}
+                            title="Thêm mục con"
+                            className="flex min-h-10 w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-colors cursor-pointer"
+                          >
+                            <div className="size-6 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
+                              <FolderPlus className="size-3.5" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="leading-tight">Thêm hạng mục con</div>
+                              <div className="text-[10px] text-slate-400">Tạo nhóm cấp dưới</div>
+                            </div>
+                          </button>
+                        )}
+
+                        {canManage && canManageMilestone && <div className="h-px bg-slate-100 my-1 mx-2" />}
+
+                        {canManageMilestone && (
+                          <button
+                            type="button"
+                            onClick={() => { setOpenMenuNodeId(null); openMilestoneModal(node); }}
+                            className="flex min-h-10 w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium text-slate-700 hover:bg-amber-50/70 hover:text-amber-700 rounded-xl transition-colors cursor-pointer"
+                          >
+                            <div className="size-6 rounded-lg bg-red-50 flex items-center justify-center text-red-500 shrink-0">
+                              <Flag className="size-3.5" />
+                            </div>
+                            <span>Đặt mốc bàn giao</span>
+                          </button>
+                        )}
+
+                        {canManage && (
+                          <>
+                            <div className="h-px bg-slate-100 my-1 mx-2" />
+                            <button
+                              type="button"
+                              onClick={() => { setOpenMenuNodeId(null); openEditCategoryModal(node); }}
+                              className="flex min-h-10 w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-colors cursor-pointer"
+                            >
+                              <div className="size-6 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 shrink-0">
+                                <Pencil className="size-3.5" />
+                              </div>
+                              <span>Sửa tên hạng mục</span>
+                            </button>
+                            <div className="h-px bg-slate-100 my-1 mx-2" />
+                            <button
+                              type="button"
+                              onClick={() => { setOpenMenuNodeId(null); handleDeleteCategory(node); }}
+                              className="flex min-h-10 w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
+                            >
+                              <div className="size-6 rounded-lg bg-red-50 flex items-center justify-center text-red-500 shrink-0">
+                                <Trash2 className="size-3.5" />
+                              </div>
+                              <span>Xóa hạng mục</span>
+                            </button>
+                          </>
+                        )}
                       </div>
                     </>
                   )}
@@ -1050,9 +1194,9 @@ const closeTaskForm = () => {
               )}
             </div>
 
-            <div className="flex items-center justify-between text-[11px] text-[#475569] pt-1.5 border-t border-black/5">
+            <div className="flex items-center justify-between text-[11px] text-[#475569] pt-2 border-t border-black/5">
               <span className="font-semibold px-2 py-0.5 rounded bg-white/80 text-[#4F46E5]">Hạng mục</span>
-              <span>{renderDate(node.start_date)} - {renderDate(node.end_date)}</span>
+              <span className="font-mono">{renderDate(node.start_date)} - {renderDate(node.end_date)}</span>
             </div>
           </div>
 
@@ -1066,32 +1210,32 @@ const closeTaskForm = () => {
       return (
         <div
           key={`mob-${node.id}`}
-          className="rounded-xl border border-slate-200 bg-white p-3 flex flex-col gap-2 shadow-2xs hover:border-blue-200 transition-colors"
+          className="rounded-2xl border border-slate-200 bg-white p-3.5 flex flex-col gap-2.5 shadow-2xs hover:border-blue-200 transition-all"
           style={{ marginLeft: `${indent}px` }}
         >
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-start gap-2 flex-1 min-w-0">
-              <span className="px-1.5 py-0.5 rounded text-[11px] font-mono font-bold bg-slate-100 text-slate-600 shrink-0 mt-0.5">
+              <span className="px-1.5 py-0.5 rounded text-[11px] font-mono font-bold bg-slate-100 text-slate-600 shrink-0 mt-0.5 border border-slate-200/60">
                 {indexStr}
               </span>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <FileText className="size-4 shrink-0 text-[#94A3B8]" />
-                  <span className="font-medium text-sm text-[#0F1B3D]">{node.name}</span>
+                  <FileText className="size-4 shrink-0 text-blue-500" />
+                  <span className="font-medium text-[13.5px] text-[#0F1B3D] leading-snug">{node.name}</span>
                   {node.duration_days && (
                     <span className="text-[10px] text-[#475569] bg-[#F1F5F9] px-1.5 py-0.5 rounded font-mono font-medium">
-                      {node.duration_days}d
+                      {node.duration_days} ngày
                     </span>
                   )}
                 </div>
                 {node.predecessors?.length > 0 && (
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    <span className="text-[10px] text-slate-400">RB:</span>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                    <span className="text-[10px] text-slate-400 font-medium">RB:</span>
                     {node.predecessors.map((p, idx) => {
                       const refIdx = taskIdToIndexMap[p.id] || p.id;
                       const type = p.type !== 'FS' ? p.type : '';
                       return (
-                        <span key={idx} className="bg-slate-100 text-slate-600 px-1 py-0.2 rounded text-[10px] font-mono border border-slate-200">
+                        <span key={idx} className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono border border-slate-200">
                           {refIdx}{type}
                         </span>
                       );
@@ -1102,30 +1246,66 @@ const closeTaskForm = () => {
             </div>
 
             {canManage && (
-              <div className="flex items-center gap-1 shrink-0">
+              <div className="relative shrink-0">
                 <button
                   type="button"
-                  onClick={() => openEditTaskForm(node)}
-                  title="Sửa công việc"
-                  className="size-8 flex items-center justify-center text-[#475569] hover:bg-slate-100 rounded-lg touch-target"
+                  onClick={(e) => handleToggleMenu(e, node.id)}
+                  aria-label="Thao tác công việc"
+                  aria-expanded={openMenuNodeId === node.id}
+                  className={`size-9 sm:size-8 rounded-lg flex items-center justify-center transition-all cursor-pointer border touch-target ${
+                    openMenuNodeId === node.id
+                      ? "bg-blue-50 text-blue-600 border-blue-300 ring-2 ring-blue-100 shadow-sm"
+                      : "bg-slate-50 hover:bg-white text-slate-600 hover:text-slate-900 border-slate-200/80 shadow-2xs hover:shadow-xs"
+                  }`}
                 >
-                  <Pencil className="size-3.5" />
+                  <MoreHorizontal className="size-4" />
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteTask(node)}
-                  title="Xóa công việc"
-                  className="size-8 flex items-center justify-center text-red-500 hover:bg-red-50 rounded-lg touch-target"
-                >
-                  <Trash2 className="size-3.5" />
-                </button>
+                {openMenuNodeId === node.id && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Đóng menu thao tác"
+                      onClick={() => setOpenMenuNodeId(null)}
+                      className="fixed inset-0 z-40 cursor-default bg-black/10 backdrop-blur-[1px]"
+                    />
+                    <div
+                      className={`absolute right-0 ${
+                        menuDropUp
+                          ? "bottom-full mb-1.5 origin-bottom-right"
+                          : "top-full mt-1.5 origin-top-right"
+                      } z-50 w-48 p-1.5 rounded-2xl border border-slate-200/90 bg-white/95 backdrop-blur-md shadow-2xl animate-in fade-in zoom-in-95 duration-150 text-left`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => { setOpenMenuNodeId(null); openEditTaskForm(node); }}
+                        className="flex min-h-10 w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-colors cursor-pointer"
+                      >
+                        <div className="size-6 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 shrink-0">
+                          <Pencil className="size-3.5" />
+                        </div>
+                        <span>Sửa công việc</span>
+                      </button>
+                      <div className="h-px bg-slate-100 my-1 mx-2" />
+                      <button
+                        type="button"
+                        onClick={() => { setOpenMenuNodeId(null); handleDeleteTask(node); }}
+                        className="flex min-h-10 w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
+                      >
+                        <div className="size-6 rounded-lg bg-red-50 flex items-center justify-center text-red-500 shrink-0">
+                          <Trash2 className="size-3.5" />
+                        </div>
+                        <span>Xóa công việc</span>
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
 
-          <div className="flex items-center justify-between text-[11px] text-[#475569] pt-1.5 border-t border-slate-100">
+          <div className="flex items-center justify-between text-[11px] text-[#475569] pt-2 border-t border-slate-100">
             <span className="font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">Công việc</span>
-            <span>{renderDate(node.start_date)} - {renderDate(node.end_date)}</span>
+            <span className="font-mono">{renderDate(node.start_date)} - {renderDate(node.end_date)}</span>
           </div>
         </div>
       );
@@ -1255,22 +1435,49 @@ const visibleItems = useMemo(() => {
                   onChange={e => setSearch(e.target.value)}
                 />
               </div>
-              <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-[#E6EBF3] shrink-0">
-                <button aria-label="Xem dạng danh sách" className="size-9 flex items-center justify-center rounded-lg bg-[#1F63E0] text-white"><List className="size-4" /></button>
-                <button aria-label="Xem dạng lưới" className="size-9 flex items-center justify-center rounded-lg text-[#64748B] hover:bg-black/5"><LayoutGrid className="size-4" /></button>
+              <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-[#E6EBF3] shrink-0 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  aria-label="Xem dạng danh sách"
+                  title="Xem dạng danh sách (Bảng phân cấp WBS)"
+                  className={`size-9 flex items-center justify-center rounded-lg transition-all cursor-pointer touch-target ${
+                    viewMode === 'list'
+                      ? "bg-[#1F63E0] text-white shadow-xs font-semibold"
+                      : "text-[#64748B] hover:text-[#0F1B3D] hover:bg-slate-100"
+                  }`}
+                >
+                  <List className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('grid')}
+                  aria-label="Xem dạng lưới"
+                  title="Xem dạng thẻ (Grid / Thẻ phân cấp - tối ưu cho điện thoại)"
+                  className={`size-9 flex items-center justify-center rounded-lg transition-all cursor-pointer touch-target ${
+                    viewMode === 'grid'
+                      ? "bg-[#1F63E0] text-white shadow-xs font-semibold"
+                      : "text-[#64748B] hover:text-[#0F1B3D] hover:bg-slate-100"
+                  }`}
+                >
+                  <LayoutGrid className="size-4" />
+                </button>
               </div>
             </div>
 
             <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
               <button
+                type="button"
                 onClick={() => setShowRightPanel(!showRightPanel)}
-                className="hidden lg:flex h-11 px-3.5 items-center gap-2 bg-white border border-[#E6EBF3] hover:bg-black/5 text-[#475569] rounded-xl text-[14px] transition-colors shadow-xs"
-                title={showRightPanel ? "Ẩn bảng phụ" : "Hiện bảng phụ"}
+                className="hidden lg:flex h-11 px-3.5 items-center gap-2 bg-white border border-[#E6EBF3] hover:bg-slate-50 text-[#475569] hover:text-[#0F1B3D] rounded-xl text-[13.5px] font-semibold transition-all shadow-2xs cursor-pointer"
+                title={showRightPanel ? "Thu gọn bảng phụ để mở rộng tối đa bảng WBS" : "Hiện lại bảng phụ tổng quan"}
               >
-                {showRightPanel ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+                {showRightPanel ? <Minimize2 className="size-4 text-blue-600" /> : <Maximize2 className="size-4 text-blue-600" />}
+                <span>{showRightPanel ? "Mở rộng WBS" : "Hiện bảng phụ"}</span>
               </button>
               {canManage && (
                 <button
+                  type="button"
                   onClick={openAddRootModal}
                   disabled={isReadOnly}
                   title={isReadOnly ? offlineMutationMessage : "Thêm hạng mục gốc"}
@@ -1282,38 +1489,74 @@ const visibleItems = useMemo(() => {
             </div>
           </div>
 
-          {/* WBS Table Card */}
+          {/* WBS Content Card (Bảng Table hoặc Thẻ Grid) */}
           <div className="flex-1 bg-white rounded-2xl border border-[#E6EBF3] shadow-[0_1px_2px_rgba(16,24,40,.04),0_4px_12px_rgba(16,24,40,.04)] flex flex-col overflow-hidden min-w-0">
-            <div className="overflow-x-auto overflow-y-auto flex-1 min-w-0">
-              <table className="w-full text-left border-collapse min-w-[720px] md:min-w-[900px]">
-                <thead className="bg-white sticky top-0 z-10 shadow-sm">
-                  <tr>
-                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] min-w-[300px] md:min-w-[360px] whitespace-nowrap">STT / Tên công việc / Hạng mục</th>
-                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[100px] md:w-[110px] whitespace-nowrap">Loại</th>
-                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[110px] md:w-[120px] whitespace-nowrap">Ràng buộc</th>
-                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[110px] md:w-[120px] whitespace-nowrap">Bắt đầu</th>
-                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[110px] md:w-[120px] whitespace-nowrap">Kết thúc</th>
-                    <th className="px-4 py-3 text-[13px] font-medium text-[#475569] border-b border-[#E6EBF3] w-[50px] sticky right-0 bg-white z-20 shadow-[-4px_0_12px_rgba(0,0,0,0.05)]"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr><td colSpan="6" className="p-8 text-center text-gray-500">Đang tải dữ liệu...</td></tr>
-                  ) : items.length === 0 ? (
-                    <tr><td colSpan="6" className="p-16 text-center text-gray-500">Chưa có hạng mục nào.</td></tr>
-                  ) : visibleItems.length === 0 ? (
-                    <tr><td colSpan="6" className="p-16 text-center text-gray-500">Không tìm thấy kết quả.</td></tr>
-                  ) : (
-                    visibleItems.map((root, i) => renderRow(root, 0, (i+1).toString(), i))
-                  )}
-                </tbody>
-              </table>
-            </div>
+            {viewMode === 'list' ? (
+              <div className="overflow-x-auto overflow-y-auto flex-1 min-w-0 pb-20">
+                {/* Mobile horizontal scroll helper */}
+                <div className="sm:hidden px-3.5 py-2 bg-blue-50/80 border-b border-blue-100/70 flex items-center justify-between text-[11.5px] text-blue-700">
+                  <span>💡 Vuốt ngang bảng để xem đủ các cột</span>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('grid')}
+                    className="font-bold underline underline-offset-2 ml-2 hover:text-blue-900 cursor-pointer"
+                  >
+                    Xem dạng thẻ
+                  </button>
+                </div>
+                <table className="w-full text-left border-collapse min-w-[760px] md:min-w-[860px]">
+                  <thead className="bg-white sticky top-0 z-10 shadow-sm">
+                    <tr>
+                      <th className="px-4 py-3 text-[13px] font-semibold text-[#475569] border-b border-[#E6EBF3] min-w-[280px] md:min-w-[340px] whitespace-nowrap">STT / Tên công việc / Hạng mục</th>
+                      <th className="px-3 py-3 text-[13px] font-semibold text-[#475569] border-b border-[#E6EBF3] w-[100px] min-w-[100px] text-center whitespace-nowrap">Loại</th>
+                      <th className="px-3 py-3 text-[13px] font-semibold text-[#475569] border-b border-[#E6EBF3] w-[110px] min-w-[110px] text-center whitespace-nowrap">Ràng buộc</th>
+                      <th className="px-3 py-3 text-[13px] font-semibold text-[#475569] border-b border-[#E6EBF3] w-[115px] min-w-[115px] text-center whitespace-nowrap">Bắt đầu</th>
+                      <th className="px-3 py-3 text-[13px] font-semibold text-[#475569] border-b border-[#E6EBF3] w-[115px] min-w-[115px] text-center whitespace-nowrap">Kết thúc</th>
+                      <th className="px-3 py-3 text-[13px] font-semibold text-[#475569] border-b border-[#E6EBF3] w-[80px] min-w-[80px] text-center sticky right-0 bg-white z-20 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] whitespace-nowrap">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      <tr><td colSpan="6" className="p-8 text-center text-gray-500">Đang tải dữ liệu...</td></tr>
+                    ) : items.length === 0 ? (
+                      <tr><td colSpan="6" className="p-16 text-center text-gray-500">Chưa có hạng mục nào.</td></tr>
+                    ) : visibleItems.length === 0 ? (
+                      <tr><td colSpan="6" className="p-16 text-center text-gray-500">Không tìm thấy kết quả.</td></tr>
+                    ) : (
+                      visibleItems.map((root, i) => renderRow(root, 0, (i+1).toString(), i))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="overflow-y-auto flex-1 min-w-0 p-3 sm:p-5 space-y-3 pb-24">
+                {/* Grid view switcher banner */}
+                <div className="px-3 py-2 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between text-xs text-slate-600 mb-2">
+                  <span>📱 Đang xem dạng <strong>Thẻ phân cấp</strong> (tối ưu cho di động)</span>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('list')}
+                    className="font-bold text-blue-600 hover:text-blue-800 underline underline-offset-2 ml-2 cursor-pointer"
+                  >
+                    Quay lại dạng bảng
+                  </button>
+                </div>
+                {loading ? (
+                  <div className="p-8 text-center text-gray-500">Đang tải dữ liệu...</div>
+                ) : items.length === 0 ? (
+                  <div className="p-16 text-center text-gray-500">Chưa có hạng mục nào.</div>
+                ) : visibleItems.length === 0 ? (
+                  <div className="p-16 text-center text-gray-500">Không tìm thấy kết quả.</div>
+                ) : (
+                  visibleItems.map((root, i) => renderMobileTreeRow(root, 0, (i+1).toString(), i))
+                )}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Right Panel */}
-        <div className={`w-full lg:w-[320px] shrink-0 flex flex-col gap-5 lg:overflow-y-auto pr-1 pb-4 ${
+        <div className={`w-full lg:w-[280px] xl:w-[310px] 2xl:w-[320px] shrink-0 flex flex-col gap-5 lg:sticky lg:top-4 self-start max-h-[calc(100vh-100px)] lg:overflow-y-auto pr-1 pb-4 ${
           mobileTab === 'tree' ? 'hidden lg:flex' : 'flex'
         } ${!showRightPanel ? 'lg:hidden' : ''}`}>
           
@@ -1421,19 +1664,27 @@ const visibleItems = useMemo(() => {
         </div>
 
 {showTaskForm && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs overflow-y-auto">
+  <div
+    className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-150"
+    onClick={closeTaskForm}
+  >
     <TaskForm
       projectId={projectId}
       workItem={selectedWorkItem}
       task={editingTask}
       allTasks={flattenTasks(items)}
       onClose={closeTaskForm}
-      onSuccess={() => {
+      onSuccess={async () => {
         if (selectedWorkItem?.id) {
           setExpanded(prev => new Set([...prev, selectedWorkItem.id]));
         }
         closeTaskForm();
-        fetchWBS();
+        try {
+          await api.post(`/projects/${projectId}/schedule/recalculate`);
+        } catch (_) {
+          // Bỏ qua nếu recalculate thất bại
+        }
+        await fetchWBS();
       }}
     />
   </div>

@@ -62,6 +62,7 @@ export const ROLE_LABELS = {
 export const MENU_GROUPS = [
   { key: "overview", label: "Tổng quan" },
   { key: "planning", label: "Kế hoạch & tiến độ" },
+  { key: "cost", label: "Hợp đồng & chi phí" },
   { key: "site", label: "Thi công" },
   { key: "manage", label: "Quản lý" },
 ];
@@ -78,6 +79,15 @@ export const MENU_CONFIG = [
     roles: [BAN_QUAN_LY, CHI_HUY_TRUONG, KY_SU_GIAM_SAT, CHU_DAU_TU, KE_TOAN],
   },
   {
+    // S-49 / T-125: Dashboard tiến độ CHỈ dành riêng cho Chủ đầu tư.
+    key: "progress",
+    label: "Tiến độ (chủ đầu tư)",
+    path: "/progress",
+    icon: Activity,
+    group: "overview",
+    roles: [CHU_DAU_TU],
+  },
+  {
     key: "wbs",
     label: "Cơ cấu công việc (WBS)",
     path: "/wbs",
@@ -85,24 +95,6 @@ export const MENU_CONFIG = [
     icon: Network,
     group: "planning",
     roles: [BAN_QUAN_LY, CHI_HUY_TRUONG, KY_SU_GIAM_SAT, CHU_DAU_TU, KE_TOAN],
-  },
-  {
-    // Không có trong ma trận gốc: lấy theo WBS (cùng dữ liệu hạng mục). Cần xác nhận.
-    key: "contract-quantities",
-    label: "Khối lượng hợp đồng",
-    path: "/contract-quantities",
-    icon: Coins,
-    group: "planning",
-    roles: [BAN_QUAN_LY, CHI_HUY_TRUONG, KY_SU_GIAM_SAT, CHU_DAU_TU, KE_TOAN],
-  },
-  {
-    // S-46 / T-119: Nhập dự toán theo hạng mục lá và phiên bản
-    key: "budget",
-    label: "Dự toán chi phí",
-    path: "/budget",
-    icon: Wallet,
-    group: "planning",
-    roles: [BAN_QUAN_LY, CHU_DAU_TU, KE_TOAN, CHI_HUY_TRUONG],
   },
   {
     key: "schedule",
@@ -129,21 +121,39 @@ export const MENU_CONFIG = [
     roles: [CHU_DAU_TU, BAN_QUAN_LY],
   },
   {
-    // S-49 / T-125: Dashboard tiến độ CHỈ dành riêng cho Chủ đầu tư.
-    key: "progress",
-    label: "Tiến độ (chủ đầu tư)",
-    path: "/progress",
-    icon: Activity,
-    group: "overview",
-    roles: [CHU_DAU_TU],
-  },
-  {
     key: "calendar",
     label: "Lịch & Ngày nghỉ",
     path: "/calendar",
     icon: Calendar,
     group: "planning",
     roles: [BAN_QUAN_LY, CHI_HUY_TRUONG, CHU_DAU_TU],
+  },
+  {
+    // Khối lượng hợp đồng theo cây WBS
+    key: "contract-quantities",
+    label: "Khối lượng hợp đồng",
+    path: "/contract-quantities",
+    icon: Coins,
+    group: "cost",
+    roles: [BAN_QUAN_LY, CHI_HUY_TRUONG, KY_SU_GIAM_SAT, CHU_DAU_TU, KE_TOAN],
+  },
+  {
+    // S-46 / T-119: Nhập dự toán theo hạng mục lá và phiên bản
+    key: "budget",
+    label: "Dự toán chi phí",
+    path: "/budget",
+    icon: Wallet,
+    group: "cost",
+    roles: [BAN_QUAN_LY, CHU_DAU_TU, KE_TOAN, CHI_HUY_TRUONG],
+  },
+  {
+    key: "payment-requests",
+    label: "Đề nghị thanh toán",
+    path: "/payment-requests",
+    paths: ["/finance", "/payment-requests"],
+    icon: Wallet,
+    group: "cost",
+    roles: [BAN_QUAN_LY, CHU_DAU_TU, KE_TOAN],
   },
   {
     // Kế toán không có trong ma trận gốc cho mục này — giả định không truy cập. Cần xác nhận.
@@ -163,7 +173,7 @@ export const MENU_CONFIG = [
     roles: ALL_ROLES,
   },
   {
-    // Không có trong ma trận gốc: lấy theo vai trò có quyền nghiệm thu ở backend. Cần xác nhận.
+    // Nghiệm thu khối lượng
     key: "acceptance",
     label: "Nghiệm thu khối lượng",
     path: "/acceptance",
@@ -172,21 +182,12 @@ export const MENU_CONFIG = [
     roles: [BAN_QUAN_LY, KY_SU_GIAM_SAT, CHU_DAU_TU],
   },
   {
-  key: "audit",
-  label: "Nhật ký thao tác",
-  path: "/audit",
-  icon: History,
-  group: "manage",
-  roles: [BAN_QUAN_LY, CHU_DAU_TU],
-},
-  {
-    key: "payment-requests",
-    label: "Đề nghị thanh toán",
-    path: "/payment-requests",
-    paths: ["/finance", "/payment-requests"],
-    icon: Wallet,
+    key: "audit",
+    label: "Nhật ký thao tác",
+    path: "/audit",
+    icon: History,
     group: "manage",
-    roles: [BAN_QUAN_LY, CHU_DAU_TU, KE_TOAN],
+    roles: [BAN_QUAN_LY, CHU_DAU_TU, CHI_HUY_TRUONG, KY_SU_GIAM_SAT, KE_TOAN],
   },
   {
     key: "members",
@@ -220,8 +221,12 @@ export const PERMISSIONS = {
   "team.manage": [BAN_QUAN_LY, CHI_HUY_TRUONG, CHU_DAU_TU], // khu "Đội thi công"
   "work.assign": [CHI_HUY_TRUONG], // khu "Giao việc"
 
-  "wbs.manage": [BAN_QUAN_LY, CHI_HUY_TRUONG],
+  // S-04, S-05 (F-06): Chỉ Ban quản lý Tạo/Sửa cây WBS. Chỉ huy trưởng chỉ Xem.
+  "wbs.manage": [BAN_QUAN_LY],
   "contract_quantity.edit": [BAN_QUAN_LY, CHU_DAU_TU],
+
+  // BL-3 (S-19): Đặt mốc bàn giao — Chỉ Ban quản lý và Chủ đầu tư
+  "milestone.manage": [BAN_QUAN_LY, CHU_DAU_TU],
 
   "calendar.edit": [BAN_QUAN_LY, CHI_HUY_TRUONG, CHU_DAU_TU],
 
@@ -234,8 +239,11 @@ export const PERMISSIONS = {
   "field.viewAll": ALL_ROLES.filter((r) => r !== DOI_TRUONG),
 
   "diary.create": [BAN_QUAN_LY, CHI_HUY_TRUONG, KY_SU_GIAM_SAT],
+  // BL-1 (S-24): Khóa sổ = KSGS, Mở khóa = BQL (kèm lý do)
   "diary.lock": [KY_SU_GIAM_SAT],
   "diary.unlock": [BAN_QUAN_LY],
+  // BL-2 (S-32): Xử lý xung đột phiên bản nhật ký — Kỹ sư giám sát chọn bản giữ
+  "diary.resolve_conflict": [KY_SU_GIAM_SAT],
 
   // S-36, S-38: Nghiệm thu khối lượng
   "acceptance.access": [BAN_QUAN_LY, KY_SU_GIAM_SAT, CHU_DAU_TU],
@@ -252,6 +260,18 @@ export const PERMISSIONS = {
   "payment_request.create": [BAN_QUAN_LY],
   "payment_request.view": [BAN_QUAN_LY, CHU_DAU_TU, KE_TOAN],
   "payment_retention.manage": [BAN_QUAN_LY, CHU_DAU_TU],
+
+  // BL-4 (S-47): cost.record chỉ Ban quản lý; Kế toán chỉ xem
+  "cost.record": [BAN_QUAN_LY],
+
+  // S-39 / OV-3: Nhật ký thao tác dự án — Chỉ loại Đội trưởng
+  "audit.view_project": [
+    BAN_QUAN_LY,
+    CHU_DAU_TU,
+    CHI_HUY_TRUONG,
+    KY_SU_GIAM_SAT,
+    KE_TOAN,
+  ],
 };
 
 function isKnownRole(role) {

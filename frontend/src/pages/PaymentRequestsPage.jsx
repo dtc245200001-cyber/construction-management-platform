@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
+import PageHeroBanner from "../components/PageHeroBanner";
 import api from "../lib/api";
 import { can } from "../lib/permissions";
 import { toast } from "sonner";
@@ -68,6 +69,7 @@ export default function PaymentRequestsPage({ user: propUser } = {}) {
   const outletContext = useOutletContext();
   const user = propUser || outletContext?.user;
   const projectRole = outletContext?.projectRole;
+  const currentProject = outletContext?.currentProject;
 
   const isSystemAdmin = Boolean(
     user?.is_system_admin ||
@@ -383,60 +385,50 @@ export default function PaymentRequestsPage({ user: propUser } = {}) {
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       {/* Tiêu đề trang */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-5">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-primary/10 rounded-xl text-primary">
-              <Receipt className="size-6" />
-            </div>
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
-                Đề nghị thanh toán
-              </h1>
-              <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-                Xem danh sách đề nghị thanh toán và bảng tổng hợp khối lượng từ phiếu nghiệm thu
-              </p>
-            </div>
-          </div>
-        </div>
+      <PageHeroBanner
+        icon={<Receipt className="size-6 sm:size-8" />}
+        title="Đề nghị thanh toán"
+        subtitle={
+          currentProject
+            ? `Dự án: ${currentProject.name} · Danh sách đề nghị thanh toán và khối lượng nghiệm thu`
+            : "Xem danh sách đề nghị thanh toán và bảng tổng hợp khối lượng từ phiếu nghiệm thu"
+        }
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={fetchPaymentRequests}
+          disabled={loading}
+          className="gap-2 bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-xs"
+        >
+          <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+          <span>Làm mới</span>
+        </Button>
 
-        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+        {canManageRetention && (
           <Button
             variant="outline"
             size="sm"
-            onClick={fetchPaymentRequests}
-            disabled={loading}
-            className="gap-2"
+            onClick={handleOpenRetentionConfig}
+            disabled={retentionLoading}
+            className="gap-2 bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-xs"
           >
-            <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
-            <span>Làm mới</span>
+            <Settings2 className="size-4" />
+            <span>Cấu hình tạm giữ</span>
           </Button>
+        )}
 
-          {canManageRetention && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleOpenRetentionConfig}
-              disabled={retentionLoading}
-              className="gap-2"
-            >
-              <Settings2 className="size-4" />
-              <span>Cấu hình tạm giữ</span>
-            </Button>
-          )}
-
-          {canCreate && (
-            <Button
-              size="sm"
-              onClick={handleOpenCreateDialog}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 font-bold"
-            >
-              <Plus className="size-4" />
-              <span>Lập đề nghị thanh toán</span>
-            </Button>
-          )}
-        </div>
-      </div>
+        {canCreate && (
+          <Button
+            size="sm"
+            onClick={handleOpenCreateDialog}
+            className="bg-white hover:bg-white/90 text-[#1F63E0] gap-2 font-bold shadow-md transition-colors"
+          >
+            <Plus className="size-4" />
+            <span>Lập đề nghị thanh toán</span>
+          </Button>
+        )}
+      </PageHeroBanner>
 
       {/* ================= TRẠNG THÁI 403: KHÔNG ĐỦ QUYỀN ================= */}
       {isForbidden && (

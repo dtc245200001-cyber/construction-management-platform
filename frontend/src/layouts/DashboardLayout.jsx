@@ -285,6 +285,43 @@ function DashboardShell({ user, setUser }) {
 
   const currentNav = findMenuItemByPath(location.pathname);
 
+  // Quản lý trạng thái thu gọn / mở rộng của từng nhóm menu (Accordion)
+  const [collapsedGroups, setCollapsedGroups] = useState(() => {
+    try {
+      const saved = localStorage.getItem("sidebar_collapsed_groups");
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Tự động mở nhóm chứa trang hiện tại để người dùng không bị mất dấu
+  useEffect(() => {
+    if (currentNav?.group && collapsedGroups[currentNav.group]) {
+      setCollapsedGroups((prev) => {
+        const next = { ...prev, [currentNav.group]: false };
+        try {
+          localStorage.setItem("sidebar_collapsed_groups", JSON.stringify(next));
+        } catch {
+          /* ignore */
+        }
+        return next;
+      });
+    }
+  }, [currentNav?.group]);
+
+  const toggleGroupCollapse = (groupKey) => {
+    setCollapsedGroups((prev) => {
+      const next = { ...prev, [groupKey]: !prev[groupKey] };
+      try {
+        localStorage.setItem("sidebar_collapsed_groups", JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
+
   return (
     <div className="flex h-screen max-h-[100dvh] bg-background overflow-hidden">
       {/* Mobile Backdrop Overlay */}
@@ -431,58 +468,90 @@ function DashboardShell({ user, setUser }) {
               </p>
             )}
 
-            {menuGroups.map((group) => (
-              <div
-                key={group.key}
-                className="flex flex-col gap-1 w-full"
-                role="group"
-                aria-label={group.label}
-              >
-                {!isSidebarCollapsed && (
-                  <p className="mt-3.5 px-3 text-[10px] font-bold uppercase tracking-wider text-sidebar-muted first:mt-1">
-                    {group.label}
-                  </p>
-                )}
+            {menuGroups.map((group) => {
+              const isGroupCollapsed = Boolean(collapsedGroups[group.key]);
+              const hasActiveItem = group.items.some((item) => currentNav?.key === item.key);
 
-                {group.items.map((item) => {
-                  const isActive = currentNav?.key === item.key;
-                  const Icon = item.icon;
-
-                  return (
+              return (
+                <div
+                  key={group.key}
+                  className="flex flex-col w-full"
+                  role="group"
+                  aria-label={group.label}
+                >
+                  {!isSidebarCollapsed && (
                     <button
-                      key={item.key}
-                      ref={isActive ? activeItemRef : null}
-                      title={item.label}
                       type="button"
-                      onClick={() => {
-                        if (item.implemented === false) {
-                          alert(
-                            "Tính năng này sẽ được phát triển trong các Sprint tiếp theo."
-                          );
-                        } else {
-                          navigate(item.path);
-                          setIsMobileMenuOpen(false);
-                        }
-                      }}
-                      className={`flex items-center gap-3 rounded-xl py-2.5 text-left text-xs font-semibold transition-all cursor-pointer outline-none touch-target ${
-                        isSidebarCollapsed
-                          ? "lg:justify-center lg:px-0 lg:py-3"
-                          : "px-3"
-                      } ${
-                        isActive
-                          ? "bg-sidebar-primary text-white shadow-sm font-bold"
-                          : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-white"
-                      }`}
+                      onClick={() => toggleGroupCollapse(group.key)}
+                      aria-expanded={!isGroupCollapsed}
+                      className="mt-3 px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-sidebar-muted hover:text-white flex items-center justify-between w-full rounded-lg hover:bg-sidebar-accent/50 transition-colors cursor-pointer group select-none first:mt-1 outline-none"
+                      title={isGroupCollapsed ? `Mở rộng ${group.label}` : `Thu gọn ${group.label}`}
                     >
-                      <Icon className="size-4.5 shrink-0" />
-                      {!isSidebarCollapsed && (
-                        <span className="truncate">{item.label}</span>
-                      )}
+                      <span className="flex items-center gap-1.5 truncate">
+                        <span>{group.label}</span>
+                        {hasActiveItem && (
+                          <span className="size-1.5 rounded-full bg-sidebar-primary shrink-0" />
+                        )}
+                      </span>
+                      <ChevronDown
+                        className={`size-3.5 text-sidebar-muted/70 group-hover:text-white transition-transform duration-200 shrink-0 ${
+                          isGroupCollapsed ? "-rotate-90" : "rotate-0"
+                        }`}
+                      />
                     </button>
-                  );
-                })}
-              </div>
-            ))}
+                  )}
+
+                  {/* Vùng danh sách mục con với hiệu ứng Accordion mượt mà */}
+                  <div
+                    className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${
+                      !isSidebarCollapsed && isGroupCollapsed
+                        ? "grid-rows-[0fr]"
+                        : "grid-rows-[1fr]"
+                    }`}
+                  >
+                    <div className="overflow-hidden flex flex-col gap-1 pt-1">
+                      {group.items.map((item) => {
+                        const isActive = currentNav?.key === item.key;
+                        const Icon = item.icon;
+
+                        return (
+                          <button
+                            key={item.key}
+                            ref={isActive ? activeItemRef : null}
+                            title={item.label}
+                            type="button"
+                            onClick={() => {
+                              if (item.implemented === false) {
+                                alert(
+                                  "Tính năng này sẽ được phát triển trong các Sprint tiếp theo."
+                                );
+                              } else {
+                                navigate(item.path);
+                                setIsMobileMenuOpen(false);
+                              }
+                            }}
+                            className={`flex items-center gap-3 rounded-xl py-2.5 text-left text-xs font-semibold transition-all cursor-pointer outline-none touch-target ${
+                              isSidebarCollapsed
+                                ? "lg:justify-center lg:px-0 lg:py-3"
+                                : "px-3"
+                            } ${
+                              isActive
+                                ? "bg-sidebar-primary text-white shadow-sm font-bold"
+                                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-white"
+                            }`}
+                          >
+                            <Icon className="size-4.5 shrink-0" />
+                            {!isSidebarCollapsed && (
+                              <span className="truncate">{item.label}</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </nav>
         </div>
 

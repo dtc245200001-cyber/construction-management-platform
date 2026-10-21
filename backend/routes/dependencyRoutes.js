@@ -321,6 +321,7 @@ router.get(
   "/:projectId/tasks/:taskId/dependencies",
   requireAuth,
   checkProjectAccess,
+  requirePermission("project.member"), // F-01: thiếu khai báo quyền → default-deny chặn hoàn toàn
   asyncHandler(async (req, res) => {
     const taskId = parsePositiveInt(req.params.taskId);
     if (!taskId) return res.status(400).json({ message: "taskId không hợp lệ" });

@@ -87,4 +87,25 @@ describe("WBSPage", () => {
     expect(screen.getByText(/Công việc sẽ được tạo trong hạng mục/)).toHaveTextContent("Hạng mục Trống");
     expect(screen.queryByText("Thêm công việc thi công")).not.toBeInTheDocument();
   });
+
+  test("chuyển đổi qua lại giữa dạng danh sách (bảng) và dạng lưới (thẻ)", async () => {
+    const user = userEvent.setup();
+    await renderPage();
+
+    // Ban đầu ở dạng bảng
+    expect(screen.getByRole("table")).toBeInTheDocument();
+
+    // Bấm nút chuyển sang dạng lưới (thẻ)
+    const gridBtn = screen.getByRole("button", { name: "Xem dạng lưới" });
+    await user.click(gridBtn);
+
+    // Không còn bảng table, chuyển sang dạng thẻ
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getByText(/Đang xem dạng/)).toBeInTheDocument();
+
+    // Bấm nút quay lại dạng danh sách (bảng)
+    const listBtn = screen.getByRole("button", { name: "Xem dạng danh sách" });
+    await user.click(listBtn);
+    expect(screen.getByRole("table")).toBeInTheDocument();
+  });
 });

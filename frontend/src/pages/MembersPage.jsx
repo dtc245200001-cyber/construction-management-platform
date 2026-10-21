@@ -6,6 +6,7 @@ import React, {
 
 import api from "../lib/api";
 import { usePermission } from "../hooks/usePermission";
+import PageHeroBanner from "../components/PageHeroBanner";
 
 import {
   BriefcaseBusiness,
@@ -1047,35 +1048,27 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
 
   return (
     <div className="mx-auto w-full max-w-7xl flex-1 overflow-y-auto p-4 md:p-8">
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="flex items-center gap-2 text-2xl font-bold text-site-dark">
-            <Users className="size-6 text-site-primary" />
-
-            Thành viên & Tổ đội
-          </h2>
-
-          <p className="mt-1 text-sm text-site-baseline">
-            Quản lý thành viên,
-            tổ đội và phân công thi
-            công trong dự án.
-          </p>
-        </div>
-
-        {canInvite && (
-          <button
-            type="button"
-            onClick={() => {
-              setShowInviteModal(true);
-              setInviteSuccess("");
-              setInviteError("");
-            }}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-site-primary px-4 py-2 font-medium text-white shadow-sm transition-colors hover:bg-site-primary/90"
-          >
-            <Plus className="size-4" />
-            Mời thành viên
-          </button>
-        )}
+      <div className="mb-8">
+        <PageHeroBanner
+          icon={<Users className="size-6 sm:size-8" />}
+          title="Thành viên & Tổ đội"
+          subtitle="Quản lý thành viên, tổ đội và phân công thi công trong dự án."
+        >
+          {canInvite && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowInviteModal(true);
+                setInviteSuccess("");
+                setInviteError("");
+              }}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 font-bold text-[#1F63E0] shadow-md transition-colors hover:bg-white/90"
+            >
+              <Plus className="size-4" />
+              Mời thành viên
+            </button>
+          )}
+        </PageHeroBanner>
       </div>
 
       {/* =====================================================
@@ -2244,16 +2237,20 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
                   }
                   className="w-full min-h-[44px] rounded-xl border border-site-border bg-site-bg px-3.5 py-2.5 text-[15px]"
                 >
+                  <option value="chu_dau_tu">
+                    Chủ đầu tư
+                  </option>
+
                   <option value="ban_quan_ly">
                     Ban quản lý
                   </option>
 
-                  <option value="ky_su_giam_sat">
-                    Kỹ sư giám sát
-                  </option>
-
                   <option value="chi_huy_truong">
                     Chỉ huy trưởng
+                  </option>
+
+                  <option value="ky_su_giam_sat">
+                    Kỹ sư giám sát
                   </option>
 
                   <option value="doi_truong">
@@ -2262,6 +2259,10 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
 
                   <option value="ke_toan">
                     Kế toán dự án
+                  </option>
+
+                  <option value="khach">
+                    Khách
                   </option>
                 </select>
               </div>

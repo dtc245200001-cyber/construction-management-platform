@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useOutletContext, useNavigate } from "react-router-dom";
+import PageHeroBanner from "../components/PageHeroBanner";
 import api from "../lib/api";
 import {
   TrendingUp,
@@ -132,28 +133,26 @@ export default function ProgressDashboardPage() {
     <div className="flex-1 min-h-0 bg-[#F3F6FB] text-[#0F1B3D] flex flex-col overflow-y-auto">
       <div className="flex-1 min-h-0 flex flex-col p-3.5 sm:p-6 pb-24 lg:pb-6 gap-4 sm:gap-6 max-w-[1200px] mx-auto w-full">
         {/* Header */}
-        <div className="flex items-start justify-between gap-3 shrink-0">
-          <div className="min-w-0">
-            <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
-              <Activity className="size-5 sm:size-6 text-[#1F63E0] shrink-0" aria-hidden="true" />
-              Tiến độ dự án
-            </h1>
-            <p className="text-[#64748B] mt-1 text-xs sm:text-sm truncate">
-              Tổng hợp tiến độ theo giá trị hợp đồng
-              {data?.project_name ? ` — ${data.project_name}` : ""}
-            </p>
-          </div>
+        <PageHeroBanner
+          icon={<Activity className="size-6 sm:size-8" aria-hidden="true" />}
+          title="Tiến độ dự án"
+          subtitle={
+            data?.project_name
+              ? `Dự án: ${data.project_name} · Tổng hợp tiến độ theo giá trị hợp đồng`
+              : "Tổng hợp tiến độ theo giá trị hợp đồng"
+          }
+        >
           <button
             type="button"
             onClick={fetchDashboard}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-[#E6EBF3] bg-white px-3 py-2 text-xs sm:text-sm font-semibold text-[#0F1B3D] hover:bg-slate-50 disabled:opacity-50 cursor-pointer touch-target"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 text-white backdrop-blur-xs px-3 py-2 text-xs sm:text-sm font-semibold disabled:opacity-50 cursor-pointer touch-target transition-colors"
             aria-label="Tải lại dữ liệu"
           >
             <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} aria-hidden="true" />
             <span className="hidden sm:inline">Tải lại</span>
           </button>
-        </div>
+        </PageHeroBanner>
 
         {/* Error */}
         {error && !loading && (

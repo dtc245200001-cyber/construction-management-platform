@@ -15,7 +15,9 @@
     "monitor:staging": "node ../deploy/staging-monitor.js",
     "monitor:simulate": "node ../deploy/simulate-staging-alert.js",
     "migrate:up": "node -r dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate up --no-check-order",
-    "migrate:down": "node -r dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate down --no-check-order"
+    "migrate:down": "node -r dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate down --no-check-order",
+    "seed:roles": "node scripts/seed-roles.js",
+    "seed:demo": "node scripts/seed-demo.js"
   },
   "dependencies": {
     "argon2": "^0.45.1",

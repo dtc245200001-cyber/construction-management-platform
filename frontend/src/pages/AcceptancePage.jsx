@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useOutletContext } from "react-router-dom";
+import PageHeroBanner from "../components/PageHeroBanner";
 import api from "../lib/api";
 import { can } from "../lib/permissions";
 import {
@@ -319,6 +320,7 @@ export default function AcceptancePage({ user: propUser } = {}) {
   const projectId = localStorage.getItem("currentProjectId") || 1;
 
   const outletContext = useOutletContext();
+  const currentProject = outletContext?.currentProject;
   const user = propUser || outletContext?.user;
 
   // Quyền truy cập
@@ -978,32 +980,28 @@ export default function AcceptancePage({ user: propUser } = {}) {
 
   return (
     <div className="space-y-6 p-4 md:p-6 max-w-7xl mx-auto">
-      {/* ── HEADER ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b pb-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <CheckSquare className="h-7 w-7 text-emerald-600" />
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              Nghiệm thu khối lượng đợt
-            </h1>
-          </div>
-          <p className="text-sm text-slate-500 mt-1">
-            Lập phiếu nghiệm thu, tự động tính khối lượng đợt từ luỹ kế và đối chiếu với khối lượng đội thi công báo cáo.
-          </p>
-        </div>
-
+      {/* ── HEADER Hero Banner màu xanh đồng bộ ── */}
+      <PageHeroBanner
+        icon={<CheckSquare className="size-6 sm:size-8" />}
+        title="Nghiệm thu khối lượng đợt"
+        subtitle={
+          currentProject
+            ? `Dự án: ${currentProject.name} · Lập phiếu nghiệm thu và đối chiếu khối lượng luỹ kế`
+            : "Lập phiếu nghiệm thu, tự động tính khối lượng đợt từ luỹ kế và đối chiếu với khối lượng đội thi công báo cáo."
+        }
+      >
         <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
           <Button
             variant="outline"
             size="sm"
             onClick={fetchVouchers}
             disabled={loadingList}
-            className="flex-1 sm:flex-initial min-h-[44px] flex items-center justify-center gap-1.5 touch-target"
+            className="flex-1 sm:flex-initial min-h-[44px] bg-white/10 hover:bg-white/20 text-white border-white/20 hover:border-white/40 backdrop-blur-xs flex items-center justify-center gap-1.5 touch-target shadow-xs"
           >
             <RefreshCw
-              className={`h-4 w-4 ${loadingList ? "animate-spin" : ""}`}
+              className={`h-4 w-4 text-white ${loadingList ? "animate-spin" : ""}`}
             />
-            Làm mới
+            <span className="text-white">Làm mới</span>
           </Button>
 
           {canExportDossier && (
@@ -1011,24 +1009,24 @@ export default function AcceptancePage({ user: propUser } = {}) {
               variant="outline"
               size="sm"
               onClick={handleOpenExportDialog}
-              className="flex-1 sm:flex-initial min-h-[44px] flex items-center justify-center gap-1.5 touch-target text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+              className="flex-1 sm:flex-initial min-h-[44px] bg-white/10 hover:bg-white/20 text-white border-white/20 hover:border-white/40 backdrop-blur-xs flex items-center justify-center gap-1.5 touch-target shadow-xs"
             >
-              <FileDown className="h-4 w-4" />
-              Xuất hồ sơ PDF
+              <FileDown className="h-4 w-4 text-white" />
+              <span className="text-white">Xuất hồ sơ PDF</span>
             </Button>
           )}
 
           {isSupervisor && (
             <Button
               onClick={handleOpenCreateModal}
-              className="w-full sm:w-auto min-h-[44px] bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-2 font-bold touch-target shadow-sm"
+              className="w-full sm:w-auto min-h-[44px] bg-white text-[#1F63E0] hover:bg-white/90 flex items-center justify-center gap-2 font-bold touch-target shadow-md border-0"
             >
-              <Plus className="h-5 w-5" />
-              Lập phiếu nghiệm thu
+              <Plus className="h-5 w-5 text-[#1F63E0]" />
+              <span>Lập phiếu nghiệm thu</span>
             </Button>
           )}
         </div>
-      </div>
+      </PageHeroBanner>
 
       {canReviewInternal && (
         <Card className="border-blue-200 bg-blue-50/40 p-4">

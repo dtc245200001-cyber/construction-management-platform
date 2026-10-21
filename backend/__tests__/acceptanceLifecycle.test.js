@@ -28,6 +28,7 @@ jest.mock("../utils/logger", () => ({
 const mockLogAudit = jest.fn().mockResolvedValue();
 jest.mock("../utils/auditLogger", () => ({
   logAudit: (...args) => mockLogAudit(...args),
+  getClientIp: jest.fn(() => "127.0.0.1"),
   createAuditMiddleware: jest.fn(() => (req, res, next) => next()),
 }));
 
@@ -437,10 +438,13 @@ describe("S-39: Acceptance Voucher Lifecycle & Audit Portal", () => {
       expect(res.body.error).toMatch(/không có quyền/i);
     });
 
-    test("403 với KSGS", async () => {
+    test("200 với KSGS theo OV-3 / S-39 (KSGS được xem nhật ký thao tác)", async () => {
       mockQuery.mockResolvedValueOnce({ rows: [{ role: "ky_su_giam_sat" }] });
+      mockQuery.mockResolvedValueOnce({ rows: [{ total: 0 }] });
+      mockQuery.mockResolvedValueOnce({ rows: [] });
       const res = await request(app).get("/api/projects/1/audit-logs");
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty("logs");
     });
 
     test("400 khi entity không nằm trong whitelist", async () => {

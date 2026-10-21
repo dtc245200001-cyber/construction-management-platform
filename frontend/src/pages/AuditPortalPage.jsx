@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import PageHeroBanner from "../components/PageHeroBanner";
 import api from "../lib/api";
 import { can } from "../lib/permissions";
 import {
@@ -18,46 +19,12 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Badge } from "../components/ui/badge";
 import { Card } from "../components/ui/card";
-
-// Nhãn thân thiện cho các action phổ biến (fallback = action gốc).
-const ACTION_LABELS = {
-  CREATE_ACCEPTANCE_VOUCHER: "Tạo phiếu nghiệm thu",
-  SUBMIT_ACCEPTANCE_VOUCHER: "Gửi duyệt phiếu nghiệm thu",
-  APPROVE_ACCEPTANCE_VOUCHER: "Duyệt phiếu nghiệm thu",
-  RETURN_ACCEPTANCE_VOUCHER: "Trả lại phiếu nghiệm thu",
-  CREATE_DIARY_ENTRY: "Ghi nhật ký",
-  UPDATE_DIARY_ENTRY: "Sửa nhật ký",
-  DELETE_DIARY_ENTRY: "Xóa nhật ký",
-  CREATE_DIARY_CONFLICT: "Phát hiện xung đột nhật ký",
-  RESOLVE_DIARY_CONFLICT: "Xử lý xung đột nhật ký",
-  UPSERT_DIARY_DAILY_LOG: "Cập nhật nhật ký ngày",
-  LOCK_DIARY: "Khóa sổ nhật ký",
-  UNLOCK_DIARY: "Mở khóa sổ nhật ký",
-  CREATE_QUANTITY_REPORT: "Báo cáo khối lượng",
-  CONTRACT_QUANTITY_SET: "Gán khối lượng hợp đồng",
-  CONTRACT_QUANTITY_CLEAR: "Xoá khối lượng hợp đồng",
-  CREATE_PROJECT: "Tạo dự án",
-  CREATE_INVITATION: "Gửi lời mời",
-  LOCK_USER: "Khóa tài khoản",
-  UNLOCK_USER: "Mở khóa tài khoản",
-};
-
-const ENTITY_LABELS = {
-  acceptance_vouchers: "Phiếu nghiệm thu",
-  acceptance_voucher_items: "Hạng mục phiếu",
-  acceptance_voucher_photos: "Ảnh phiếu",
-  daily_log_locks: "Khoá nhật ký ngày",
-  diary_entries: "Nhật ký thi công",
-  diary_entry_conflicts: "Xung đột nhật ký",
-  diary_daily_logs: "Nhật ký ngày",
-  task_quantity_reports: "Báo cáo khối lượng",
-  tasks: "Công việc",
-  work_items: "Hạng mục",
-  projects: "Dự án",
-  users: "Người dùng",
-  invitations: "Thư mời",
-  teams: "Tổ đội",
-};
+import {
+  ACTION_LABELS,
+  ENTITY_LABELS,
+  actionLabel,
+  entityLabel,
+} from "../lib/auditLabels";
 
 const CATEGORY_TABS = [
   { id: "all", label: "Tất cả", entity: "" },
@@ -294,30 +261,22 @@ export default function AuditPortalPage({ user }) {
   return (
     <div className="space-y-6 p-4 md:p-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b pb-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <History className="h-7 w-7 text-emerald-600" />
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              Nhật ký thao tác
-            </h1>
-          </div>
-          <p className="text-sm text-slate-500 mt-1">
-            Lịch sử các thao tác trên dự án — phiếu nghiệm thu, khoá/mở nhật ký,
-            báo cáo khối lượng. (Dành cho Chủ đầu tư &amp; Ban quản lý.)
-          </p>
-        </div>
+      <PageHeroBanner
+        icon={<History className="size-6 sm:size-8" />}
+        title="Nhật ký thao tác"
+        subtitle="Lịch sử các thao tác trên dự án — phiếu nghiệm thu, khoá/mở nhật ký, báo cáo khối lượng. (Dành cho Chủ đầu tư & Ban quản lý.)"
+      >
         <Button
           variant="outline"
           size="sm"
           onClick={fetchLogs}
           disabled={loading}
-          className="flex items-center gap-1.5"
+          className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-xs transition-colors"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           Làm mới
         </Button>
-      </div>
+      </PageHeroBanner>
 
       {/* Filter bar */}
       <Card className="p-4 sm:p-5 shadow-xs border-slate-200">
@@ -603,12 +562,13 @@ export default function AuditPortalPage({ user }) {
                         <Badge
                           variant="secondary"
                           className="bg-blue-50 text-blue-800 border-blue-200"
+                          title={log.action}
                         >
-                          {ACTION_LABELS[log.action] || log.action}
+                          {actionLabel(log.action)}
                         </Badge>
                       </td>
                       <td className="py-3 px-4 text-slate-700">
-                        {ENTITY_LABELS[log.entity] || log.entity || "—"}
+                        {entityLabel(log.entity, log.entity_id)}
                       </td>
                       <td className="py-3 px-4 text-right font-mono text-slate-600">
                         {log.entity_id ?? "—"}

@@ -30,6 +30,11 @@ export default function HomePage({ user }) {
   const [selectedNews, setSelectedNews] = useState(null);
 
   useEffect(() => {
+    if (user) {
+      navigate('/projects', { replace: true });
+      return;
+    }
+
     const fetchTopProjects = async () => {
       try {
         const res = await api.get('/public/projects?limit=3');
@@ -41,7 +46,11 @@ export default function HomePage({ user }) {
       }
     };
     fetchTopProjects();
-  }, []);
+  }, [user, navigate]);
+
+  if (user) {
+    return null;
+  }
 
   const handleSearch = (e) => {
     e.preventDefault();

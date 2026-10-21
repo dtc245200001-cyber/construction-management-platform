@@ -25,7 +25,8 @@ const ALL_MEMBERS = Object.values(ROLES);
 export const PERMISSIONS = {
   // ── Ban quản lý dự án ──────────────────────────────────────────────
   "member.manage": [ROLES.BAN_QUAN_LY],
-  "work_item.manage": [ROLES.BAN_QUAN_LY, ROLES.CHI_HUY_TRUONG],
+  // S-04, S-05 (F-06): Chỉ Ban quản lý Tạo/Sửa cây WBS. Chỉ huy trưởng chỉ Xem.
+  "work_item.manage": [ROLES.BAN_QUAN_LY],
   "acceptance.review_internal": [ROLES.BAN_QUAN_LY],
   "acceptance.export_dossier": [ROLES.BAN_QUAN_LY],
 
@@ -42,6 +43,8 @@ export const PERMISSIONS = {
   // ── Kỹ sư giám sát ─────────────────────────────────────────────────
   "site_log.create": [ROLES.KY_SU_GIAM_SAT, ROLES.CHI_HUY_TRUONG, ROLES.BAN_QUAN_LY],
   "site_log.upload_photo": [ROLES.KY_SU_GIAM_SAT],
+  // BL-2 (S-32): Xử lý xung đột phiên bản nhật ký — Kỹ sư giám sát chọn bản giữ
+  "diary.resolve_conflict": [ROLES.KY_SU_GIAM_SAT],
   "quantity.verify": [ROLES.KY_SU_GIAM_SAT],
   "acceptance.create_dossier": [ROLES.KY_SU_GIAM_SAT],
   "acceptance.update_dossier": [ROLES.KY_SU_GIAM_SAT],
@@ -59,13 +62,19 @@ export const PERMISSIONS = {
   "acceptance.approve_official": [ROLES.BAN_QUAN_LY],
   "acceptance.return_official": [ROLES.BAN_QUAN_LY],
   "payment.approve": [ROLES.CHU_DAU_TU],
-  // S-39: Audit Portal cho Chủ đầu tư / Ban quản lý.
-  "audit.view_project": [ROLES.CHU_DAU_TU, ROLES.BAN_QUAN_LY],
+  // S-39: Nhật ký thao tác dự án — Chỉ loại Đội trưởng (OV-3).
+  "audit.view_project": [
+    ROLES.CHU_DAU_TU,
+    ROLES.BAN_QUAN_LY,
+    ROLES.CHI_HUY_TRUONG,
+    ROLES.KY_SU_GIAM_SAT,
+    ROLES.KE_TOAN,
+  ],
 
   // ── Ngân sách & Kế toán (S-46 / T-119) ─────────────────────────────
   "budget.view": [ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU, ROLES.KE_TOAN, ROLES.CHI_HUY_TRUONG],
   "budget.manage": [ROLES.BAN_QUAN_LY, ROLES.CHU_DAU_TU],
-  "cost.record": [ROLES.KE_TOAN],
+  "cost.record": [ROLES.BAN_QUAN_LY], // BL-4 (S-47): BQL ghi chi phí thực tế. Kế toán chỉ xem.
   "payment.reconcile": [ROLES.KE_TOAN],
   "payment.prepare_dossier": [ROLES.KE_TOAN],
   "finance.report": [ROLES.KE_TOAN],

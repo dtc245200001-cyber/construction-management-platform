@@ -23,8 +23,5 @@ export default function RouteGuard({ children }) {
 
   if (canAccessRoute(role, pathname)) return children;
 
-  if (defaultRoute && defaultRoute !== pathname && canAccessRoute(role, defaultRoute)) {
-    return <Navigate to={defaultRoute} replace />;
-  }
-  return <ForbiddenPage homePath={null} />;
+  return <ForbiddenPage homePath={defaultRoute || "/projects"} />;
 }

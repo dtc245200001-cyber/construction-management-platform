@@ -9,9 +9,11 @@ const requireAuth = require("../middleware/auth");
 const {
   checkProjectAccess,
   requirePermission,
+  createProjectRouter,
 } = require("../middleware/projectAccess");
 
-const router = express.Router({ mergeParams: true });
+// F-02 fix: dùng createProjectRouter() thay express.Router() để Default-Deny (T-07) hoạt động
+const router = createProjectRouter();
 
 const { isCloudinaryConfigured, uploadToCloudinary } = require("../lib/cloudinary");
 

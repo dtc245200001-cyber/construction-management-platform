@@ -1,0 +1,60 @@
+﻿# Danh sach vai tro chinh thuc (canonical roles)
+# Day la nguon su that duy nhat cho ten vai tro trong he thong
+# Ngay tao: 2026-10-21
+
+roles:
+  - key: ban_quan_ly
+    label: "Ban quan ly"
+    db_value: "ban_quan_ly"
+    code_constant: "BAN_QUAN_LY"
+    default_deny: false
+    description: "Dieu phoi ky thuat, quan ly thanh vien, duyet ho so noi bo va xuat du lieu."
+
+  - key: chi_huy_truong
+    label: "Chi huy truong"
+    db_value: "chi_huy_truong"
+    code_constant: "CHI_HUY_TRUONG"
+    default_deny: false
+    description: "Phan cong nhiem vu cho doi, quan ly tien do va lich thi cong."
+
+  - key: ky_su_giam_sat
+    label: "Ky su giam sat"
+    db_value: "ky_su_giam_sat"
+    code_constant: "KY_SU_GIAM_SAT"
+    default_deny: false
+    description: "Lap nhat ky thi cong, tao ho so nghiem thu, chot so cuoi ngay."
+
+  - key: doi_truong
+    label: "Doi truong thi cong"
+    db_value: "doi_truong"
+    code_constant: "DOI_TRUONG"
+    default_deny: false
+    description: "Bao cao khoi luong va tien do cua doi minh."
+
+  - key: chu_dau_tu
+    label: "Chu dau tu"
+    db_value: "chu_dau_tu"
+    code_constant: "CHU_DAU_TU"
+    default_deny: false
+    description: "Phe duyet, giam sat tong the; duyet thanh toan chinh thuc (S-44)."
+
+  - key: ke_toan
+    label: "Ke toan CDT"
+    db_value: "ke_toan"
+    code_constant: "KE_TOAN"
+    default_deny: false
+    description: "Ghi nhan chi phi thuc te, doi soat thanh toan, lap ho so quyet toan."
+
+  - key: khach
+    label: "Khach"
+    db_value: "khach"
+    code_constant: "KHACH"
+    default_deny: true
+    description: "Tai khoan chua duoc gan vai tro that; mac dinh tu choi moi thao tac."
+
+system_roles:
+  - key: system_admin
+    label: "Quan tri he thong"
+    mechanism: "users.is_system_admin = true (flag, khong phai project_member role)"
+    default_deny: false
+    description: "Quan tri vien he thong - bypass moi kiem tra role trong du an, kem nhat ky."
