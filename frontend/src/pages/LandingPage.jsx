@@ -29,6 +29,7 @@ import {
   Zap,
   HeartHandshake,
   Pencil,
+  CheckCircle2,
 } from "lucide-react";
 
 import heroImage from "../assets/hero-site.jpg";
@@ -494,9 +495,8 @@ export default function LandingPage({ user, setUser }) {
             </section>
           </div>
 
-          {/* Right column — chỉ hiện thẻ nào có dữ liệu thật */}
+          {/* Right column — luôn hiển thị đầy đủ, có trạng thái trống thân thiện */}
           <div className="flex flex-col gap-4 sm:gap-5">
-            {projectData.todayTasks.length > 0 && (
             <section className="card-surface p-5">
               <div className="flex items-center gap-3">
                 <div className="flex size-9 items-center justify-center rounded-lg bg-info-soft text-info">
@@ -507,27 +507,35 @@ export default function LandingPage({ user, setUser }) {
                   Xem tất cả <ChevronRight className="size-3.5" />
                 </Link>
               </div>
-              <ul className="mt-4 divide-y divide-border">
-                {projectData.todayTasks.map((w) => (
-                  <li key={w.task_id || w.task_name} className="flex items-center gap-3 py-3.5">
-                    <span className={`size-2.5 shrink-0 rounded-full ${w.is_critical ? 'bg-danger' : 'bg-info'}`} />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{w.task_name}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {w.assignee || 'Chưa giao'} · {w.percent_complete || 0}%
-                      </p>
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {w.early_finish ? w.early_finish.split('T')[0].split('-').reverse().join('/') : ''}
-                    </span>
-                    <ChevronRight className="size-4 text-muted-foreground" />
-                  </li>
-                ))}
-              </ul>
+              {projectData.todayTasks.length > 0 ? (
+                <ul className="mt-4 divide-y divide-border">
+                  {projectData.todayTasks.map((w) => (
+                    <li key={w.task_id || w.task_name} className="flex items-center gap-3 py-3.5">
+                      <span className={`size-2.5 shrink-0 rounded-full ${w.is_critical ? 'bg-danger' : 'bg-info'}`} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{w.task_name}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {w.assignee || 'Chưa giao'} · {w.percent_complete || 0}%
+                        </p>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {w.early_finish ? w.early_finish.split('T')[0].split('-').reverse().join('/') : ''}
+                      </span>
+                      <ChevronRight className="size-4 text-muted-foreground" />
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="py-6 text-center text-xs text-muted-foreground flex flex-col items-center justify-center gap-2">
+                  <div className="size-9 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                    <CheckCircle2 className="size-4.5" />
+                  </div>
+                  <p className="font-semibold text-foreground text-xs">Không có công việc đến hạn hôm nay</p>
+                  <p className="text-[11px] text-muted-foreground">Tiến độ hiện trường đang bám sát kế hoạch</p>
+                </div>
+              )}
             </section>
-            )}
 
-            {projectData.risks.length > 0 && (
             <section className="card-surface p-5">
               <div className="flex items-center gap-3">
                 <div className="flex size-9 items-center justify-center rounded-lg bg-info-soft text-info">
@@ -538,26 +546,33 @@ export default function LandingPage({ user, setUser }) {
                   Xem tất cả <ChevronRight className="size-3.5" />
                 </Link>
               </div>
-              <ul className="mt-4 divide-y divide-border">
-                {projectData.risks.map((r) => (
-                  <li key={r.title} className="flex items-center gap-3 py-3.5">
-                    <span
-                      className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${toneIcon[r.tone]}`}
-                    >
-                      <r.icon className="size-4" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{r.title}</p>
-                      <p className="truncate text-xs text-muted-foreground">{r.sub}</p>
-                    </div>
-                    <ChevronRight className="size-4 text-muted-foreground" />
-                  </li>
-                ))}
-              </ul>
+              {projectData.risks.length > 0 ? (
+                <ul className="mt-4 divide-y divide-border">
+                  {projectData.risks.map((r) => (
+                    <li key={r.title} className="flex items-center gap-3 py-3.5">
+                      <span
+                        className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${toneIcon[r.tone]}`}
+                      >
+                        <r.icon className="size-4" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{r.title}</p>
+                        <p className="truncate text-xs text-muted-foreground">{r.sub}</p>
+                      </div>
+                      <ChevronRight className="size-4 text-muted-foreground" />
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="py-6 text-center text-xs text-muted-foreground flex flex-col items-center justify-center gap-2">
+                  <div className="size-9 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                    <ShieldCheck className="size-4.5" />
+                  </div>
+                  <p className="font-semibold text-foreground text-xs">Công trường an toàn</p>
+                  <p className="text-[11px] text-muted-foreground">Chưa ghi nhận rủi ro trễ hạn hay cảnh báo chi phí</p>
+                </div>
+              )}
             </section>
-            )}
-
-            {projectData.budgetTotal > 0 && (
 
             <section className="card-surface p-5">
               <div className="flex items-center gap-3">
@@ -565,34 +580,46 @@ export default function LandingPage({ user, setUser }) {
                   <Wallet className="size-5" />
                 </div>
                 <h2 className="text-base font-semibold">Dự toán và thực chi lũy kế</h2>
-                <Link to="/payment-requests" className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-info hover:underline">
+                <Link to="/budgets" className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-info hover:underline">
                   Xem chi tiết <ChevronRight className="size-3.5" />
                 </Link>
               </div>
-              <div className="mt-5 space-y-4">
-                <div>
-                  <p className="text-sm font-medium">
-                    Dự toán: {(projectData.budgetTotal / 1e9).toFixed(2)} tỷ
-                  </p>
-                  <div className="mt-2 h-2.5 rounded-full bg-muted">
-                    <div className="h-2.5 w-full rounded-full bg-info" />
+              {projectData.budgetTotal > 0 ? (
+                <div className="mt-5 space-y-4">
+                  <div>
+                    <p className="text-sm font-medium">
+                      Dự toán: {(projectData.budgetTotal / 1e9).toFixed(2)} tỷ
+                    </p>
+                    <div className="mt-2 h-2.5 rounded-full bg-muted">
+                      <div className="h-2.5 w-full rounded-full bg-info" />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">
+                      Thực chi: {((projectData.actualTotal / projectData.budgetTotal) * 100).toFixed(0)}%
+                      ({(projectData.actualTotal / 1e9).toFixed(2)} tỷ)
+                    </p>
+                    <div className="mt-2 h-2.5 rounded-full bg-muted">
+                      <div
+                        className="h-2.5 rounded-full bg-info"
+                        style={{ width: `${Math.min(100, (projectData.actualTotal / projectData.budgetTotal) * 100)}%` }}
+                      />
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <p className="text-sm font-medium">
-                    Thực chi: {((projectData.actualTotal / projectData.budgetTotal) * 100).toFixed(0)}%
-                    ({(projectData.actualTotal / 1e9).toFixed(2)} tỷ)
-                  </p>
-                  <div className="mt-2 h-2.5 rounded-full bg-muted">
-                    <div
-                      className="h-2.5 rounded-full bg-info"
-                      style={{ width: `${Math.min(100, (projectData.actualTotal / projectData.budgetTotal) * 100)}%` }}
-                    />
+              ) : (
+                <div className="py-5 text-center text-xs text-muted-foreground flex flex-col items-center justify-center gap-2">
+                  <div className="size-9 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center">
+                    <Wallet className="size-4.5" />
                   </div>
+                  <p className="font-semibold text-foreground text-xs">Chưa khai báo dự toán</p>
+                  <p className="text-[11px] text-muted-foreground">Khai báo dự toán để theo dõi ngân sách và thực chi</p>
+                  <Link to="/budgets" className="mt-1 text-xs font-semibold text-info hover:underline">
+                    Khai báo ngay &rarr;
+                  </Link>
                 </div>
-              </div>
+              )}
             </section>
-            )}
           </div>
         </main>
   );
