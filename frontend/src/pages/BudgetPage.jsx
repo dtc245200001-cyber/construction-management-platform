@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useOutletContext } from "react-router-dom";
 import PageHeroBanner from "../components/PageHeroBanner";
+import ActualCostsPanel from "./ActualCostsPanel";
 import api from "../lib/api";
 import { buildTree } from "../utils/buildTree";
 import {
@@ -781,6 +782,20 @@ export default function BudgetPage({ user }) {
                 <FolderTree className="w-3.5 h-3.5" />
                 <span>Khai báo dự toán (S-46)</span>
               </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setActiveTab("actual")}
+                className={`h-8 gap-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                  activeTab === "actual"
+                    ? "bg-white text-blue-700 shadow-2xs hover:bg-white hover:text-blue-700"
+                    : "text-white/90 hover:bg-white/15 hover:text-white"
+                }`}
+              >
+                <Coins className="w-3.5 h-3.5" />
+                <span>Ghi nhận thực chi (S-47)</span>
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"
@@ -1156,6 +1171,12 @@ export default function BudgetPage({ user }) {
         {/* ======================================================== */}
         {/* TAB 2: TỔNG HỢP DỰ TOÁN, THỰC CHI & CẢNH BÁO (S-48)     */}
         {/* ======================================================== */}
+        
+        {/* S-47: Ghi nhan chi phi thuc te */}
+        {activeTab === "actual" && (
+          <ActualCostsPanel projectId={projectId} />
+        )}
+
         {activeTab === "summary" && (
           <>
             {/* Thanh công cụ cấu hình ngưỡng & bộ lọc trạng thái */}
