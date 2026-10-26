@@ -10,6 +10,7 @@ import {
   render,
   screen,
   waitFor,
+  fireEvent,
 } from "@testing-library/react";
 
 import userEvent from "@testing-library/user-event";
@@ -114,7 +115,7 @@ describe(
     );
 
     test(
-      "T-33: hover thanh găng hiện ES EF LS LF Float",
+      "T-33: chọn thanh găng mở side panel hiện ES EF LS LF Float, WBS và trạng thái",
       async () => {
         render(<GanttPage />);
 
@@ -126,51 +127,63 @@ describe(
             }
           );
 
-        await userEvent.hover(bar);
+        await userEvent.click(bar);
 
-        const tooltip =
-          await screen.findByRole(
-            "tooltip"
+        const panel =
+          await screen.findByTestId(
+            "gantt-side-panel"
           );
 
         expect(
-          tooltip
+          panel
         ).toHaveTextContent(
           "Đào móng"
         );
 
         expect(
-          tooltip
+          panel
         ).toHaveTextContent("ES");
 
         expect(
-          tooltip
+          panel
         ).toHaveTextContent("EF");
 
         expect(
-          tooltip
+          panel
         ).toHaveTextContent("LS");
 
         expect(
-          tooltip
+          panel
         ).toHaveTextContent("LF");
 
         expect(
-          tooltip
+          panel
         ).toHaveTextContent(
           "Float"
         );
 
         expect(
-          tooltip
+          panel
         ).toHaveTextContent(
           "0 ngày"
+        );
+
+        expect(
+          panel
+        ).toHaveTextContent(
+          "CPM Demo"
+        );
+
+        expect(
+          panel
+        ).toHaveTextContent(
+          "Đường găng"
         );
       }
     );
 
     test(
-      "T-33: việc không găng cũng hiện đủ mốc khi hover",
+      "T-33: việc không găng cũng hiện đủ mốc khi chọn",
       async () => {
         render(<GanttPage />);
 
@@ -182,34 +195,38 @@ describe(
             }
           );
 
-        await userEvent.hover(bar);
+        await userEvent.click(bar);
 
-        const tooltip =
-          await screen.findByRole(
-            "tooltip"
+        const panel =
+          await screen.findByTestId(
+            "gantt-side-panel"
           );
 
         expect(
-          tooltip
+          panel
         ).toHaveTextContent(
           "3 ngày"
         );
 
         expect(
-          tooltip
+          panel
         ).toHaveTextContent("ES");
 
         expect(
-          tooltip
+          panel
         ).toHaveTextContent("EF");
 
         expect(
-          tooltip
+          panel
         ).toHaveTextContent("LS");
 
         expect(
-          tooltip
+          panel
         ).toHaveTextContent("LF");
+
+        expect(
+          panel
+        ).toHaveTextContent("Không găng");
       }
     );
 
@@ -267,6 +284,59 @@ describe(
         });
       }
     );
+
+    test("Side Panel: chọn công việc khác cập nhật nội dung panel mà không cần đóng rồi mở lại", async () => {
+      render(<GanttPage />);
+
+      const bar1 = await screen.findByRole("button", { name: /Đào móng - Việc găng/i });
+      const bar2 = await screen.findByRole("button", { name: /Lắp điện nước - Không găng/i });
+
+      // Chọn công việc 1
+      await userEvent.click(bar1);
+      const panel = await screen.findByTestId("gantt-side-panel");
+      expect(panel).toHaveTextContent("Đào móng");
+      expect(panel).toHaveTextContent("Đường găng");
+
+      // Chọn công việc 2 ngay mà không cần đóng
+      await userEvent.click(bar2);
+      expect(panel).toHaveTextContent("Lắp điện nước");
+      expect(panel).toHaveTextContent("Không găng");
+    });
+
+    test("Side Panel: có nút đóng panel và phím Escape để trở về chế độ xem Gantt rộng ban đầu", async () => {
+      render(<GanttPage />);
+
+      const bar = await screen.findByRole("button", { name: /Đào móng - Việc găng/i });
+      await userEvent.click(bar);
+
+      expect(await screen.findByTestId("gantt-side-panel")).toBeInTheDocument();
+
+      // Bấm nút đóng panel
+      const closeBtn = screen.getByRole("button", { name: /Đóng chi tiết công việc/i });
+      await userEvent.click(closeBtn);
+
+      expect(screen.queryByTestId("gantt-side-panel")).not.toBeInTheDocument();
+
+      // Mở lại và kiểm tra đóng bằng phím Escape
+      await userEvent.click(bar);
+      expect(await screen.findByTestId("gantt-side-panel")).toBeInTheDocument();
+
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(screen.queryByTestId("gantt-side-panel")).not.toBeInTheDocument();
+    });
+
+    test("Side Panel: bấm nút Cập nhật tiến độ trong panel mở modal cập nhật tiến độ", async () => {
+      render(<GanttPage />);
+
+      const bar = await screen.findByRole("button", { name: /Đào móng - Việc găng/i });
+      await userEvent.click(bar);
+
+      const updateBtn = await screen.findByTestId("side-panel-update-progress-btn");
+      await userEvent.click(updateBtn);
+
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Cập nhật tiến độ" })).toBeInTheDocument();
+    });
 
     test("T-37: dải hiện 'Chậm 3 ngày' với summary giả", async () => {
       api.get.mockImplementation((url) => {
