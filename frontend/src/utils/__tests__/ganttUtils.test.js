@@ -85,5 +85,17 @@ describe('ganttUtils', () => {
       expect(ticks[1].label).toContain('T2');
       expect(ticks[1].x).toBe(35); // 7 * 5
     });
+
+    it('chế độ vừa vặn (fit): sinh mốc theo ngày khi pixelsPerDay >= 18', () => {
+      const ticks = generateTimelineTicks('2026-10-02', 10, 'fit', 20);
+      expect(ticks).toHaveLength(11);
+      expect(ticks[0].type).toBe('day');
+    });
+
+    it('chế độ vừa vặn (fit): tự động gộp mốc khi pixelsPerDay nhỏ', () => {
+      const ticksNarrow = generateTimelineTicks('2026-10-02', 28, 'fit', 8);
+      expect(ticksNarrow[0].type).toBe('week');
+      expect(ticksNarrow).toHaveLength(5);
+    });
   });
 });

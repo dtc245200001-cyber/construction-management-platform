@@ -67,8 +67,22 @@ export function generateTimelineTicks(projectStartDate, totalDays, viewMode, pix
 
   const dayMap = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
   
-  if (viewMode === 'day') {
-    for (let i = 0; i <= totalDays; i++) {
+  const isWeekly = viewMode === 'week' || (viewMode === 'fit' && pixelsPerDay < 12);
+  const step = isWeekly ? 7 : (viewMode === 'fit' && pixelsPerDay < 18 ? 3 : 1);
+
+  if (isWeekly) {
+    for (let i = 0; i <= totalDays; i += 7) {
+      const date = addDays(startObj, i);
+      ticks.push({
+        x: i * pixelsPerDay,
+        label: `T${Math.floor(i / 7) + 1} (${format(date, 'dd/MM/yyyy')})`,
+        type: 'week',
+        step: 7,
+        isNonWorkingDay: false
+      });
+    }
+  } else {
+    for (let i = 0; i <= totalDays; i += step) {
       const date = addDays(startObj, i);
       
       let isNonWorkingDay = false;
@@ -85,17 +99,8 @@ export function generateTimelineTicks(projectStartDate, totalDays, viewMode, pix
         x: i * pixelsPerDay,
         label: format(date, 'dd/MM/yyyy'),
         type: 'day',
+        step,
         isNonWorkingDay
-      });
-    }
-  } else if (viewMode === 'week') {
-    for (let i = 0; i <= totalDays; i += 7) {
-      const date = addDays(startObj, i);
-      ticks.push({
-        x: i * pixelsPerDay,
-        label: `T${Math.floor(i / 7) + 1} (${format(date, 'dd/MM/yyyy')})`,
-        type: 'week',
-        isNonWorkingDay: false
       });
     }
   }

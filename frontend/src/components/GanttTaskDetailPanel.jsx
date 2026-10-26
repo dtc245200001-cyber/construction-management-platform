@@ -99,7 +99,7 @@ export default function GanttTaskDetailPanel({
         role="region"
         aria-label="Chi tiết công việc"
         data-testid="gantt-side-panel"
-        className="fixed inset-y-0 right-0 z-50 w-full max-w-sm sm:max-w-md md:static md:w-[350px] lg:w-[380px] xl:w-[420px] md:z-10 bg-white md:border-l md:border-slate-200 flex flex-col h-full shadow-2xl md:shadow-none transition-all duration-200 ease-out shrink-0"
+        className="fixed inset-y-0 right-0 z-50 w-full max-w-sm sm:max-w-md md:static md:w-[320px] lg:w-[350px] xl:w-[380px] md:z-10 bg-white md:border-l md:border-slate-200 flex flex-col h-full shadow-2xl md:shadow-none transition-all duration-200 ease-out shrink-0"
       >
         {/* Header của Side Panel */}
         <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/70 shrink-0">
