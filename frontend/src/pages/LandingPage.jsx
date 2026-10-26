@@ -474,24 +474,6 @@ export default function LandingPage({ user, setUser }) {
               </div>
             </section>
 
-            {/* Footer strip */}
-            <section className="card-surface grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-5 p-3.5 sm:p-5">
-              {[
-                { icon: ShieldCheck, title: "An toàn lao động", sub: "Tối ưu và an toàn" },
-                { icon: Zap, title: "Vận hành ổn định", sub: "Luôn sẵn sàng" },
-                { icon: HeartHandshake, title: "Đồng hành cùng bạn", sub: "Trên mọi công trình" },
-              ].map((item) => (
-                <div key={item.title} className="flex items-center gap-3">
-                  <div className="flex size-10 sm:size-11 shrink-0 items-center justify-center rounded-xl bg-info-soft text-info">
-                    <item.icon className="size-4 sm:size-5" />
-                  </div>
-                  <div>
-                    <p className="text-xs sm:text-sm font-semibold">{item.title}</p>
-                    <p className="text-[11px] sm:text-xs text-muted-foreground">{item.sub}</p>
-                  </div>
-                </div>
-              ))}
-            </section>
           </div>
 
           {/* Right column — chỉ hiện thẻ nào có dữ liệu thật */}

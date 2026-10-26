@@ -259,8 +259,9 @@ export default function AuditPortalPage({ user }) {
   }
 
   return (
-    <div className="space-y-6 p-4 md:p-6 max-w-7xl mx-auto">
-      {/* Header */}
+    <div className="flex-1 min-h-0 bg-[#F3F6FB] flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col p-4 sm:p-6 pb-24 lg:pb-6 gap-6 max-w-[1672px] mx-auto w-full">
+        {/* Header */}
       <PageHeroBanner
         icon={<History className="size-6 sm:size-8" />}
         title="Nhật ký thao tác"
@@ -626,6 +627,7 @@ export default function AuditPortalPage({ user }) {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

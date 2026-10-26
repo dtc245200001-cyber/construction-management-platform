@@ -109,7 +109,7 @@ function WBSPage() {
   const [selectedWorkItem, setSelectedWorkItem] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
 
-  const projectId = currentProject?.id || localStorage.getItem("currentProjectId") || 1;
+  const projectId = String(currentProject?.id || localStorage.getItem("currentProjectId") || "1");
 
   // State cho Modal Thêm / Sửa hạng mục (T-05 / T-09).
   // Công việc (task) luôn được thêm / sửa qua TaskForm dùng chung (T-12).
@@ -154,31 +154,65 @@ const closeTaskForm = () => {
   setEditingTask(null);
 };
   const fetchSeqRef = React.useRef(0);
-  // Khi đổi dự án: dọn sạch dữ liệu cũ ngay trước lần render đầu tiên của project mới,
-  // đóng mọi modal/form đang giữ task của project cũ, và tăng sequence để bỏ qua response cũ.
-  React.useEffect(() => {
-    setItems([]);
-    setExpanded(new Set());
-    setMilestones({});
-    setLoadError(null);
-    setCacheMiss(false);
-    setIsFromCache(false);
-    setCachedAt(null);
-    setImportPreview(null);
-    setImportLoading(false);
-    closeTaskForm();
-    setModalConfig(prev => ({ ...prev, isOpen: false, error: "" }));
-    setMilestoneModalConfig(prev => ({ ...prev, isOpen: false, error: "" }));
-    setOpenMenuNodeId(null);
-    fetchSeqRef.current += 1;
-  }, [projectId]);
+  const previousProjectIdRef = React.useRef(null);
 
   const fetchWBS = async () => {
     const mySeq = ++fetchSeqRef.current;
     const myProjectId = projectId;
-    const isStale = () => mySeq !== fetchSeqRef.current || myProjectId !== (currentProject?.id || localStorage.getItem("currentProjectId") || 1);
+    const isStale = () =>
+      mySeq !== fetchSeqRef.current ||
+      String(myProjectId) !== String(currentProject?.id || localStorage.getItem("currentProjectId") || "1");
+
+    const isProjectChanged = previousProjectIdRef.current !== null && previousProjectIdRef.current !== myProjectId;
+    previousProjectIdRef.current = myProjectId;
+
+    if (isProjectChanged) {
+      setItems([]);
+      setExpanded(new Set());
+      setMilestones({});
+      setLoadError(null);
+      setCacheMiss(false);
+      setIsFromCache(false);
+      setCachedAt(null);
+      setImportPreview(null);
+      setImportLoading(false);
+      closeTaskForm();
+      setModalConfig((prev) => ({ ...prev, isOpen: false, error: "" }));
+      setMilestoneModalConfig((prev) => ({ ...prev, isOpen: false, error: "" }));
+      setOpenMenuNodeId(null);
+    }
+
     try {
-      setLoading(true);
+      if (items.length === 0 || isProjectChanged) {
+        setLoading(true);
+      }
+
+      // SWR: Tải nhanh từ offline snapshot cache nếu có dữ liệu sẵn của dự án này,
+      // giúp hiển thị cây WBS tức thì (0ms) mà không bị chớp màn hình trống "Chưa có hạng mục nào"
+      try {
+        const localSnapshot = await readSnapshot(myProjectId, SNAPSHOT_TYPES.WBS);
+        if (!isStale() && localSnapshot?.payload?.tree) {
+          const payload = localSnapshot.payload;
+          setItems(buildTree(payload.tree));
+          const msMap = {};
+          (payload.milestones || []).forEach((m) => (msMap[m.work_item_id] = m));
+          setMilestones(msMap);
+          const initExpanded = new Set();
+          const traverse = (node, level) => {
+            if (level < 3) {
+              initExpanded.add(node.id);
+              node.children.forEach((c) => traverse(c, level + 1));
+            }
+          };
+          const roots = buildTree(payload.tree);
+          roots.forEach((r) => traverse(r, 1));
+          setExpanded(initExpanded);
+          setLoading(false);
+        }
+      } catch {
+        /* ignore snapshot cache read error */
+      }
+
       if (!navigator.onLine) {
         setIsOnline(false);
         const snapshot = await readSnapshot(myProjectId, SNAPSHOT_TYPES.WBS);
@@ -186,7 +220,7 @@ const closeTaskForm = () => {
         if (snapshot?.payload?.tree) {
           setItems(buildTree(snapshot.payload.tree));
           const msMap = {};
-          (snapshot.payload.milestones || []).forEach(m => msMap[m.work_item_id] = m);
+          (snapshot.payload.milestones || []).forEach((m) => (msMap[m.work_item_id] = m));
           setMilestones(msMap);
           setIsFromCache(true);
           setCachedAt(snapshot.cachedAt);
@@ -206,14 +240,19 @@ const closeTaskForm = () => {
       if (isStale()) return;
       setItems(buildTree(payload.tree));
       const msMap = {};
-      (payload.milestones || []).forEach(m => msMap[m.work_item_id] = m);
+      (payload.milestones || []).forEach((m) => (msMap[m.work_item_id] = m));
       setMilestones(msMap);
       setIsFromCache(false);
       setCachedAt(null);
       const initExpanded = new Set();
-      const traverse = (node, level) => { if (level < 3) { initExpanded.add(node.id); node.children.forEach(c => traverse(c, level + 1)); } };
+      const traverse = (node, level) => {
+        if (level < 3) {
+          initExpanded.add(node.id);
+          node.children.forEach((c) => traverse(c, level + 1));
+        }
+      };
       const roots = buildTree(payload.tree);
-      roots.forEach(r => traverse(r, 1));
+      roots.forEach((r) => traverse(r, 1));
       setExpanded(initExpanded);
     } catch (err) {
       if (!isNetworkError(err)) {
@@ -223,18 +262,22 @@ const closeTaskForm = () => {
       setIsOnline(false);
       const snapshot = await readSnapshot(myProjectId, SNAPSHOT_TYPES.WBS);
       if (isStale()) return;
-      if (!snapshot?.payload?.tree) { setCacheMiss(true); return; }
+      if (!snapshot?.payload?.tree) {
+        setCacheMiss(true);
+        return;
+      }
       if (isStale()) return;
       setItems(buildTree(snapshot.payload.tree));
       const msMap = {};
-      (snapshot.payload.milestones || []).forEach(m => msMap[m.work_item_id] = m);
+      (snapshot.payload.milestones || []).forEach((m) => (msMap[m.work_item_id] = m));
       setMilestones(msMap);
       setIsFromCache(true);
       setCachedAt(snapshot.cachedAt);
       setIsOnline(false);
     } finally {
-      if (!isStale()) setLoading(false);
-      else setLoading(false);
+      if (!isStale()) {
+        setLoading(false);
+      }
     }
   };
 

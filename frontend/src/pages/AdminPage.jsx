@@ -171,7 +171,7 @@ export default function AdminPage({ user }) {
         <span className="font-semibold text-site-dark">Quản trị hệ thống</span>
       </div>
 
-      <main className="flex-1 p-6 md:p-8 max-w-7xl mx-auto w-full">
+      <main className="flex-1 p-4 sm:p-6 pb-24 lg:pb-6 max-w-[1672px] mx-auto w-full">
         <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4">
           <div>
             <h2 className="text-2xl font-bold text-[#0A192F] mb-1">Quản lý hệ thống</h2>

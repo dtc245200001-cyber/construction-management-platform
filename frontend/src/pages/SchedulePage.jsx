@@ -25,43 +25,83 @@ function getErrorText(err, fallback) {
   return err.response?.data?.message || fallback;
 }
 
+// Module-level RAM snapshot cache: hiển thị ngay lập tức (0ms) khi chuyển menu, chống giật nháy
+const scheduleMemoryCache = new Map();
+
 export default function SchedulePage() {
   const { can } = usePermission();
   const canRecalculate = can("cpm.recalculate");
   const canUpdateProgress = can("progress.update");
-  const [scheduleData, setScheduleData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [recalculating, setRecalculating] = useState(false);
+
   const context = useOutletContext();
   const currentProject = context?.currentProject;
+  const currentProjectId = String(currentProject?.id || localStorage.getItem("currentProjectId") || "1");
+  const memCached = scheduleMemoryCache.get(currentProjectId);
+
+  const [scheduleData, setScheduleData] = useState(() => memCached?.data || []);
+  const [loading, setLoading] = useState(() => !memCached || !memCached.data || memCached.data.length === 0);
+  const [recalculating, setRecalculating] = useState(false);
   const [criticalOnly, setCriticalOnly] = useState(false);
   const [search, setSearch] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [hoveredRowId, setHoveredRowId] = useState(null);
   const [selectedTaskForProgress, setSelectedTaskForProgress] = useState(null);
-  const [summary, setSummary] = useState(null);
-  const [isFromCache, setIsFromCache] = useState(false);
-  const [cachedAt, setCachedAt] = useState(null);
+  const [summary, setSummary] = useState(() => memCached?.summary || null);
+  const [isFromCache, setIsFromCache] = useState(() => memCached?.isFromCache || false);
+  const [cachedAt, setCachedAt] = useState(() => memCached?.cachedAt || null);
   const [cacheMiss, setCacheMiss] = useState(false);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine !== false);
   const isReadOnly = isFromCache || !isOnline;
   const offlineMutationMessage = "Cần có mạng để thực hiện thao tác này";
 
-  const currentProjectId = localStorage.getItem("currentProjectId") || 1;
   const fetchSeqRef = React.useRef(0);
-  React.useEffect(() => {
-    setScheduleData([]); setSummary(null); setErrorMessage(""); setIsFromCache(false);
-    setCachedAt(null); setCacheMiss(false); fetchSeqRef.current += 1;
-  }, [currentProjectId]);
+  const previousProjectIdRef = React.useRef(null);
 
   const fetchSchedule = async () => {
     const mySeq = ++fetchSeqRef.current;
     const myProjectId = currentProjectId;
-    const isStale = () => mySeq !== fetchSeqRef.current || myProjectId !== (localStorage.getItem("currentProjectId") || 1);
-    try {
-      setLoading(true);
+    const isStale = () =>
+      mySeq !== fetchSeqRef.current ||
+      String(myProjectId) !== String(currentProject?.id || localStorage.getItem("currentProjectId") || "1");
+
+    const isProjectChanged = previousProjectIdRef.current !== null && previousProjectIdRef.current !== myProjectId;
+    previousProjectIdRef.current = myProjectId;
+
+    if (isProjectChanged) {
+      setScheduleData([]);
+      setSummary(null);
       setErrorMessage("");
+      setIsFromCache(false);
+      setCachedAt(null);
+      setCacheMiss(false);
+    }
+
+    try {
+      if (scheduleData.length === 0 || isProjectChanged) {
+        setLoading(true);
+      }
+      setErrorMessage("");
+
+      // SWR: Tải nhanh từ offline snapshot cache nếu có dữ liệu sẵn của dự án này,
+      // giúp hiển thị bảng tiến độ CPM tức thì (0ms) mà không bị chớp màn hình trống
+      try {
+        const localSnapshot = await readSnapshot(myProjectId, SNAPSHOT_TYPES.CPM);
+        if (!isStale() && localSnapshot?.payload?.rows?.length > 0) {
+          const snapData = {
+            data: localSnapshot.payload.rows || [],
+            summary: localSnapshot.payload.summary || null,
+            isFromCache: true,
+            cachedAt: localSnapshot.saved_at,
+          };
+          scheduleMemoryCache.set(myProjectId, snapData);
+          setScheduleData(snapData.data);
+          if (snapData.summary) setSummary(snapData.summary);
+          setLoading(false);
+        }
+      } catch {
+        /* ignore snapshot cache read error */
+      }
 
       const res = await api.get(
         `/projects/${myProjectId}/schedule-results`
@@ -69,8 +109,15 @@ export default function SchedulePage() {
 
       if (isStale()) return;
       const rows = res.data.data || [];
+      const freshSummary = res.data.summary || null;
+      scheduleMemoryCache.set(myProjectId, {
+        data: rows,
+        summary: freshSummary,
+        isFromCache: false,
+        cachedAt: null,
+      });
       setScheduleData(rows);
-      setSummary(res.data.summary || null);
+      setSummary(freshSummary);
 
       await writeSnapshot(myProjectId, SNAPSHOT_TYPES.CPM, { rows, summary: res.data.summary || null });
       setIsFromCache(false);
@@ -156,9 +203,16 @@ export default function SchedulePage() {
         )
       );
     } finally {
-      setLoading(false);
+      if (!isStale()) {
+        setLoading(false);
+      }
     }
   };
+
+  useEffect(() => {
+    fetchSchedule();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentProjectId]);
 
   useEffect(() => {
     const updateOnline = () => setIsOnline(navigator.onLine !== false);
@@ -170,10 +224,7 @@ export default function SchedulePage() {
     };
   }, []);
 
-  useEffect(() => {
-    fetchSchedule();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentProjectId]);
+
 
   const handleRecalculate = async () => {
     if (isReadOnly) { setErrorMessage(offlineMutationMessage); return; }
@@ -495,7 +546,7 @@ export default function SchedulePage() {
               </thead>
 
               <tbody className="divide-y divide-[#EEF2F7]">
-                {loading ? (
+                {loading && scheduleData.length === 0 ? (
                   <tr>
                     <td
                       colSpan="10"

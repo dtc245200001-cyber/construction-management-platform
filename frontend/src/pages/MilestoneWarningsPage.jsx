@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useOutletContext } from "react-router-dom";
 import PageHeroBanner from "../components/PageHeroBanner";
 import api from "../lib/api";
@@ -7,7 +7,7 @@ import { format, parseISO } from "date-fns";
 export default function MilestoneWarningsPage() {
   const context = useOutletContext();
   const currentProject = context?.currentProject;
-  const projectId = currentProject?.id || localStorage.getItem("currentProjectId") || 1;
+  const projectId = String(currentProject?.id || localStorage.getItem("currentProjectId") || "1");
 
   const [loading, setLoading] = useState(true);
   const [warnings, setWarnings] = useState({ open: [], closed: [] });
@@ -16,15 +16,19 @@ export default function MilestoneWarningsPage() {
   const [criticalPath, setCriticalPath] = useState([]);
   const [pathLoading, setPathLoading] = useState(false);
 
+  const fetchSeqRef = React.useRef(0);
+
   useEffect(() => {
     fetchWarnings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   const fetchWarnings = async () => {
+    const seq = ++fetchSeqRef.current;
     try {
       setLoading(true);
       const res = await api.get(`/projects/${projectId}/warnings`);
+      if (seq !== fetchSeqRef.current) return;
       setWarnings({
         open: res.data.open || [],
         closed: res.data.closed || []
@@ -32,7 +36,9 @@ export default function MilestoneWarningsPage() {
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (seq === fetchSeqRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -70,7 +76,7 @@ export default function MilestoneWarningsPage() {
 
   return (
     <div className="flex-1 min-h-0 bg-[#F3F6FB] text-[#0F1B3D] flex flex-col overflow-y-auto">
-      <div className="flex-1 min-h-0 flex flex-col p-3.5 sm:p-6 pb-24 lg:pb-6 gap-4 sm:gap-6 max-w-[1200px] mx-auto w-full">
+      <div className="flex-1 min-h-0 flex flex-col p-3.5 sm:p-6 pb-24 lg:pb-6 gap-4 sm:gap-6 max-w-[1672px] mx-auto w-full">
         <PageHeroBanner
           icon={<Bell className="size-6 sm:size-8" />}
           title="Cảnh báo tiến độ"

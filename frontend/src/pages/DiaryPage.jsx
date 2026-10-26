@@ -594,7 +594,7 @@ export default function DiaryPage({ user }) {
 
   return (
     <div className="flex-1 min-h-0 bg-[#F3F6FB] flex flex-col relative">
-      <div className="flex-1 min-h-0 p-4 sm:p-6 max-w-[1200px] mx-auto w-full flex flex-col gap-6">
+      <div className="flex-1 min-h-0 p-4 sm:p-6 pb-24 lg:pb-6 max-w-[1672px] mx-auto w-full flex flex-col gap-6">
         
         <PageHeroBanner
           icon={<FileText className="size-6 sm:size-8" />}
@@ -776,7 +776,7 @@ export default function DiaryPage({ user }) {
           </div>
           
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 flex flex-col gap-4">
-            {loading ? (
+            {loading && entries.length === 0 ? (
               <div className="text-center text-gray-500 py-10">Đang tải nhật ký...</div>
             ) : error ? (
               <div className="text-center py-10">

@@ -19,27 +19,34 @@ function formatDate(dateStr) {
   }
 }
 
+// Module-level RAM snapshot cache: hiển thị ngay lập tức (0ms) khi chuyển menu, chống giật nháy
+const ganttMemoryCache = new Map();
+
 export default function GanttPage() {
   // Kế hoạch gốc: chỉ Ban quản lý. Cập nhật tiến độ: BQL / CHT / CĐT (KSGS, KT chỉ xem).
   const { can } = usePermission();
   const canLockBaseline = can("baseline.lock");
   const canUpdateProgress = can("progress.update");
-  const [tasks, setTasks] = useState([]);
-  const [dependencies, setDependencies] = useState([]);
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [scheduleSummary, setScheduleSummary] = useState(null);
-  const [calendar, setCalendar] = useState(null);
-  const [holidays, setHolidays] = useState([]);
-  const [isPolling, setIsPolling] = useState(false);
-  const [viewMode, setViewMode] = useState(() => (typeof window !== "undefined" && window.innerWidth < 768 ? "week" : "day"));
-  const [summary, setSummary] = useState(null);
+
   const context = useOutletContext();
   const currentProject = context?.currentProject;
+  const currentProjectId = String(currentProject?.id || localStorage.getItem("currentProjectId") || "1");
+  const memCached = ganttMemoryCache.get(currentProjectId);
+
+  const [tasks, setTasks] = useState(() => memCached?.tasks || []);
+  const [dependencies, setDependencies] = useState(() => memCached?.dependencies || []);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(() => !memCached || !memCached.tasks || memCached.tasks.length === 0);
+  const [scheduleSummary, setScheduleSummary] = useState(() => memCached?.scheduleSummary || null);
+  const [calendar, setCalendar] = useState(() => memCached?.calendar || null);
+  const [holidays, setHolidays] = useState(() => memCached?.holidays || []);
+  const [isPolling, setIsPolling] = useState(false);
+  const [viewMode, setViewMode] = useState(() => (typeof window !== "undefined" && window.innerWidth < 768 ? "week" : "day"));
+  const [summary, setSummary] = useState(() => memCached?.summary || null);
   const [baselineBusy, setBaselineBusy] = useState(false);
   const [baselineMsg, setBaselineMsg] = useState(null);
-  const [isFromCache, setIsFromCache] = useState(false);
-  const [cachedAt, setCachedAt] = useState(null);
+  const [isFromCache, setIsFromCache] = useState(() => memCached?.isFromCache || false);
+  const [cachedAt, setCachedAt] = useState(() => memCached?.cachedAt || null);
   const [cacheMiss, setCacheMiss] = useState(false);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine !== false);
   const isReadOnly = isFromCache || !isOnline;
@@ -59,7 +66,6 @@ export default function GanttPage() {
 
   const PIXELS_PER_DAY = viewMode === "day" ? 30 : 5;
   const ROW_HEIGHT = 40;
-  const currentProjectId = currentProject?.id || localStorage.getItem("currentProjectId") || 1;
 
   const scrollToToday = () => {
     if (!scrollContainerRef.current || !projectStartDate) return;
@@ -133,24 +139,76 @@ export default function GanttPage() {
   }, []);
 
   const fetchSeqRef = React.useRef(0);
-  React.useEffect(() => {
-    setTasks([]); setDependencies([]); setSummary(null); setScheduleSummary(null);
-    setCalendar(null); setHolidays([]); setError(null); setIsFromCache(false);
-    setCachedAt(null); setCacheMiss(false); setSelectedTaskForProgress(null);
-    setActiveBar(null); setIsPinned(false); setIsGhost(false); setDragOffset({ x: 0, y: 0 }); fetchSeqRef.current += 1;
-  }, [currentProjectId]);
+  const previousProjectIdRef = React.useRef(null);
 
   const fetchData = async () => {
     const mySeq = ++fetchSeqRef.current;
     const myProjectId = currentProjectId;
-    const isStale = () => mySeq !== fetchSeqRef.current || myProjectId !== (currentProject?.id || localStorage.getItem("currentProjectId") || 1);
+    const isStale = () =>
+      mySeq !== fetchSeqRef.current ||
+      String(myProjectId) !== String(currentProject?.id || localStorage.getItem("currentProjectId") || "1");
+
+    const isProjectChanged = previousProjectIdRef.current !== null && previousProjectIdRef.current !== myProjectId;
+    previousProjectIdRef.current = myProjectId;
+
+    if (isProjectChanged) {
+      setTasks([]);
+      setDependencies([]);
+      setSummary(null);
+      setScheduleSummary(null);
+      setCalendar(null);
+      setHolidays([]);
+      setError(null);
+      setIsFromCache(false);
+      setCachedAt(null);
+      setCacheMiss(false);
+      setSelectedTaskForProgress(null);
+      setActiveBar(null);
+      setIsPinned(false);
+      setIsGhost(false);
+      setDragOffset({ x: 0, y: 0 });
+    }
+
     try {
-      if (tasks.length === 0) setLoading(true);
+      if (tasks.length === 0 || isProjectChanged) {
+        setLoading(true);
+      }
+
+      // SWR: Tải nhanh từ offline snapshot cache nếu có dữ liệu sẵn của dự án này,
+      // giúp hiển thị tức thì (0ms) mà không bị màn hình trống hoặc chớp empty state trong 2-3s
+      try {
+        const localSnapshot = await readSnapshot(myProjectId, SNAPSHOT_TYPES.GANTT);
+        if (!isStale() && localSnapshot?.payload?.tasks?.length > 0) {
+          const payload = localSnapshot.payload;
+          const snapObj = {
+            tasks: payload.tasks || [],
+            dependencies: payload.dependencies || [],
+            summary: payload.summary || null,
+            scheduleSummary: payload.scheduleSummary || null,
+            calendar: payload.calendar || null,
+            holidays: payload.holidays || [],
+            isFromCache: true,
+            cachedAt: localSnapshot.saved_at,
+          };
+          ganttMemoryCache.set(myProjectId, snapObj);
+          setTasks(snapObj.tasks);
+          setDependencies(snapObj.dependencies);
+          setSummary(snapObj.summary);
+          if (snapObj.scheduleSummary) setScheduleSummary(snapObj.scheduleSummary);
+          if (snapObj.calendar) setCalendar(snapObj.calendar);
+          if (snapObj.holidays) setHolidays(snapObj.holidays);
+          setLoading(false);
+        }
+      } catch {
+        /* ignore snapshot cache read error */
+      }
+
       if (!navigator.onLine) {
         const snapshot = await readSnapshot(myProjectId, SNAPSHOT_TYPES.GANTT);
         if (isStale()) return;
         if (snapshot?.payload?.tasks) {
           const payload = snapshot.payload;
+          setTasks(payload.tasks || []);
           setDependencies(payload.dependencies || []);
           setSummary(payload.summary || null);
           setScheduleSummary(payload.scheduleSummary || null);
@@ -224,25 +282,43 @@ export default function GanttPage() {
           api.get(`/projects/${myProjectId}/holidays`).catch(() => ({ data: { holidays: [] } }))
         ]);
         if (isStale()) return;
-        setTasks(res.data.data || []);
-        setDependencies(res.data.dependencies || []);
-        setSummary(res.data.summary || null);
-        if (summaryRes.data) {
-          setScheduleSummary(summaryRes.data);
+        const freshTasks = res.data.data || [];
+        const freshDeps = res.data.dependencies || [];
+        const freshSummary = res.data.summary || null;
+        const freshSchedSummary = summaryRes.data || null;
+        const freshCal = calRes.data?.calendar || null;
+        const freshHolidays = holRes.data?.holidays || [];
+
+        ganttMemoryCache.set(myProjectId, {
+          tasks: freshTasks,
+          dependencies: freshDeps,
+          summary: freshSummary,
+          scheduleSummary: freshSchedSummary,
+          calendar: freshCal,
+          holidays: freshHolidays,
+          isFromCache: false,
+          cachedAt: null,
+        });
+
+        setTasks(freshTasks);
+        setDependencies(freshDeps);
+        setSummary(freshSummary);
+        if (freshSchedSummary) {
+          setScheduleSummary(freshSchedSummary);
         }
-        if (calRes.data?.calendar) {
-          setCalendar(calRes.data.calendar);
+        if (freshCal) {
+          setCalendar(freshCal);
         }
-        if (holRes.data?.holidays) {
-          setHolidays(holRes.data.holidays);
+        if (freshHolidays) {
+          setHolidays(freshHolidays);
         }
         await writeSnapshot(myProjectId, SNAPSHOT_TYPES.GANTT, {
-          tasks: res.data.data || [],
-          dependencies: res.data.dependencies || [],
-          summary: res.data.summary || null,
-          scheduleSummary: summaryRes.data || null,
-          calendar: calRes.data?.calendar || null,
-          holidays: holRes.data?.holidays || [],
+          tasks: freshTasks,
+          dependencies: freshDeps,
+          summary: freshSummary,
+          scheduleSummary: freshSchedSummary,
+          calendar: freshCal,
+          holidays: freshHolidays,
         });
         setIsFromCache(false);
         setCachedAt(null);
@@ -256,6 +332,7 @@ export default function GanttPage() {
         if (isStale()) return;
         if (snapshot?.payload?.tasks) {
           const payload = snapshot.payload;
+          setTasks(payload.tasks || []);
           setDependencies(payload.dependencies || []);
           setSummary(payload.summary || null);
           setScheduleSummary(payload.scheduleSummary || null);
@@ -270,8 +347,10 @@ export default function GanttPage() {
         setError(err.response?.data?.message || "Lỗi tải tiến độ dự án");
       }
     } finally {
-      if (!isStale()) setLoading(false); else setLoading(false);
-      setIsPolling(false);
+      if (!isStale()) {
+        setLoading(false);
+        setIsPolling(false);
+      }
     }
   };
   const handleCreateBaseline = async () => {
@@ -324,7 +403,7 @@ export default function GanttPage() {
     );
   }
 
-  if (loading) {
+  if ((loading && tasks.length === 0) || (isPolling && tasks.length === 0)) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 text-gray-500">
         <RefreshCw className="size-8 animate-spin mb-4 text-blue-500" />

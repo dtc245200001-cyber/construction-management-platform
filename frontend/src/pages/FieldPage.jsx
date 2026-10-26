@@ -430,25 +430,17 @@ export default function FieldPage({ user } = {}) {
     setHistoryError("");
   }
 
-  // =========================================================
-  // LOADING STATE
-  // =========================================================
-  if (loading && !tasks.length && !error) {
-    return (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <Loader2 className="size-8 animate-spin text-blue-600" />
-      </div>
-    );
-  }
+
 
   // =========================================================
   // MAIN RENDER
   // =========================================================
   return (
-    <div className="mx-auto w-full max-w-5xl p-4 md:p-8">
-      {/* HEADER */}
-      <div className="mb-5">
-        <PageHeroBanner
+    <div className="flex-1 min-h-0 bg-[#F3F6FB] flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col p-4 sm:p-6 pb-24 lg:pb-6 gap-5 sm:gap-6 max-w-[1672px] mx-auto w-full">
+        {/* HEADER */}
+        <div>
+          <PageHeroBanner
           icon={<HardHat className="size-6 sm:size-8" />}
           title="Việc của đội trong tuần"
           subtitle={
@@ -609,14 +601,21 @@ export default function FieldPage({ user } = {}) {
         </div>
       )}
 
-      {/* EMPTY STATE */}
+      {/* LOADING OR EMPTY STATE */}
       {!error &&
         (isTeamLeader || viewAllTeams || selectedTeamId) &&
         tasks.length === 0 && (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
-            {viewAllTeams
-              ? "Chưa có đội nào có công việc trong tuần này."
-              : "Đội chưa có công việc trong tuần này."}
+            {loading ? (
+              <div className="flex flex-col items-center justify-center gap-2 text-slate-500">
+                <Loader2 className="size-6 animate-spin text-blue-600" />
+                <span>Đang tải công việc...</span>
+              </div>
+            ) : viewAllTeams ? (
+              "Chưa có đội nào có công việc trong tuần này."
+            ) : (
+              "Đội chưa có công việc trong tuần này."
+            )}
           </div>
         )}
 
@@ -999,6 +998,7 @@ export default function FieldPage({ user } = {}) {
           onClose={() => setLogTask(null)}
         />
       )}
+      </div>
     </div>
   );
 }
