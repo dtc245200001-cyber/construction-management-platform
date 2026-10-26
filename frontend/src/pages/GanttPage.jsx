@@ -21,6 +21,9 @@ function formatDate(dateStr) {
 
 // Module-level RAM snapshot cache: hiển thị ngay lập tức (0ms) khi chuyển menu, chống giật nháy
 const ganttMemoryCache = new Map();
+export function _clearGanttMemoryCache() {
+  ganttMemoryCache.clear();
+}
 
 export default function GanttPage() {
   // Kế hoạch gốc: chỉ Ban quản lý. Cập nhật tiến độ: BQL / CHT / CĐT (KSGS, KT chỉ xem).
