@@ -3,6 +3,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import api from "../lib/api";
 import { usePermission } from "../hooks/usePermission";
@@ -77,9 +78,9 @@ export default function MembersPage({
   user,
 }) {
   const currentProjectId =
-    localStorage.getItem(
-      "currentProjectId"
-    );
+    localStorage.getItem("currentProjectId") ||
+    localStorage.getItem("current_project_id") ||
+    "1";
 
   // ==========================================================
   // MEMBERS / INVITATIONS
@@ -233,9 +234,32 @@ export default function MembersPage({
   const canManageTeams = can("team.manage");
   const canAssign = can("work.assign");
 
+<<<<<<< HEAD
   // Tab điều hướng trong khung giao diện thống nhất: "members" | "teams"
   const [activeTab, setActiveTab] = useState("members");
   const currentTab = canManageTeams ? activeTab : "members";
+=======
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedTab, setSelectedTab] = useState(() => {
+    return searchParams.get("tab") === "teams" ? "teams" : "members";
+  });
+  const activeTab = selectedTab === "teams" && canManageTeams ? "teams" : "members";
+
+  const handleTabChange = (newTab) => {
+    setSelectedTab(newTab);
+    try {
+      const next = new URLSearchParams(searchParams);
+      if (newTab === "members") {
+        next.delete("tab");
+      } else {
+        next.set("tab", newTab);
+      }
+      setSearchParams(next, { replace: true });
+    } catch {
+      // Fallback
+    }
+  };
+>>>>>>> origin/main
 
   // ==========================================================
   // LOAD DATA
@@ -1051,14 +1075,27 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
   // ==========================================================
 
   return (
-    <div className="mx-auto w-full max-w-7xl flex-1 overflow-y-auto p-4 md:p-8">
-      <div className="mb-8">
+    <div className="flex-1 min-h-0 bg-[#F3F6FB] flex flex-col overflow-y-auto">
+      <div className="flex-1 min-h-0 flex flex-col p-4 sm:p-6 pb-24 lg:pb-6 gap-6 max-w-[1672px] mx-auto w-full">
+      <div>
         <PageHeroBanner
-          icon={<Users className="size-6 sm:size-8" />}
-          title="Thành viên & Tổ đội"
-          subtitle="Quản lý thành viên, tổ đội và phân công thi công trong dự án."
+          icon={
+            activeTab === "teams" ? (
+              <HardHat className="size-6 sm:size-8" />
+            ) : (
+              <Users className="size-6 sm:size-8" />
+            )
+          }
+          title={
+            activeTab === "teams" ? "Tổ đội thi công" : "Thành viên dự án"
+          }
+          subtitle={
+            activeTab === "teams"
+              ? "Quản lý tổ đội thi công, chỉ định đội trưởng và điều phối phân công công việc."
+              : "Quản lý danh sách thành viên dự án, phân quyền vai trò và theo dõi trạng thái lời mời tham gia."
+          }
         >
-          {canInvite && (
+          {activeTab === "members" && canInvite && (
             <button
               type="button"
               onClick={() => {
@@ -1068,15 +1105,91 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
               }}
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 font-bold text-[#1F63E0] shadow-md transition-colors hover:bg-white/90"
             >
+              <UserPlus className="size-4" />
+              Mời thành viên mới
+            </button>
+          )}
+
+          {activeTab === "teams" && canManageTeams && (
+            <button
+              type="button"
+              onClick={() => {
+                const el = document.getElementById("new-team-name-input");
+                if (el) {
+                  el.focus();
+                  el.scrollIntoView({ behavior: "smooth", block: "center" });
+                }
+              }}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 font-bold text-[#1F63E0] shadow-md transition-colors hover:bg-white/90"
+            >
               <Plus className="size-4" />
-              Mời thành viên
+              Tạo tổ đội
             </button>
           )}
         </PageHeroBanner>
       </div>
 
       {/* =====================================================
+<<<<<<< HEAD
           UNIFIED MEMBERS & TEAMS CARD CONTAINER
+=======
+          NAVIGATION TABS (TÁCH BIỆT THÀNH VIÊN VÀ TỔ ĐỘI)
+      ===================================================== */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-site-border bg-site-surface px-4 pt-3 rounded-2xl shadow-xs">
+        <button
+          type="button"
+          id="tab-btn-members"
+          data-testid="tab-btn-members"
+          onClick={() => handleTabChange("members")}
+          className={`inline-flex items-center gap-2.5 px-4 py-3 text-sm font-semibold border-b-2 transition-all -mb-px rounded-t-lg ${
+            activeTab === "members"
+              ? "border-[#1F63E0] text-[#1F63E0] bg-blue-50/70"
+              : "border-transparent text-site-baseline hover:text-site-dark hover:bg-slate-50"
+          }`}
+        >
+          <Users className="size-4.5" />
+          <span>Thành viên dự án</span>
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+              activeTab === "members"
+                ? "bg-[#1F63E0] text-white"
+                : "bg-slate-200/80 text-slate-600"
+            }`}
+          >
+            {members.length + invitations.length}
+          </span>
+        </button>
+
+        {canManageTeams && (
+          <button
+            type="button"
+            id="tab-btn-teams"
+            data-testid="tab-btn-teams"
+            onClick={() => handleTabChange("teams")}
+            className={`inline-flex items-center gap-2.5 px-4 py-3 text-sm font-semibold border-b-2 transition-all -mb-px rounded-t-lg ${
+              activeTab === "teams"
+                ? "border-[#1F63E0] text-[#1F63E0] bg-blue-50/70"
+                : "border-transparent text-site-baseline hover:text-site-dark hover:bg-slate-50"
+            }`}
+          >
+            <HardHat className="size-4.5" />
+            <span>Tổ đội thi công</span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                activeTab === "teams"
+                  ? "bg-[#1F63E0] text-white"
+                  : "bg-slate-200/80 text-slate-600"
+              }`}
+            >
+              {teams.length} đội
+            </span>
+          </button>
+        )}
+      </div>
+
+      {/* =====================================================
+          TEAM MANAGEMENT
+>>>>>>> origin/main
       ===================================================== */}
       <div className="overflow-hidden rounded-2xl border border-site-border bg-site-surface shadow-sm">
         {/* TABS HEADER */}
@@ -1105,6 +1218,7 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
                 </span>
               </button>
 
+<<<<<<< HEAD
               {canManageTeams && (
                 <button
                   type="button"
@@ -1146,6 +1260,27 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
                   <strong>{teams.length}</strong> tổ đội đã tạo
                 </span>
               )}
+=======
+      {canManageTeams && activeTab === "teams" && (
+        <section className="overflow-hidden rounded-2xl border border-site-border bg-site-surface shadow-sm">
+          <div className="border-b border-site-border p-5">
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <HardHat className="size-5" />
+              </div>
+
+              <div>
+                <h3 className="font-bold text-site-dark">
+                  Quản lý tổ đội thi công
+                </h3>
+
+                <p className="mt-1 text-sm text-site-baseline">
+                  Tạo đội, thêm Đội
+                  trưởng và quản lý
+                  công việc được giao.
+                </p>
+              </div>
+>>>>>>> origin/main
             </div>
           </div>
         </div>
@@ -1169,8 +1304,13 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
                   <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-site-baseline" />
 
                   <input
+<<<<<<< HEAD
                     type="text"
                     value={search}
+=======
+                    id="new-team-name-input"
+                    value={teamName}
+>>>>>>> origin/main
                     onChange={(e) =>
                       setSearch(
                         e.target.value
@@ -1480,8 +1620,263 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
                         </div>
                       </div>
 
+<<<<<<< HEAD
                       <div className="flex items-center justify-between gap-2 pt-1 border-t border-site-border/60">
                         <div>
+=======
+                      <div>
+                        <label className="mb-1.5 block text-sm font-semibold text-site-dark">
+                          Đơn vị
+                        </label>
+
+                        <input
+                          value={
+                            quantityUnit
+                          }
+                          onChange={(e) =>
+                            setQuantityUnit(
+                              e.target
+                                .value
+                            )
+                          }
+                          maxLength={30}
+                          placeholder="m3, m2, kg..."
+                          className="min-h-11 w-full rounded-xl border border-site-border bg-white px-3 text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    {selectedAssignedTask && (
+                      <div className="rounded-lg bg-blue-50 p-3 text-xs text-blue-700">
+                        Công việc này
+                        hiện đã được giao
+                        cho đội đang chọn.
+                        Lưu lại sẽ cập
+                        nhật khối lượng
+                        kế hoạch và phân
+                        công.
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={
+                        assigning ||
+                        checkingOverload
+                      }
+                      className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-site-primary px-4 font-semibold text-white disabled:opacity-50"
+                    >
+                      {assigning
+                        ? "Đang lưu..."
+                        : "Lưu kế hoạch & giao việc"}
+                    </button>
+                  </form>
+                )}
+
+                {selectedTeamId && (
+                  <div className="mt-5 border-t border-site-border pt-4">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-site-baseline">
+                      Công việc hiện được
+                      giao cho đội
+                    </p>
+
+                    {assignedTasks.length ===
+                      0 ? (
+                      <p className="text-sm text-site-baseline">
+                        Chưa có công việc
+                        nào.
+                      </p>
+                    ) : (
+                      <div className="max-h-52 space-y-2 overflow-y-auto">
+                        {assignedTasks.map(
+                          (task) => (
+                            <div
+                              key={
+                                task.task_id
+                              }
+                              className="rounded-lg border border-site-border bg-white p-3"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-sm font-semibold text-site-dark">
+                                      {task.name}
+                                    </p>
+                                    {task.is_critical && (
+                                      <span className="rounded bg-red-50 border border-red-200 px-1.5 py-0.5 text-[10px] font-bold text-red-600">
+                                        GĂNG
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-site-baseline">
+                                    <span>{task.work_item_name}</span>
+                                    {(task.early_start || task.actual_start_date) && (
+                                      <span className="font-medium text-site-dark">
+                                        • Lịch:{" "}
+                                        {new Date(
+                                          task.early_start || task.actual_start_date
+                                        ).toLocaleDateString("vi-VN")}
+                                        {(task.early_finish || task.actual_end_date)
+                                          ? ` - ${new Date(
+                                            task.early_finish || task.actual_end_date
+                                          ).toLocaleDateString("vi-VN")}`
+                                          : ""}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <span className="shrink-0 rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
+                                  {task.planned_quantity ??
+                                    "Chưa đặt"}{" "}
+                                  {task.quantity_unit ||
+                                    ""}
+                                </span>
+                              </div>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* =====================================================
+          MEMBERS TABLE
+      ===================================================== */}
+
+      {activeTab === "members" && (
+        loading ? (
+          <div className="h-[400px] animate-pulse rounded-2xl border border-site-border bg-site-surface" />
+      ) : error ? (
+        <div className="rounded-xl bg-site-critical/10 p-4 text-center font-medium text-site-critical">
+          {error}
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-2xl border border-site-border bg-site-surface shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-site-border p-4 sm:flex-row sm:items-center">
+            <div className="relative max-w-md flex-1">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-site-baseline" />
+
+              <input
+                type="text"
+                value={search}
+                onChange={(e) =>
+                  setSearch(
+                    e.target.value
+                  )
+                }
+                placeholder="Tìm kiếm theo tên hoặc email..."
+                className="w-full rounded-lg border border-site-border bg-site-bg py-2 pl-9 pr-4 text-sm outline-none transition-colors focus:border-site-primary"
+              />
+            </div>
+
+            <div className="text-sm font-medium text-site-baseline">
+              Tổng cộng:{" "}
+              <span className="text-site-dark">
+                {members.length +
+                  invitations.length}
+              </span>{" "}
+              người
+            </div>
+          </div>
+
+          {/* Desktop Table */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-site-border bg-site-bg/50 font-semibold text-site-baseline">
+                <tr>
+                  <th className="px-6 py-4">
+                    Thành viên
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Vai trò
+                  </th>
+
+                  <th className="px-6 py-4 text-right">
+                    Trạng thái
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-site-border">
+                {filteredMembers.map(
+                  (member) => {
+                    const locked =
+                      isLocked(
+                        member
+                      );
+
+                    return (
+                      <tr
+                        key={member.id}
+                        className={
+                          locked
+                            ? "bg-site-critical/5"
+                            : ""
+                        }
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`flex size-9 shrink-0 items-center justify-center rounded-full font-bold ${locked
+                                  ? "bg-site-critical/10 text-site-critical"
+                                  : "bg-site-primary/10 text-site-primary"
+                                }`}
+                            >
+                              {locked ? (
+                                <Lock className="size-4" />
+                              ) : (
+                                String(
+                                  member.name ||
+                                  "?"
+                                )
+                                  .substring(
+                                    0,
+                                    2
+                                  )
+                                  .toUpperCase()
+                              )}
+                            </div>
+
+                            <div>
+                              <p className="font-semibold text-site-dark">
+                                {
+                                  member.name
+                                }
+                              </p>
+
+                              <p className="mt-0.5 flex items-center gap-1 text-xs text-site-baseline">
+                                <Mail className="size-3" />
+                                {
+                                  member.email
+                                }
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-1.5 font-medium text-site-dark">
+                            <Shield className="size-4 text-site-baseline" />
+
+                            {roleLabels[
+                              member.role
+                            ] ||
+                              member.role}
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4 text-right">
+>>>>>>> origin/main
                           {locked ? (
                             <span className="inline-flex items-center gap-1.5 rounded-full bg-site-critical/10 px-2.5 py-1 text-xs font-medium text-site-critical">
                               <Lock className="size-3" />
@@ -2091,8 +2486,13 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
               )}
             </div>
           </div>
+<<<<<<< HEAD
         )}
       </div>
+=======
+        </div>
+      ))}
+>>>>>>> origin/main
 
       {/* =====================================================
           INVITE MODAL
@@ -2257,6 +2657,7 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
         }
         isSubmitting={assigning}
       />
+      </div>
     </div>
   );
 }

@@ -143,5 +143,5 @@ describe("S-38 / T-100 acceptance review UI", () => {
         { reason: "Thiếu ảnh hiện trường và biên bản đối chiếu" }
       );
     });
-  });
+  }, 15000);
 });

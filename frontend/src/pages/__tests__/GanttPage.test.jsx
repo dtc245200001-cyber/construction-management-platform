@@ -23,7 +23,7 @@ vi.mock("../../lib/api", () => ({
 }));
 
 import api from "../../lib/api";
-import GanttPage from "../GanttPage.jsx";
+import GanttPage, { _clearGanttMemoryCache } from "../GanttPage.jsx";
 
 const rows = [
   {
@@ -318,6 +318,7 @@ describe(
 describe("GanttPage - T-42", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    _clearGanttMemoryCache();
     localStorage.setItem("currentProjectId", "4");
     api.post.mockResolvedValue({ data: {} });
   });

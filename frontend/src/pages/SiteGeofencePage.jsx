@@ -227,8 +227,9 @@ export default function SiteGeofencePage() {
     currentConfig.site_longitude !== null;
 
   return (
-    <div className="space-y-6 p-4 md:p-6 max-w-5xl mx-auto">
-      {/* ── HEADER ── */}
+    <div className="flex-1 min-h-0 bg-[#F3F6FB] flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col p-4 sm:p-6 pb-24 lg:pb-6 gap-6 max-w-[1672px] mx-auto w-full">
+        {/* ── HEADER ── */}
       <PageHeroBanner
         icon={<MapPin className="size-6 sm:size-8" />}
         title="Phạm vi công trường (Geofence)"
@@ -517,6 +518,7 @@ export default function SiteGeofencePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }

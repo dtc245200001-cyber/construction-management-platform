@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useOutletContext, useNavigate } from "react-router-dom";
 import PageHeroBanner from "../components/PageHeroBanner";
 import api from "../lib/api";
@@ -80,20 +80,25 @@ function StatCard({ icon: Icon, label, value, sub, tone = "default" }) {
 export default function ProgressDashboardPage() {
   const context = useOutletContext();
   const currentProject = context?.currentProject;
-  const projectId = currentProject?.id || localStorage.getItem("currentProjectId") || 1;
+  const projectId = String(currentProject?.id || localStorage.getItem("currentProjectId") || "1");
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [data, setData] = useState(null);
 
+  const fetchSeqRef = useRef(0);
+
   const fetchDashboard = useCallback(async () => {
+    const seq = ++fetchSeqRef.current;
     setLoading(true);
     setError(null);
     try {
       const res = await api.get(`/projects/${projectId}/progress-dashboard`);
+      if (seq !== fetchSeqRef.current) return;
       setData(res.data || null);
     } catch (err) {
+      if (seq !== fetchSeqRef.current) return;
       const status = err?.response?.status;
       const serverMsg = err?.response?.data?.message || err?.response?.data?.error;
       if (status === 403) {
@@ -108,7 +113,9 @@ export default function ProgressDashboardPage() {
         setError(serverMsg || "Không tải được dữ liệu tiến độ. Vui lòng thử lại.");
       }
     } finally {
-      setLoading(false);
+      if (seq === fetchSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [projectId]);
 
@@ -131,7 +138,7 @@ export default function ProgressDashboardPage() {
 
   return (
     <div className="flex-1 min-h-0 bg-[#F3F6FB] text-[#0F1B3D] flex flex-col overflow-y-auto">
-      <div className="flex-1 min-h-0 flex flex-col p-3.5 sm:p-6 pb-24 lg:pb-6 gap-4 sm:gap-6 max-w-[1200px] mx-auto w-full">
+      <div className="flex-1 min-h-0 flex flex-col p-3.5 sm:p-6 pb-24 lg:pb-6 gap-4 sm:gap-6 max-w-[1672px] mx-auto w-full">
         {/* Header */}
         <PageHeroBanner
           icon={<Activity className="size-6 sm:size-8" aria-hidden="true" />}

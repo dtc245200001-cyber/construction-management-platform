@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useOutletContext } from "react-router-dom";
 import api from "../lib/api";
 import { usePermission } from "../hooks/usePermission";
@@ -26,32 +26,38 @@ const DAYS_CONFIG = [
   { key: "sunday", label: "Chủ Nhật" },
 ];
 
+// Snapshot cache chống giật nháy khi chuyển menu
+const calendarCache = new Map();
+const holidaysCache = new Map();
+
+const DEFAULT_CALENDAR = {
+  monday: true,
+  tuesday: true,
+  wednesday: true,
+  thursday: true,
+  friday: true,
+  saturday: true,
+  sunday: false,
+};
+
 export default function ProjectCalendarPage() {
   // Chỉ Ban quản lý / Chỉ huy trưởng / Chủ đầu tư được sửa lịch; vai trò khác chỉ xem.
   const { can } = usePermission();
   const canEdit = can("calendar.edit");
   const context = useOutletContext();
   const currentProject = context?.currentProject;
-  const currentProjectId = localStorage.getItem("currentProjectId") || 1;
+  const currentProjectId = String(currentProject?.id || localStorage.getItem("currentProjectId") || "1");
 
   // Calendar State
-  const [calendar, setCalendar] = useState({
-    monday: true,
-    tuesday: true,
-    wednesday: true,
-    thursday: true,
-    friday: true,
-    saturday: true,
-    sunday: false,
-  });
-  const [calendarLoading, setCalendarLoading] = useState(true);
+  const [calendar, setCalendar] = useState(() => calendarCache.get(currentProjectId) || DEFAULT_CALENDAR);
+  const [calendarLoading, setCalendarLoading] = useState(() => !calendarCache.has(currentProjectId));
   const [savingCalendar, setSavingCalendar] = useState(false);
   const [calendarSuccess, setCalendarSuccess] = useState("");
   const [calendarError, setCalendarError] = useState("");
 
   // Holidays State
-  const [holidays, setHolidays] = useState([]);
-  const [holidaysLoading, setHolidaysLoading] = useState(true);
+  const [holidays, setHolidays] = useState(() => holidaysCache.get(currentProjectId) || []);
+  const [holidaysLoading, setHolidaysLoading] = useState(() => !holidaysCache.has(currentProjectId));
   const [newDate, setNewDate] = useState("");
   const [newName, setNewName] = useState("");
   const [addingHoliday, setAddingHoliday] = useState(false);
@@ -59,14 +65,17 @@ export default function ProjectCalendarPage() {
   const [holidayError, setHolidayError] = useState("");
   const [deletingId, setDeletingId] = useState(null);
 
+  const fetchSeqRef = useRef(0);
+
   // Fetch Calendar
-  const fetchCalendar = async () => {
+  const fetchCalendar = async (seq) => {
     try {
       setCalendarLoading(true);
       setCalendarError("");
       const res = await api.get(`/projects/${currentProjectId}/calendar`);
+      if (seq !== fetchSeqRef.current) return;
       if (res.data?.calendar) {
-        setCalendar({
+        const cal = {
           monday: Boolean(res.data.calendar.monday),
           tuesday: Boolean(res.data.calendar.tuesday),
           wednesday: Boolean(res.data.calendar.wednesday),
@@ -74,38 +83,50 @@ export default function ProjectCalendarPage() {
           friday: Boolean(res.data.calendar.friday),
           saturday: Boolean(res.data.calendar.saturday),
           sunday: Boolean(res.data.calendar.sunday),
-        });
+        };
+        calendarCache.set(currentProjectId, cal);
+        setCalendar(cal);
       }
     } catch (err) {
+      if (seq !== fetchSeqRef.current) return;
       console.error("Lỗi tải lịch làm việc:", err);
       setCalendarError(
         err.response?.data?.message || "Không thể tải cấu hình lịch làm việc."
       );
     } finally {
-      setCalendarLoading(false);
+      if (seq === fetchSeqRef.current) {
+        setCalendarLoading(false);
+      }
     }
   };
 
   // Fetch Holidays
-  const fetchHolidays = async () => {
+  const fetchHolidays = async (seq) => {
     try {
       setHolidaysLoading(true);
       setHolidayError("");
       const res = await api.get(`/projects/${currentProjectId}/holidays`);
-      setHolidays(res.data?.holidays || []);
+      if (seq !== fetchSeqRef.current) return;
+      const list = res.data?.holidays || [];
+      holidaysCache.set(currentProjectId, list);
+      setHolidays(list);
     } catch (err) {
+      if (seq !== fetchSeqRef.current) return;
       console.error("Lỗi tải ngày nghỉ:", err);
       setHolidayError(
         err.response?.data?.message || "Không thể tải danh sách ngày nghỉ."
       );
     } finally {
-      setHolidaysLoading(false);
+      if (seq === fetchSeqRef.current) {
+        setHolidaysLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    fetchCalendar();
-    fetchHolidays();
+    const seq = ++fetchSeqRef.current;
+    fetchCalendar(seq);
+    fetchHolidays(seq);
   }, [currentProjectId]);
 
   // Handle Save Calendar
@@ -210,7 +231,7 @@ export default function ProjectCalendarPage() {
 
   return (
     <div className="flex-1 min-h-screen bg-[#F3F6FB] text-[#0F1B3D] flex flex-col overflow-y-auto">
-      <div className="flex-1 flex flex-col p-3.5 sm:p-6 pb-24 lg:pb-6 gap-4 sm:gap-6 max-w-[1200px] mx-auto w-full">
+      <div className="flex-1 flex flex-col p-3.5 sm:p-6 pb-24 lg:pb-6 gap-4 sm:gap-6 max-w-[1672px] mx-auto w-full">
         {/* Header Hero Banner */}
         <div className="relative min-h-[105px] rounded-2xl overflow-hidden shrink-0 flex items-center p-4 sm:p-6 shadow-sm">
           <div
@@ -438,7 +459,7 @@ export default function ProjectCalendarPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {holidaysLoading ? (
+                    {holidaysLoading && holidays.length === 0 ? (
                       <tr>
                         <td colSpan="3" className="p-8 text-center text-gray-400">
                           Đang tải danh sách ngày nghỉ...
@@ -480,7 +501,7 @@ export default function ProjectCalendarPage() {
 
               {/* Mobile Cards (< sm) */}
               <div className="space-y-2.5 sm:hidden">
-                {holidaysLoading ? (
+                {holidaysLoading && holidays.length === 0 ? (
                   <p className="p-4 text-center text-xs text-gray-400">Đang tải...</p>
                 ) : holidays.length === 0 ? (
                   <p className="p-4 text-center text-xs text-gray-400">Chưa có ngày nghỉ nào.</p>

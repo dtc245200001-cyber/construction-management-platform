@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useOutletContext } from "react-router-dom";
 import PageHeroBanner from "../components/PageHeroBanner";
 import api from "../lib/api";
@@ -316,11 +316,13 @@ function VoucherHistoryItem({ log }) {
   );
 }
 
-export default function AcceptancePage({ user: propUser } = {}) {
-  const projectId = localStorage.getItem("currentProjectId") || 1;
+// Snapshot cache chống giật nháy khi chuyển menu
+const vouchersSnapshotCache = new Map();
 
+export default function AcceptancePage({ user: propUser } = {}) {
   const outletContext = useOutletContext();
   const currentProject = outletContext?.currentProject;
+  const projectId = String(currentProject?.id || localStorage.getItem("currentProjectId") || "1");
   const user = propUser || outletContext?.user;
 
   // Quyền truy cập
@@ -340,10 +342,12 @@ export default function AcceptancePage({ user: propUser } = {}) {
   const canExportDossier = isSystemAdmin || can(projectRole, "acceptance.export_dossier");
 
   // Dữ liệu danh sách phiếu
-  const [vouchers, setVouchers] = useState([]);
-  const [loadingList, setLoadingList] = useState(true);
+  const [vouchers, setVouchers] = useState(() => vouchersSnapshotCache.get(projectId) || []);
+  const [loadingList, setLoadingList] = useState(() => !vouchersSnapshotCache.has(projectId));
   const [listError, setListError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
+
+  const fetchSeqRef = useRef(0);
 
   // Dữ liệu hạng mục lá để lập phiếu
   const [leafItems, setLeafItems] = useState([]);
@@ -443,17 +447,24 @@ export default function AcceptancePage({ user: propUser } = {}) {
 
   // 2. Tải danh sách phiếu nghiệm thu
   const fetchVouchers = useCallback(async () => {
+    const seq = ++fetchSeqRef.current;
     setLoadingList(true);
     setListError(null);
     try {
       const res = await api.get(`/projects/${projectId}/acceptance-vouchers`);
-      setVouchers(res.data?.vouchers || []);
+      if (seq !== fetchSeqRef.current) return;
+      const list = res.data?.vouchers || [];
+      vouchersSnapshotCache.set(projectId, list);
+      setVouchers(list);
     } catch (err) {
+      if (seq !== fetchSeqRef.current) return;
       const msg =
         err?.response?.data?.message || "Không thể tải danh sách phiếu nghiệm thu";
       setListError(msg);
     } finally {
-      setLoadingList(false);
+      if (seq === fetchSeqRef.current) {
+        setLoadingList(false);
+      }
     }
   }, [projectId]);
 
@@ -979,8 +990,9 @@ export default function AcceptancePage({ user: propUser } = {}) {
   }
 
   return (
-    <div className="space-y-6 p-4 md:p-6 max-w-7xl mx-auto">
-      {/* ── HEADER Hero Banner màu xanh đồng bộ ── */}
+    <div className="flex-1 min-h-0 bg-[#F3F6FB] flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col p-4 sm:p-6 pb-24 lg:pb-6 gap-6 max-w-[1672px] mx-auto w-full">
+        {/* ── HEADER Hero Banner màu xanh đồng bộ ── */}
       <PageHeroBanner
         icon={<CheckSquare className="size-6 sm:size-8" />}
         title="Nghiệm thu khối lượng đợt"
@@ -1130,7 +1142,7 @@ export default function AcceptancePage({ user: propUser } = {}) {
       </div>
 
       {/* ── DANH SÁCH PHIẾU NGHIỆM THU ── */}
-      {loadingList ? (
+      {loadingList && vouchers.length === 0 ? (
         <Card className="p-12 text-center text-slate-500">
           <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-3 text-emerald-600" />
           <p>Đang tải danh sách phiếu nghiệm thu...</p>
@@ -2367,6 +2379,7 @@ export default function AcceptancePage({ user: propUser } = {}) {
         </DialogContent>
       </Dialog>
 
+      </div>
     </div>
   );
 }
