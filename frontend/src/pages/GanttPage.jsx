@@ -62,20 +62,87 @@ export default function GanttPage() {
   // T-35: công việc được chọn để cập nhật tiến độ thực tế
   const [selectedTaskForProgress, setSelectedTaskForProgress] = useState(null);
   const scrollContainerRef = React.useRef(null);
+  const leftColRef = React.useRef(null);
+  const [containerWidth, setContainerWidth] = useState(() => (typeof window !== "undefined" ? window.innerWidth : 1200));
+  const [leftColWidth, setLeftColWidth] = useState(240);
 
-  const PIXELS_PER_DAY = viewMode === "day" ? 30 : 5;
   const ROW_HEIGHT = 40;
 
-  const scrollToToday = () => {
-    if (!scrollContainerRef.current || !projectStartDate) return;
-    try {
-      const daysFromStart = differenceInCalendarDays(new Date(), parseISO(projectStartDate));
-      const todayX = Math.max(0, daysFromStart * PIXELS_PER_DAY);
-      scrollContainerRef.current.scrollTo({ left: Math.max(0, todayX - 120), behavior: "smooth" });
-    } catch (e) {
-      console.error("Scroll to today error:", e);
+  // Đo đạc kích thước thực tế của vùng Gantt để tính toán thang thời gian và viewport
+  useEffect(() => {
+    if (!scrollContainerRef.current) return;
+    const updateDimensions = () => {
+      if (scrollContainerRef.current) {
+        setContainerWidth(scrollContainerRef.current.clientWidth);
+      }
+      if (leftColRef.current) {
+        setLeftColWidth(leftColRef.current.offsetWidth);
+      }
+    };
+    updateDimensions();
+
+    let ro = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(updateDimensions);
+      ro.observe(scrollContainerRef.current);
+      if (leftColRef.current) {
+        ro.observe(leftColRef.current);
+      }
     }
-  };
+    window.addEventListener("resize", updateDimensions);
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener("resize", updateDimensions);
+    };
+  }, [activeBar]);
+
+  // Đảm bảo thanh công việc được chọn luôn nằm trong viewport nhìn thấy,
+  // tự động cuộn ngang độc lập để thanh không bị cắt ở mép phải khi mở panel.
+  const ensureBarInView = React.useCallback((bar, smooth = true) => {
+    if (!bar || !scrollContainerRef.current) return;
+    const container = scrollContainerRef.current;
+    const currentLeftColWidth = leftColRef.current ? leftColRef.current.offsetWidth : 240;
+    const visibleWidth = Math.max(100, container.clientWidth - currentLeftColWidth);
+
+    // Biên toạ độ của thanh công việc (tính cả nhãn float và ký hiệu phía sau)
+    const barStart = typeof bar.x === "number" ? bar.x : 0;
+    const barEnd = barStart + (bar.width || 80) + (bar.total_float > 0 ? 160 : 40);
+
+    const currentScroll = container.scrollLeft;
+    const visibleStart = currentScroll;
+    const visibleEnd = currentScroll + visibleWidth;
+
+    let targetScroll = currentScroll;
+
+    if (barEnd > visibleEnd) {
+      // Thanh bị khuất hoặc cắt ở mép phải -> Cuộn sang phải để đưa toàn bộ thanh vào trong tầm nhìn
+      targetScroll = barEnd - visibleWidth + 60;
+    } else if (barStart < visibleStart) {
+      // Thanh bị che dưới cột tên công việc cố định bên trái -> Cuộn sang trái
+      targetScroll = Math.max(0, barStart - 40);
+    }
+
+    if (targetScroll !== currentScroll) {
+      if (typeof container.scrollTo === "function") {
+        container.scrollTo({
+          left: Math.max(0, targetScroll),
+          behavior: smooth ? "smooth" : "auto",
+        });
+      } else {
+        container.scrollLeft = Math.max(0, targetScroll);
+      }
+    }
+  }, []);
+
+  // Tự động điều chỉnh viewport khi mở hoặc chọn công việc để tránh bị cắt ở mép phải
+  useEffect(() => {
+    if (!activeBar) return;
+    const timer = setTimeout(() => {
+      ensureBarInView(activeBar, true);
+    }, 80);
+
+    return () => clearTimeout(timer);
+  }, [activeBar, containerWidth, ensureBarInView]);
 
   // Đóng side panel khi nhấn phím Escape
   React.useEffect(() => {
@@ -105,7 +172,6 @@ export default function GanttPage() {
       }
       return { ...prev, ...updated };
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks]);
 
   const fetchSeqRef = React.useRef(0);
@@ -423,6 +489,31 @@ export default function GanttPage() {
     parseISO(projectStartDate),
   );
 
+  const availableTimelineWidth = Math.max(260, containerWidth - leftColWidth);
+
+  // Tính số pixel mỗi ngày tuỳ theo chế độ hiển thị:
+  // - fit (Vừa vặn): Tự động co giãn theo chiều rộng khả dụng của vùng Gantt
+  // - day (Ngày): 30px / ngày
+  // - week (Tuần): 6px / ngày
+  const calculatedDays = Math.max(1, totalDays + 3);
+  const fitPpd = Math.max(12, Math.floor(Math.max(160, availableTimelineWidth - 160) / calculatedDays));
+  const PIXELS_PER_DAY = viewMode === "fit" ? fitPpd : viewMode === "week" ? 6 : 30;
+
+  const scrollToToday = () => {
+    if (!scrollContainerRef.current || !projectStartDate) return;
+    try {
+      const daysFromStart = differenceInCalendarDays(new Date(), parseISO(projectStartDate));
+      const todayX = Math.max(0, daysFromStart * PIXELS_PER_DAY);
+      if (typeof scrollContainerRef.current.scrollTo === "function") {
+        scrollContainerRef.current.scrollTo({ left: Math.max(0, todayX - 120), behavior: "smooth" });
+      } else {
+        scrollContainerRef.current.scrollLeft = Math.max(0, todayX - 120);
+      }
+    } catch (e) {
+      console.error("Scroll to today error:", e);
+    }
+  };
+
   const ganttBars = mapScheduleToGantt(
     validTasks,
     projectStartDate,
@@ -440,14 +531,16 @@ export default function GanttPage() {
   );
 
   const maxRightX = Math.max(
+    0,
     ...ganttBars.map((bar) =>
       Math.max(bar.x + bar.width, bar.baseline ? bar.baseline.x + bar.baseline.width : 0),
     ),
   );
 
   const svgWidth = Math.max(
-    maxRightX + 200,
-    ticks[ticks.length - 1]?.x + 200 || 1000,
+    maxRightX + 260,
+    (ticks[ticks.length - 1]?.x || 0) + 260,
+    availableTimelineWidth,
   );
 
   return (
@@ -574,6 +667,18 @@ export default function GanttPage() {
               <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
                 <button
                   type="button"
+                  onClick={() => setViewMode("fit")}
+                  className={`px-2.5 h-8 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                    viewMode === "fit"
+                      ? "bg-blue-600 text-white shadow-xs"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                  title="Tự động co giãn theo chiều rộng màn hình"
+                >
+                  Vừa vặn
+                </button>
+                <button
+                  type="button"
                   onClick={() => setViewMode("day")}
                   className={`px-2.5 h-8 rounded-md text-xs font-medium transition-colors cursor-pointer ${
                     viewMode === "day"
@@ -625,7 +730,10 @@ export default function GanttPage() {
             <div ref={scrollContainerRef} className="flex-1 min-w-0 overflow-auto bg-slate-50 relative custom-scrollbar">
               <div className="flex w-max min-w-full">
                 {/* CỘT TRÁI (Sticky Left) */}
-                <div className="sticky left-0 z-20 bg-white border-r border-gray-200 flex flex-col shrink-0 w-[110px] sm:w-[150px] md:w-[180px] lg:w-max lg:min-w-[220px] lg:max-w-[320px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                <div
+                  ref={leftColRef}
+                  className="sticky left-0 z-20 bg-white border-r border-gray-200 flex flex-col shrink-0 w-[110px] sm:w-[150px] md:w-[180px] lg:w-max lg:min-w-[220px] lg:max-w-[320px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
+                >
                   {/* Ô GÓC (Sticky Top & Left - Cao nhất) */}
                   <div className="sticky top-0 z-30 h-20 bg-slate-50 border-b border-gray-200 flex items-center px-2.5 sm:px-4 font-semibold text-xs sm:text-sm text-gray-600 shrink-0">
                     Tên công việc
@@ -710,7 +818,7 @@ export default function GanttPage() {
                       className="absolute h-full flex flex-col justify-end pb-2 border-l border-gray-300 text-[10px] text-gray-500"
                       style={{
                         left: tick.x,
-                        width: PIXELS_PER_DAY * (viewMode === "week" ? 7 : 1),
+                        width: PIXELS_PER_DAY * (viewMode === "week" ? 7 : (tick.step || 1)),
                       }}
                     >
                       <span className="whitespace-nowrap -rotate-45 origin-bottom-left ml-2 mb-1">
@@ -737,7 +845,7 @@ export default function GanttPage() {
                   
                   {/* Vẽ cột ngày nghỉ bằng dải màu xám */}
                   {ticks.map((tick) => 
-                    tick.isNonWorkingDay && viewMode === "day" ? (
+                    tick.isNonWorkingDay && (viewMode === "day" || (viewMode === "fit" && PIXELS_PER_DAY >= 18)) ? (
                       <rect
                         key={`nw-${tick.x}`}
                         x={tick.x}

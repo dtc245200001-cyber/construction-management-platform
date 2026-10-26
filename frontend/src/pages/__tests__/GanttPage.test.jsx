@@ -64,6 +64,7 @@ describe(
   () => {
     beforeEach(() => {
       vi.clearAllMocks();
+      _clearGanttMemoryCache();
 
       localStorage.setItem(
         "currentProjectId",
@@ -413,8 +414,11 @@ describe("GanttPage - T-42", () => {
   });
 
   test("chưa chốt thì không có thanh mờ và có gợi ý chốt", async () => {
-    api.get.mockResolvedValue({
-      data: { data: rows, summary: { hasBaseline: false } },
+    api.get.mockImplementation((url) => {
+      if (typeof url === "string" && /^\/projects\/\d+$/.test(url)) {
+        return Promise.resolve({ data: { project: { id: 4 }, membership: "ban_quan_ly" } });
+      }
+      return Promise.resolve({ data: { data: rows, summary: { hasBaseline: false } } });
     });
     render(<GanttPage />);
     expect(await screen.findByTestId("baseline-hint")).toBeInTheDocument();
@@ -422,8 +426,11 @@ describe("GanttPage - T-42", () => {
   });
 
   test("bấm Chốt kế hoạch gốc gọi đúng API", async () => {
-    api.get.mockResolvedValue({
-      data: { data: rows, summary: { hasBaseline: false } },
+    api.get.mockImplementation((url) => {
+      if (typeof url === "string" && /^\/projects\/\d+$/.test(url)) {
+        return Promise.resolve({ data: { project: { id: 4 }, membership: "ban_quan_ly" } });
+      }
+      return Promise.resolve({ data: { data: rows, summary: { hasBaseline: false } } });
     });
     render(<GanttPage />);
     await screen.findByRole("button", { name: /Chốt kế hoạch gốc/i });
@@ -433,5 +440,41 @@ describe("GanttPage - T-42", () => {
       await screen.findByRole("button", { name: /Chốt kế hoạch gốc/i }),
     );
     expect(api.post).toHaveBeenCalledWith("/projects/4/baselines/freeze");
+  });
+
+  test("Toolbar: chuyển đổi giữa các chế độ Vừa vặn, Ngày, Tuần hoạt động", async () => {
+    render(<GanttPage />);
+    await screen.findByRole("button", { name: /Đào móng - Việc găng/i });
+
+    const fitBtn = screen.getByRole("button", { name: /^Vừa vặn$/i });
+    const dayBtn = screen.getByRole("button", { name: /^Ngày$/i });
+    const weekBtn = screen.getByRole("button", { name: /^Tuần$/i });
+
+    expect(fitBtn).toBeInTheDocument();
+    expect(dayBtn).toBeInTheDocument();
+    expect(weekBtn).toBeInTheDocument();
+
+    await userEvent.click(fitBtn);
+    expect(fitBtn).toHaveClass("bg-blue-600");
+
+    await userEvent.click(weekBtn);
+    expect(weekBtn).toHaveClass("bg-blue-600");
+
+    await userEvent.click(dayBtn);
+    expect(dayBtn).toHaveClass("bg-blue-600");
+  });
+
+  test("Side Panel: khi mở panel, nút đóng và thanh công việc vẫn truy cập đầy đủ", async () => {
+    render(<GanttPage />);
+    const bar = await screen.findByRole("button", { name: /Đào móng - Việc găng/i });
+    await userEvent.click(bar);
+
+    const panel = await screen.findByTestId("gantt-side-panel");
+    expect(panel).toBeInTheDocument();
+
+    // Nút đóng hoạt động
+    const closeBtn = screen.getByRole("button", { name: /Đóng chi tiết công việc/i });
+    await userEvent.click(closeBtn);
+    expect(screen.queryByTestId("gantt-side-panel")).not.toBeInTheDocument();
   });
 });
