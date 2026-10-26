@@ -3,6 +3,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import api from "../lib/api";
 import { usePermission } from "../hooks/usePermission";
@@ -77,9 +78,9 @@ export default function MembersPage({
   user,
 }) {
   const currentProjectId =
-    localStorage.getItem(
-      "currentProjectId"
-    );
+    localStorage.getItem("currentProjectId") ||
+    localStorage.getItem("current_project_id") ||
+    "1";
 
   // ==========================================================
   // MEMBERS / INVITATIONS
@@ -232,6 +233,27 @@ export default function MembersPage({
   const canInvite = can("member.invite");
   const canManageTeams = can("team.manage");
   const canAssign = can("work.assign");
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedTab, setSelectedTab] = useState(() => {
+    return searchParams.get("tab") === "teams" ? "teams" : "members";
+  });
+  const activeTab = selectedTab === "teams" && canManageTeams ? "teams" : "members";
+
+  const handleTabChange = (newTab) => {
+    setSelectedTab(newTab);
+    try {
+      const next = new URLSearchParams(searchParams);
+      if (newTab === "members") {
+        next.delete("tab");
+      } else {
+        next.set("tab", newTab);
+      }
+      setSearchParams(next, { replace: true });
+    } catch {
+      // Fallback
+    }
+  };
 
   // ==========================================================
   // LOAD DATA
@@ -1047,14 +1069,27 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
   // ==========================================================
 
   return (
-    <div className="mx-auto w-full max-w-7xl flex-1 overflow-y-auto p-4 md:p-8">
-      <div className="mb-8">
+    <div className="flex-1 min-h-0 bg-[#F3F6FB] flex flex-col overflow-y-auto">
+      <div className="flex-1 min-h-0 flex flex-col p-4 sm:p-6 pb-24 lg:pb-6 gap-6 max-w-[1672px] mx-auto w-full">
+      <div>
         <PageHeroBanner
-          icon={<Users className="size-6 sm:size-8" />}
-          title="Thành viên & Tổ đội"
-          subtitle="Quản lý thành viên, tổ đội và phân công thi công trong dự án."
+          icon={
+            activeTab === "teams" ? (
+              <HardHat className="size-6 sm:size-8" />
+            ) : (
+              <Users className="size-6 sm:size-8" />
+            )
+          }
+          title={
+            activeTab === "teams" ? "Tổ đội thi công" : "Thành viên dự án"
+          }
+          subtitle={
+            activeTab === "teams"
+              ? "Quản lý tổ đội thi công, chỉ định đội trưởng và điều phối phân công công việc."
+              : "Quản lý danh sách thành viên dự án, phân quyền vai trò và theo dõi trạng thái lời mời tham gia."
+          }
         >
-          {canInvite && (
+          {activeTab === "members" && canInvite && (
             <button
               type="button"
               onClick={() => {
@@ -1064,19 +1099,91 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
               }}
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 font-bold text-[#1F63E0] shadow-md transition-colors hover:bg-white/90"
             >
+              <UserPlus className="size-4" />
+              Mời thành viên mới
+            </button>
+          )}
+
+          {activeTab === "teams" && canManageTeams && (
+            <button
+              type="button"
+              onClick={() => {
+                const el = document.getElementById("new-team-name-input");
+                if (el) {
+                  el.focus();
+                  el.scrollIntoView({ behavior: "smooth", block: "center" });
+                }
+              }}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 font-bold text-[#1F63E0] shadow-md transition-colors hover:bg-white/90"
+            >
               <Plus className="size-4" />
-              Mời thành viên
+              Tạo tổ đội
             </button>
           )}
         </PageHeroBanner>
       </div>
 
       {/* =====================================================
+          NAVIGATION TABS (TÁCH BIỆT THÀNH VIÊN VÀ TỔ ĐỘI)
+      ===================================================== */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-site-border bg-site-surface px-4 pt-3 rounded-2xl shadow-xs">
+        <button
+          type="button"
+          id="tab-btn-members"
+          data-testid="tab-btn-members"
+          onClick={() => handleTabChange("members")}
+          className={`inline-flex items-center gap-2.5 px-4 py-3 text-sm font-semibold border-b-2 transition-all -mb-px rounded-t-lg ${
+            activeTab === "members"
+              ? "border-[#1F63E0] text-[#1F63E0] bg-blue-50/70"
+              : "border-transparent text-site-baseline hover:text-site-dark hover:bg-slate-50"
+          }`}
+        >
+          <Users className="size-4.5" />
+          <span>Thành viên dự án</span>
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+              activeTab === "members"
+                ? "bg-[#1F63E0] text-white"
+                : "bg-slate-200/80 text-slate-600"
+            }`}
+          >
+            {members.length + invitations.length}
+          </span>
+        </button>
+
+        {canManageTeams && (
+          <button
+            type="button"
+            id="tab-btn-teams"
+            data-testid="tab-btn-teams"
+            onClick={() => handleTabChange("teams")}
+            className={`inline-flex items-center gap-2.5 px-4 py-3 text-sm font-semibold border-b-2 transition-all -mb-px rounded-t-lg ${
+              activeTab === "teams"
+                ? "border-[#1F63E0] text-[#1F63E0] bg-blue-50/70"
+                : "border-transparent text-site-baseline hover:text-site-dark hover:bg-slate-50"
+            }`}
+          >
+            <HardHat className="size-4.5" />
+            <span>Tổ đội thi công</span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                activeTab === "teams"
+                  ? "bg-[#1F63E0] text-white"
+                  : "bg-slate-200/80 text-slate-600"
+              }`}
+            >
+              {teams.length} đội
+            </span>
+          </button>
+        )}
+      </div>
+
+      {/* =====================================================
           TEAM MANAGEMENT
       ===================================================== */}
 
-      {canManageTeams && (
-        <section className="mb-8 overflow-hidden rounded-2xl border border-site-border bg-site-surface shadow-sm">
+      {canManageTeams && activeTab === "teams" && (
+        <section className="overflow-hidden rounded-2xl border border-site-border bg-site-surface shadow-sm">
           <div className="border-b border-site-border p-5">
             <div className="flex items-start gap-3">
               <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
@@ -1085,8 +1192,7 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
 
               <div>
                 <h3 className="font-bold text-site-dark">
-                  Quản lý tổ đội thi
-                  công
+                  Quản lý tổ đội thi công
                 </h3>
 
                 <p className="mt-1 text-sm text-site-baseline">
@@ -1129,6 +1235,7 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
                   className="flex gap-2"
                 >
                   <input
+                    id="new-team-name-input"
                     value={teamName}
                     onChange={(e) =>
                       setTeamName(
@@ -1722,8 +1829,9 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
           MEMBERS TABLE
       ===================================================== */}
 
-      {loading ? (
-        <div className="h-[400px] animate-pulse rounded-2xl border border-site-border bg-site-surface" />
+      {activeTab === "members" && (
+        loading ? (
+          <div className="h-[400px] animate-pulse rounded-2xl border border-site-border bg-site-surface" />
       ) : error ? (
         <div className="rounded-xl bg-site-critical/10 p-4 text-center font-medium text-site-critical">
           {error}
@@ -2153,7 +2261,7 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
             )}
           </div>
         </div>
-      )}
+      ))}
 
       {/* =====================================================
           INVITE MODAL
@@ -2318,6 +2426,7 @@ Tài khoản và lịch sử thao tác vẫn được giữ lại.`
         }
         isSubmitting={assigning}
       />
+      </div>
     </div>
   );
 }

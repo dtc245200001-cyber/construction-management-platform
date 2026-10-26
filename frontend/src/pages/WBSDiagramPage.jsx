@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useOutletContext, Link } from "react-router-dom";
 import {
   ReactFlow,
@@ -20,6 +20,7 @@ import TaskForm from "../components/TaskForm";
 import CategoryModal, { saveCategory } from "../components/CategoryModal";
 import { buildTree, rollupCategoryDates, flattenTasks } from "../utils/buildTree";
 import { layoutWithDagre, treeToFlowElements } from "../utils/wbsDiagramUtils";
+import { readSnapshot, SNAPSHOT_TYPES } from "../services/offlineSnapshotCache";
 
 function WbsNode({ data, selected }) {
   const { node, collapsed, hasChildren } = data;
@@ -115,7 +116,7 @@ function WBSDiagramInner() {
   const navigate = useNavigate();
   const context = useOutletContext();
   const currentProject = context?.currentProject;
-  const projectId = currentProject?.id || localStorage.getItem("currentProjectId") || 1;
+  const projectId = String(currentProject?.id || localStorage.getItem("currentProjectId") || "1");
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -139,25 +140,54 @@ function WBSDiagramInner() {
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
 
+  const fetchSeqRef = useRef(0);
+  const previousProjectIdRef = useRef(null);
+
   const fetchWBS = async () => {
+    const mySeq = ++fetchSeqRef.current;
+    const myProjectId = projectId;
+    const isStale = () =>
+      mySeq !== fetchSeqRef.current ||
+      String(myProjectId) !== String(currentProject?.id || localStorage.getItem("currentProjectId") || "1");
+
+    const isProjectChanged = previousProjectIdRef.current !== null && previousProjectIdRef.current !== myProjectId;
+    previousProjectIdRef.current = myProjectId;
+
+    if (isProjectChanged) {
+      setItems([]);
+      setNodes([]);
+      setEdges([]);
+      setShowTaskForm(false);
+      setModalConfig((prev) => ({ ...prev, isOpen: false, error: "" }));
+    }
+
     try {
-      setLoading(true);
-      const res = await api.get(`/categories/${projectId}/tree/all`);
+      if (items.length === 0 || isProjectChanged) {
+        setLoading(true);
+      }
+
+      // SWR: Tải nhanh từ WBS snapshot cache nếu có dữ liệu sẵn
+      try {
+        const localSnapshot = await readSnapshot(myProjectId, SNAPSHOT_TYPES.WBS);
+        if (!isStale() && localSnapshot?.payload?.tree) {
+          setItems(buildTree(localSnapshot.payload.tree));
+          setLoading(false);
+        }
+      } catch {
+        /* ignore snapshot read error */
+      }
+
+      const res = await api.get(`/categories/${myProjectId}/tree/all`);
+      if (isStale()) return;
       setItems(buildTree(res.data));
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (!isStale()) {
+        setLoading(false);
+      }
     }
   };
-
-  useEffect(() => {
-    setItems([]);
-    setNodes([]);
-    setEdges([]);
-    setShowTaskForm(false);
-    setModalConfig(prev => ({ ...prev, isOpen: false, error: "" }));
-  }, [projectId]);
 
   useEffect(() => {
     fetchWBS();
@@ -264,7 +294,7 @@ function WBSDiagramInner() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-120px)] min-h-[500px] flex-col p-4">
+    <div className="flex h-[calc(100vh-120px)] min-h-[500px] flex-col p-4 sm:p-6 pb-24 lg:pb-6 gap-4 sm:gap-6 max-w-[1672px] mx-auto w-full">
       {/* Hero Banner màu xanh đồng bộ */}
       <PageHeroBanner
         icon={<Network className="size-6 sm:size-8" />}

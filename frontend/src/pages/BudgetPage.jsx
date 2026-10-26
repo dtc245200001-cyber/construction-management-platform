@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useOutletContext } from "react-router-dom";
 import PageHeroBanner from "../components/PageHeroBanner";
 import api from "../lib/api";
@@ -57,7 +57,7 @@ import {
 export default function BudgetPage({ user }) {
   const context = useOutletContext();
   const currentProject = context?.currentProject;
-  const projectId = localStorage.getItem("currentProjectId") || "1";
+  const projectId = String(currentProject?.id || localStorage.getItem("currentProjectId") || "1");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -75,6 +75,8 @@ export default function BudgetPage({ user }) {
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const fetchSeqRef = useRef(0);
+
   // Tải danh sách phiên bản
   const fetchVersions = useCallback(async () => {
     try {
@@ -87,6 +89,7 @@ export default function BudgetPage({ user }) {
 
   // Tải dữ liệu cây dự toán
   const fetchBudgetTree = useCallback(async (versionNum = null) => {
+    const seq = ++fetchSeqRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -96,11 +99,15 @@ export default function BudgetPage({ user }) {
           : `/projects/${projectId}/budgets/tree`;
 
       const res = await api.get(url);
+      if (seq !== fetchSeqRef.current) return;
       setData(res.data);
     } catch (err) {
+      if (seq !== fetchSeqRef.current) return;
       setError(err?.response?.data?.message || "Không thể tải dữ liệu dự toán dự án");
     } finally {
-      setLoading(false);
+      if (seq === fetchSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [projectId]);
 

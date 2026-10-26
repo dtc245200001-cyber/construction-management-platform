@@ -383,8 +383,9 @@ export default function PaymentRequestsPage({ user: propUser } = {}) {
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
-      {/* Tiêu đề trang */}
+    <div className="flex-1 min-h-0 bg-[#F3F6FB] flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col p-4 sm:p-6 pb-24 lg:pb-6 gap-6 max-w-[1672px] mx-auto w-full">
+        {/* Tiêu đề trang */}
       <PageHeroBanner
         icon={<Receipt className="size-6 sm:size-8" />}
         title="Đề nghị thanh toán"
@@ -1274,6 +1275,7 @@ export default function PaymentRequestsPage({ user: propUser } = {}) {
           </form>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }

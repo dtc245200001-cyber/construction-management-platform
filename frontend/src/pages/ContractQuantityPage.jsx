@@ -86,7 +86,7 @@ function branchHasContract(node) {
 export default function ContractQuantityPage({ user: _user }) {
   const context = useOutletContext();
   const currentProject = context?.currentProject;
-  const projectId = localStorage.getItem("currentProjectId") || 1;
+  const projectId = String(currentProject?.id || localStorage.getItem("currentProjectId") || "1");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -145,6 +145,17 @@ export default function ContractQuantityPage({ user: _user }) {
     setError(null);
     setForbidden(false);
 
+    // SWR: Nạp nhanh snapshot từ offline cache nếu có dữ liệu sẵn
+    try {
+      const localSnapshot = await readSnapshot(myProjectId, SNAPSHOT_TYPES.CONTRACT_QUANTITIES);
+      if (!isStale() && localSnapshot?.payload !== undefined) {
+        setData(localSnapshot.payload);
+        setLoading(false);
+      }
+    } catch {
+      /* ignore cache read error */
+    }
+
     try {
       const res = await api.get(`/projects/${myProjectId}/contract-quantities`);
       if (isStale()) return;
@@ -172,7 +183,9 @@ export default function ContractQuantityPage({ user: _user }) {
         setError(err?.response?.data?.message || "Không thể tải khối lượng hợp đồng");
       }
     } finally {
-      setLoading(false);
+      if (!isStale()) {
+        setLoading(false);
+      }
     }
   }, [projectId]);
 
@@ -562,7 +575,7 @@ export default function ContractQuantityPage({ user: _user }) {
   // 1. Trạng thái Đang tải (Skeleton)
   if (loading && !data) {
     return (
-      <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto">
+      <div className="p-4 sm:p-6 space-y-4 max-w-[1672px] mx-auto w-full">
         <div className="flex items-center justify-between">
           <Skeleton className="h-8 w-64" />
           <Skeleton className="h-10 w-36" />

@@ -221,7 +221,7 @@ export default function ProjectsPage({ user, setUser }) {
       </nav>
 
       {/* Main content */}
-      <main className="flex-1 p-6 md:p-8 max-w-7xl mx-auto w-full">
+      <main className="flex-1 p-4 sm:p-6 pb-24 lg:pb-6 max-w-[1672px] mx-auto w-full">
         <div className="flex items-center gap-4 mb-8">
           <div className="flex size-12 items-center justify-center rounded-2xl bg-site-primary/10 text-site-primary">
             <FolderOpen className="size-6" />
